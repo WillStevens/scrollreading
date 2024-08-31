@@ -1,3 +1,18 @@
+/*
+ Will Stevens, August 2024
+ 
+ Routines for processing cubic volumes of the Herculanium Papyri.
+ 
+ This file should be compiled to a DLL that can be loaded with python.
+ 
+ If using cygwin then do this with e.g.:
+
+ x86_64-w64-mingw32-gcc -shared -O3 -o volumedll.dll volumedll.c -ltiff
+ 
+ Released under GNU Public License V3
+ */
+
+
 #include <stdint.h>
 #include <math.h>
 
@@ -5,6 +20,8 @@
 
 #define SIZE 512
 
+/* Make sure this corresponds to the output_folder location set near the top of scrollprocess.py */
+/* (In future versions these will be set by the calling program) */
 #define BLOCK_NO "005"
 #define Z_OFFSET 5800 // for 005
 //#define Z_OFFSET 5288 // for 105
@@ -13,8 +30,8 @@
 /* This is the image */ /* 128 Mb */
 unsigned char volume[SIZE][SIZE][SIZE];
 
-/* This is a working area for processing the image */ /* 512 Mb */
-unsigned processed[SIZE][SIZE][SIZE];
+/* This is a working area for processing the image */ 
+unsigned processed[SIZE][SIZE][SIZE]; /* TODO - this should be uint32_t */
 
 /* Image processed by sobel edge detection */ /* 128 Mb */
 unsigned char sobel[SIZE][SIZE][SIZE];
@@ -90,6 +107,9 @@ int fillableVoxelBasic(int x, int y, int z)
     return 0;
 }
 
+/* This implements the FAFF algorithm described in report.pdf */
+/* If doing DAFF then uncomment the second line of this so that it just calls fillableVoxelBasic - this will often result in large collections of layers with intersections that DAFF can be run on, to produce a list of plugs that can be pasted into scrollprocess.py, before running the pipeline a second time. (In future versions this will all be done automatically without requiring manual intervention). */
+
 int fillableVoxel(int x, int y, int z, int v)
 {
 	static int rcounter = 0;
@@ -125,13 +145,16 @@ int fillableVoxel(int x, int y, int z, int v)
     
     int d2 = (cx-10*x)*(cx-10*x)+(cy-10*y)*(cy-10*y)+(cz-10*z)*(cz-10*z);
     
-	// d2 values when count>=5
-	// 62 too permissive
-	// 30 is okay but a little permissive
-	// 25 is not okay - too many small patches
+	// d2 values tried:
+	// <62 too permissive
+	// <30 is okay but a little permissive
+	// <25 is not okay - too many small patches
 	
-	// d2 < 29 && count>=10 seems quite good
+	// d2 < 29 && count>=70 seems quite good (count was found to be more-or-less irrelevant here).
     int r = d2 < 29 && count>=70;
+
+/* uncomment below to get fillable/unfillable datasets for training a neural network to match the behaviour of
+   FAFF */	
 /*	
 	rcounter += 1;
 	
@@ -174,6 +197,7 @@ int fillableVoxel(int x, int y, int z, int v)
 	return r;
 }
 
+/* This was an experiment in using a nerual network to assess fillability */
 /*
 int fillableVoxelNN(int x, int y, int z, int v)
 {	

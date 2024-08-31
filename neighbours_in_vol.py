@@ -1,10 +1,11 @@
-# Do two volumes neighbour each other?
-
-# Input parameters - block ref
-#                    volume index 1
-#                    volume index 2
-
-# Output - yes/no
+# Will Stevens, August 2024
+# 
+# Experiment in finding abutting surfaces in a single cubic volumes.
+#
+# Surface point lists are in folders call sNNN, named vNNN_X.csv, where X is an arbitrary number that got
+# assigned to a surface during processing.
+#
+# Released under GNU Public License V3
 
 import csv
 import os

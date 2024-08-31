@@ -1,3 +1,17 @@
+/*
+ Will Stevens, August 2024
+ 
+ An implementation of the DAFF algorithm described in report.pdf
+ This was written to experiment with creating non-intersecting surfaces in cubic volumes of the Herculanium Papyri.
+ 
+ Invoke by giving the name of a CSV file where each line is the x,y,z coordinates of a point (where x,y,z are all >=0 and <SIZE).
+ 
+ It will print a list of plug voxels that can be pasted into a python program.
+ 
+ Released under GNU Public License V3
+ */
+
+
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -24,6 +38,8 @@ uint32_t fillQueueTail = 0;
 #define SEEK 3
 #define FILL_START 4
 
+/* Load 'points' and populate 'volume' from a CSV file where each line contains the x,y,z coordinates of a point */
+/* x,y,z must all be >=0 and <= SIZE */
 void loadVolume(char *v)
 {
 	int x,y,z;
@@ -44,6 +60,7 @@ void loadVolume(char *v)
 	}
 }
 
+/* Using the list of points visit so far, reset volume and proejction back to how they were after loadVolume was called, except that plugs found so far are left alone */
 void resetFill(void)
 {
 	int x,y,z;
@@ -63,6 +80,7 @@ void resetFill(void)
 	numPointsVisited = 0;
 }
 
+/* Check that projection is empty - useful for debugging */
 int testProjection(void)
 {
 	for(int x = 0; x<SIZE; x++)
@@ -84,6 +102,7 @@ int testProjection(void)
             fillQueueHead-=FILLQUEUELENGTH; \
     } 
 
+/* Flood fill in a surface from a point looking for a particular seekValue from a previous flood fill, and stop when it is found with *x,*y,*z containing the coordinates where it is found */
 int floodFillSeek(int *x, int *y, int *z, int seekValue)
 {   
 	int fillValue;
@@ -135,6 +154,7 @@ int floodFillSeek(int *x, int *y, int *z, int seekValue)
     return 0;
 }
 
+/* Flood fill and project points onto a 2D plane. Stop when there is an intersection (i.e. there is already a projected point. *x,*y,*z contain the coordinates of the intersection */
 int floodFill(int *x, int *y, int *z)
 {   
     int fillValue;
@@ -192,18 +212,18 @@ int main(int argc, char *argv[])
 {
 	if (argc != 2)
 	{
-		printf("Usage: holefinder <filename>\n");
+		printf("Usage: holefiller <filename>\n");
 		return -1;
 	}
 	
 	loadVolume(argv[1]);
 
 	
-	printf("Total points %d\n",numPoints);
+	printf("#Total points %d\n",numPoints);
 	
 	int x,y,z;
 	
-	int doing = 1000;
+	int doing = 1000; /* Only when we have tried 1000 random points and no intersection is found do we decide that we have finished */
 	
 	srand(1);
 	
@@ -215,6 +235,7 @@ int main(int argc, char *argv[])
 //			printf("Projection not empty\n");
 //		}
 
+        /* Pick a random point */
         int pt = rand()%numPoints;
 		
 		x = points[pt][0];
@@ -223,14 +244,15 @@ int main(int argc, char *argv[])
 
 //		printf("Starting from [%d,%d,%d],\n",x,y,z);
 		
-	    // x,y,z will be set to the first point that causes overlap
+	    // If floodFill returns non-zero then x,y,z will be set to the first point that causes intersection
 		if (floodFill(&x,&y,&z) != 0)
 		{
-			doing = 1000;
+			doing = 1000; /* Reset try count to 1000 */
 			
 			// x,y,z will be set to the first point that causes overlap
 //		    printf("First overlap point [%d,%d,%d],\n",x,y,z);
 			
+			/* Reset volume and projection (keeping previously found plugs intact) */
 			resetFill();
 
 			// Fill again from that point until overlap
@@ -238,20 +260,23 @@ int main(int argc, char *argv[])
 
 //		    printf("Nearest overlap found [%d,%d,%d],\n",x,y,z);
 			
-		    // Find the fillValue that plug will have
+		    // Find the fillValue that plug will have - a midpoint between where we started and where we finished
 			int plugFillValue = fv/2 + FILL_START;
 		
 			// Now without resetting fill, flood fill from x,y,z until we reach the first plugFillValue
 			if (floodFillSeek(&x,&y,&z,plugFillValue) == plugFillValue)
 			{
+				/* Output the coordinates of the plug */
 				printf("[%d,%d,%d],\n",x,y,z);
 				volume[z][y][x] = PLUG;
 			}
 
+			/* Reset volume and projection (keeping previously found plugs intact) */
 			resetFill();
 		}
 		else
 		{
+			/* Reset volume and projection (keeping previously found plugs intact) */
 			resetFill();
 			doing--;
 		}

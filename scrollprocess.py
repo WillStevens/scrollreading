@@ -1,3 +1,24 @@
+# Will Stevens, August 2024
+# 
+# Simple user interface for viewing x,y-plane slices of cubic volumes of the Herculanium Papyri.
+#
+# Loading and processing of scroll volumes is done by scrollprocess.dll, compiled from C source code and
+# loaded by this program.
+# 
+# Move up and down through the volume with the +/- buttons.
+# Other buttons can be used to carry out various operations.
+#
+# This is a constantly evolving experimental program, used to tinker with different ideas, so not all
+# buttons will be functional at any given release. Buttons that may be non-functional are commented out in the
+# source code.
+#
+# At the time of writing only the +/- navigation buttons and the 'pipeline' button are being used regularly
+# 
+# The 'plugs' variable can be initialised with a list of x,y,z coordinates where will make those voxels
+# unfillable. 'plugs' is produced by holefiller.c
+#
+# Released under GNU Public License V3
+
 from ctypes import *
 import pathlib
 import numpy
@@ -7,6 +28,8 @@ from PIL import ImageGrab,ImageTk,Image
 
 # To be able to load scrollprocess.dll and dependencies, the following need to be in PATH
 # C:\cygwin64\usr\x86_64-w64-mingw32\sys-root\mingw\bin
+
+output_folder = "s005" # Location where rendering output will be placed
 
 # Meanings of different values in 'processed'
 # Must match definitions in scrollprocess.c 
@@ -108,7 +131,9 @@ class ToolWin(tk.Toplevel):
         next100Img.pack()
         prev100Img = tk.Button(self,text="-100",command=self.prev100Img)
         prev100Img.pack()
-
+		
+# Comment out buttons that are not currently used
+        """
         prop = tk.Button(self,text="Prop",command=self.prop)
         prop.pack()
         prop20 = tk.Button(self,text="Prop x 20",command=self.prop20)
@@ -146,7 +171,7 @@ class ToolWin(tk.Toplevel):
 
         dilateFilled10 = tk.Button(self,text="Dilate filled x 10",command=self.dilateFilled10)
         dilateFilled10.pack()
-
+        """
         pipeline = tk.Button(self,text="Pipeline",command=self.pipeline)
         pipeline.pack()
         
@@ -295,7 +320,7 @@ class ToolWin(tk.Toplevel):
             root.unbind('<B1-Motion>',self.penModeId)
 
     def render(self):
-        global render_on_canvas,fullCanvas,img_render,volume_size
+        global render_on_canvas,fullCanvas,img_render,volume_size,output_folder
 		
         for offset in [6]:
           c_lib.render(1,offset,self.render_value)
@@ -309,7 +334,7 @@ class ToolWin(tk.Toplevel):
           img_render=ImageTk.PhotoImage(i)
 
           img_pil = ImageTk.getimage(img_render)
-          img_pil.save("../construct/s005/"+str(self.render_value)+"_"+str(offset)+".png")
+          img_pil.save("../construct/" + output_folder + "/"+str(self.render_value)+"_"+str(offset)+".png")
           img_pil.close()
 
         self.render_value += 1

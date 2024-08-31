@@ -1,3 +1,15 @@
+/*
+ Will Stevens, August 2024
+ 
+ An implementation of Gosper's Hashlife algorithm that performs a 3D flood fill operation.
+ This was written to experiment with flood-filling cubic volumes of the Herculanium Papyri.
+ 
+ Hashlife was not found to offer any performance improvement over breadth-first flood fill, so this program is
+ not used as part of the pipeline.
+ 
+ Released under GNU Public License V3
+ */
+
 #include <assert.h>
 
 #include <string.h>
@@ -764,6 +776,14 @@ int main(int argc, char *argv[])
 	for(uint32_t m = 0; m<size; m++)
 	{
 		char fname[100];
+		
+		/* This expects to find appropriately named and number tiff files in the directory:
+		   ../construct/e002.
+		   
+		   The files are named e002_05800.tif, e002_05801.tif etc...
+		   
+		   The tiff files are 16-bit grayscale images, and there must be enough of them and their dimensions must be large enough to be able to extract a cubic volume with each dimension 2^level
+		*/   
 		sprintf(fname,"../construct/e002/e002_0%d.tif",5800+m);
 		TIFF *tif = TIFFOpen(fname,"r");
 
