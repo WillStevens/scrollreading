@@ -5,7 +5,7 @@ report.pdf - a report describing this work
 
 *.png - some of the images that appear in report.pdf
 
-scrollprocess.py - simple user interface for viewing x,y-plane slices, quickly move up and down in z-plane, and invoking processing operations
+scrollprocess.py - simple user interface for viewing x,y-plane slices, quickly moving up and down in the z-plane, and invoking processing operations
 
 scrollprocess.c - contains processing functions used by scrollprocess.py. Compiles to a DLL, loaded by scrollprocess.py
 
