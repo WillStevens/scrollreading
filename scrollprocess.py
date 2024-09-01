@@ -32,6 +32,19 @@ from PIL import ImageGrab,ImageTk,Image
 folderSuffix = b'005'
 zOffset = 5800
 output_folder = "s" + folderSuffix.decode('utf-8') # Location where rendering output will be placed
+plugFileName = "plugs_v005_4.csv"
+
+plugs = []
+
+print("Loading plugs")
+with open(plugFileName) as plugFile:
+  for line in plugFile:
+    if line[0]=='[':
+      line=line[1:-3]
+      pt = [int(s) for s in line.split(',')]
+      plugs += [[pt[0],pt[1],pt[2]]] 
+print("Finished loading plugs")
+
 
 # Meanings of different values in 'processed'
 # Must match definitions in scrollprocess.c 
@@ -45,7 +58,6 @@ PR_FILL_END = 2147483647
 volume_size = 512
 volume_z = 0
 
-plugs = []
 
 colour_palette = [0,0,0,255,255,255]
 
@@ -286,7 +298,7 @@ class ToolWin(tk.Toplevel):
       self.plugSquares=[]
         
       for (x,y,z) in plugs:
-        if volume_z>=z-self.plugSize and volume_z<=z+self.plugSize:
+        if volume_z==z and volume_z==z:
           colour = 'red'
           self.plugSquares += [fullCanvas.create_rectangle(x-self.plugSize,y-self.plugSize,x+self.plugSize,y+self.plugSize,fill=colour)]
 
@@ -488,7 +500,7 @@ class ToolWin(tk.Toplevel):
 
         print("Unfilling...")               
         for j in range(0,i):
-          if c_lib.getRegionVolume(j) <= 10000:
+          if c_lib.getRegionVolume(j) <= 5000:
             print("Unfilling " + str(j))
             c_lib.unFill(j+PR_FILL_START)
 
@@ -507,7 +519,7 @@ class ToolWin(tk.Toplevel):
         print("Rendering...")               
         for j in range(0,i):
           print(str(j) + " volume " + str(c_lib.getRegionVolume(j)))
-          if c_lib.getRegionVolume(j) > 10000:
+          if c_lib.getRegionVolume(j) > 5000:
             print("Rendering " + str(j))
             self.render()
           else:
