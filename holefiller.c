@@ -11,6 +11,12 @@
  Released under GNU Public License V3
  */
 
+/* Optimizations that could be made:
+
+   If flood fill results in no intersection, then the filled area can be removed from the pointset, and the surface patch can be
+   exported. This should make the algorithm speed up as it progresses, and will mean that we can know for sure when it has finished.
+   
+*/
 
 #include <stdio.h>
 #include <stdint.h>
@@ -28,7 +34,9 @@ uint32_t numPointsVisited = 0;
 
 uint16_t projection[SIZE][SIZE];
 
-#define FILLQUEUELENGTH (SIZE*SIZE*6*4)
+// FILLQUEUELENGTH = 2^23 so that it can be wrapped around using an AND operation
+#define FILLQUEUELENGTH     0x00800000
+#define FILLQUEUELENGTHMASK 0x007fffff
 uint16_t fillQueue[FILLQUEUELENGTH];
 uint32_t fillQueueHead = 0;
 uint32_t fillQueueTail = 0;
@@ -90,16 +98,26 @@ int testProjection(void)
 	return 1;
 }
 
-#define FILL_CASE(xo,yo,zo,v,test) \
-    if (test>=0 && test<SIZE) \
+#define FILL_CASE_LO(xo,yo,zo,v,test) \
+    if (test>=0) \
     { \
         fillQueue[fillQueueHead++]=*x+xo; \
         fillQueue[fillQueueHead++]=*y+yo; \
         fillQueue[fillQueueHead++]=*z+zo; \
         fillQueue[fillQueueHead++]=v; \
       \
-        if (fillQueueHead>=FILLQUEUELENGTH) \
-            fillQueueHead-=FILLQUEUELENGTH; \
+        fillQueueHead &= FILLQUEUELENGTHMASK; \
+    } 
+
+#define FILL_CASE_HI(xo,yo,zo,v,test) \
+    if (test<SIZE) \
+    { \
+        fillQueue[fillQueueHead++]=*x+xo; \
+        fillQueue[fillQueueHead++]=*y+yo; \
+        fillQueue[fillQueueHead++]=*z+zo; \
+        fillQueue[fillQueueHead++]=v; \
+      \
+        fillQueueHead &= FILLQUEUELENGTHMASK; \
     } 
 
 /* Flood fill in a surface from a point looking for a particular seekValue from a previous flood fill, and stop when it is found with *x,*y,*z containing the coordinates where it is found */
@@ -113,10 +131,7 @@ int floodFillSeek(int *x, int *y, int *z, int seekValue)
     fillQueue[fillQueueHead++]=*y;
     fillQueue[fillQueueHead++]=*z;
     fillQueue[fillQueueHead++]=SEEK; // Don't really need this because it is constant, but need to have 4 values in the queue
-    	
-    if (fillQueueHead>=FILLQUEUELENGTH)
-        fillQueueHead-=FILLQUEUELENGTH;
-    
+    	    
     while(fillQueueHead != fillQueueTail)
     {
         *x = fillQueue[fillQueueTail++];
@@ -124,8 +139,7 @@ int floodFillSeek(int *x, int *y, int *z, int seekValue)
         *z = fillQueue[fillQueueTail++];
         fillValue = fillQueue[fillQueueTail++];
         
-        if (fillQueueTail>=FILLQUEUELENGTH)
-            fillQueueTail-=FILLQUEUELENGTH;
+        fillQueueTail &= FILLQUEUELENGTHMASK;
 
         if (volume[*z][*y][*x]==SURFACE || volume[*z][*y][*x]>=FILL_START)
         {
@@ -141,12 +155,12 @@ int floodFillSeek(int *x, int *y, int *z, int seekValue)
             pointsVisited[numPointsVisited][1]=*y;
             pointsVisited[numPointsVisited++][2]=*z;
 			
-			FILL_CASE(-1,0,0,fillValue,*x-1)
-			FILL_CASE(1,0,0,fillValue,*x+1)
-			FILL_CASE(0,-1,0,fillValue,*y-1)
-			FILL_CASE(0,1,0,fillValue,*y+1)
-			FILL_CASE(0,0,-1,fillValue,*z-1)
-			FILL_CASE(0,0,1,fillValue,*z+1)			
+			FILL_CASE_LO(-1,0,0,fillValue,*x-1)
+			FILL_CASE_HI(1,0,0,fillValue,*x+1)
+			FILL_CASE_LO(0,-1,0,fillValue,*y-1)
+			FILL_CASE_HI(0,1,0,fillValue,*y+1)
+			FILL_CASE_LO(0,0,-1,fillValue,*z-1)
+			FILL_CASE_HI(0,0,1,fillValue,*z+1)			
         }
 
 	}
@@ -165,10 +179,7 @@ int floodFill(int *x, int *y, int *z)
     fillQueue[fillQueueHead++]=*y;
     fillQueue[fillQueueHead++]=*z;
     fillQueue[fillQueueHead++]=FILL_START;
-    	
-    if (fillQueueHead>=FILLQUEUELENGTH)
-        fillQueueHead-=FILLQUEUELENGTH;
-    
+    	    
     while(fillQueueHead != fillQueueTail)
     {
         *x = fillQueue[fillQueueTail++];
@@ -176,8 +187,7 @@ int floodFill(int *x, int *y, int *z)
         *z = fillQueue[fillQueueTail++];
         fillValue = fillQueue[fillQueueTail++];
         
-        if (fillQueueTail>=FILLQUEUELENGTH)
-            fillQueueTail-=FILLQUEUELENGTH;
+        fillQueueTail &= FILLQUEUELENGTHMASK;
 
         if (volume[*z][*y][*x]==SURFACE)
         {
@@ -195,12 +205,12 @@ int floodFill(int *x, int *y, int *z)
             pointsVisited[numPointsVisited][1]=*y;
             pointsVisited[numPointsVisited++][2]=*z;
 			
-			FILL_CASE(-1,0,0,fillValue+1,*x-1)
-			FILL_CASE(1,0,0,fillValue+1,*x+1)
-			FILL_CASE(0,-1,0,fillValue+1,*y-1)
-			FILL_CASE(0,1,0,fillValue+1,*y+1)
-			FILL_CASE(0,0,-1,fillValue+1,*z-1)
-			FILL_CASE(0,0,1,fillValue+1,*z+1)			
+			FILL_CASE_LO(-1,0,0,fillValue+1,*x-1)
+			FILL_CASE_HI(1,0,0,fillValue+1,*x+1)
+			FILL_CASE_LO(0,-1,0,fillValue+1,*y-1)
+			FILL_CASE_HI(0,1,0,fillValue+1,*y+1)
+			FILL_CASE_LO(0,0,-1,fillValue+1,*z-1)
+			FILL_CASE_HI(0,0,1,fillValue+1,*z+1)			
         }
 
 	}
