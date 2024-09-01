@@ -15,15 +15,16 @@
 
 #include <stdint.h>
 #include <math.h>
+#include <string.h>
 
 #include "tiffio.h"
 
 #define SIZE 512
 
-/* Make sure this corresponds to the output_folder location set near the top of scrollprocess.py */
-/* (In future versions these will be set by the calling program) */
-#define BLOCK_NO "005"
-#define Z_OFFSET 5800 // for 005
+char folderSuffix[100]="";
+unsigned zOffset=0;
+
+//#define Z_OFFSET 5800 // for 005
 //#define Z_OFFSET 5288 // for 105
 //#define Z_OFFSET 4776 // for 205
 
@@ -82,6 +83,12 @@ unsigned fillValue = PR_FILL_START;
 /* allow for 1000000 different fill colours */
 int fillExtent[1000000][6]; /* xmin,ymin,zmin,xmax,ymax,zmax for each fill colour */
 int regionVolumes[1000000];
+
+void setFolderSuffixAndZOffset(char *s, unsigned z)
+{
+	strncpy(folderSuffix,s,100);
+	zOffset = z;
+}
 
 int getRegionVolume(int i)
 {
@@ -498,7 +505,7 @@ void loadTiffs(void)
     for(uint32_t m = 0; m<SIZE; m++)
     {
         char fname[100];
-        sprintf(fname,"../construct/e" BLOCK_NO "/e" BLOCK_NO "_0%d.tif",Z_OFFSET+m);
+        sprintf(fname,"../construct/e%s/e%s_0%d.tif",folderSuffix,folderSuffix,zOffset+m);
         TIFF *tif = TIFFOpen(fname,"r");
     
         if (tif)
@@ -604,7 +611,7 @@ unsigned char *getSliceR(unsigned z)
 void render(int q, int o, int fill)
 {
     char fname[100];
-    sprintf(fname,"../construct/s" BLOCK_NO "/v" BLOCK_NO "_%d.csv",fill);
+    sprintf(fname,"../construct/s%s/v%s_%d.csv",folderSuffix,folderSuffix,fill);
     FILE *f = fopen(fname,"w");
 
     for(int x=0; x<SIZE; x++)
@@ -653,7 +660,7 @@ void render(int q, int o, int fill)
     
     fclose(f);
     
-    sprintf(fname,"../construct/s" BLOCK_NO "/x" BLOCK_NO "_%d.csv",fill);
+    sprintf(fname,"../construct/s%s/x%s_%d.csv",folderSuffix,folderSuffix,fill);
     f = fopen(fname,"w");
     
     fprintf(f,"%d,%d,%d,%d,%d,%d",

@@ -29,7 +29,9 @@ from PIL import ImageGrab,ImageTk,Image
 # To be able to load scrollprocess.dll and dependencies, the following need to be in PATH
 # C:\cygwin64\usr\x86_64-w64-mingw32\sys-root\mingw\bin
 
-output_folder = "s005" # Location where rendering output will be placed
+folderSuffix = b'005'
+zOffset = 5800
+output_folder = "s" + folderSuffix.decode('utf-8') # Location where rendering output will be placed
 
 # Meanings of different values in 'processed'
 # Must match definitions in scrollprocess.c 
@@ -74,7 +76,10 @@ c_lib.getSliceR.restype = POINTER(c_uint8)
 
 c_lib.getSliceSobel.argtypes = [c_int]
 c_lib.getSliceSobel.restype = POINTER(c_uint8)
-  
+
+c_lib.setFolderSuffixAndZOffset.argtypes = [c_char_p,c_uint]
+
+c_lib.setFolderSuffixAndZOffset(c_char_p(folderSuffix),zOffset)  
 c_lib.loadTiffs()
 
 
