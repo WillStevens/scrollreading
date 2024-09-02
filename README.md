@@ -1,18 +1,34 @@
 # scrollreading
-Code and experiments related to reading the Herculanium Papyri
+Code and experiments related to reading the Herculanium Papyri.
 
-report.pdf - a report describing this work
+The aim of this project is to put together a fast autosegmentation and ink-detection pipeline. Work is currently focussed on the autosegmantation stages.
 
-*.png - some of the images that appear in report.pdf
+Autosegmentation is performed one cubic 512x512x512 volume at a time by using algorithms derived from flood-fill. One algorithm (called FAFF - flatness affinity flood-fill) tries to fill only flattish areas, in the hope that busy areas where surfaces meet each other are not filled. Another algorithm (called DAFF - damage avoiding flood-fill) tries to detect and plug areas that cause intersection. Both algorithms are currently being evaluated and investigated to understand their behaviour and to optimize them.
 
-scrollprocess.py - simple user interface for viewing x,y-plane slices, quickly moving up and down in the z-plane, and invoking processing operations
+Once surface patches have been identified, they are rendered immediately using a simple projection to a 2D plane for visual inspection, and are stitched together within each cubic volume. Once cubic volume surfaces patches have been stitched together, surfaces from neighbouring volumes are stitched together and rendered.
 
-scrollprocess.c - contains processing functions used by scrollprocess.py. Compiles to a DLL, loaded by scrollprocess.py
+The main problems encountered so far are:
 
-holefiller.c - implementation of DAFF described in report.pdf
+- Surfaces in areas where sroll layers are close together are not identified.
+- Neither algorithm guarantees that a single surface is all from the same layer.
+- When stitching surfaces together, rules need to be implemented prevent re-introduction of intersection. 
 
-neighbours.py - stitches together neighbouring-volume surfaces
+The general approach towards development is to put together a working pipeline, then refine the pipeline stages. The philsophy behind this work and it's relationship to other work is one of solution-space exploration - there are a large range of potential methods that can be used for rapidly reading the Herculanium Papyri, and exploring new and alternative avenues is beneficial for all who are working on this. Personally, it is enjoyable and informative to begin a new piece of work by striking out from scratch, at the same time as learning about the progress already made by others.  
 
-neighbours_in_vol.py - stitches together in-volume surface patches
+The main files in this repository are:
 
-fill3d.cpp - Experimental Hashlife 3D fill. Not used by anything else in this project.
+- report.pdf - a report describing this work
+
+- *.png - some of the images that appear in report.pdf
+
+- scrollprocess.py - simple tkinter user interface for viewing x,y-plane slices, quickly moving up and down in the z-plane, and invoking processing operations
+
+- scrollprocess.c - contains processing functions used by scrollprocess.py. Compiles to a DLL, loaded by scrollprocess.py. Implements FAFF described in report.pdf
+
+- holefiller.c - implementation of DAFF described in report.pdf
+
+- neighbours.py - stitches together neighbouring-volume surfaces
+
+- neighbours_in_vol.py - stitches together in-volume surface patches
+
+- fill3d.cpp - Experimental Hashlife 3D flood fill. Not currently used in the pipeline because it didn't outperform conventional breadth-first flood-fill, but may be useful later.
