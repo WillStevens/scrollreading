@@ -11,13 +11,6 @@
  Released under GNU Public License V3
  */
 
-/* Optimizations that could be made:
-
-   If flood fill results in no intersection, then the filled area can be removed from the pointset, and the surface patch can be
-   exported. This should make the algorithm speed up as it progresses, and will mean that we can know for sure when it has finished.
-   
-*/
-
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -30,6 +23,7 @@ uint16_t points[SIZE*SIZE*SIZE/10][3];
 uint32_t numPoints = 0;
 
 uint16_t pointsVisited[SIZE*SIZE*SIZE/10][3];
+
 uint32_t numPointsVisited = 0;
 
 uint16_t projection[SIZE][SIZE];
@@ -41,10 +35,121 @@ uint16_t fillQueue[FILLQUEUELENGTH];
 uint32_t fillQueueHead = 0;
 uint32_t fillQueueTail = 0;
 
+#define EMPTY 0
 #define SURFACE 1
 #define PLUG 2
 #define SEEK 3
 #define FILL_START 4
+
+#define XYZTOINDEX_HASHSIZE 17292347
+struct {
+  uint16_t x,y,z;
+  uint32_t index;
+} XYZToIndexHashTable[XYZTOINDEX_HASHSIZE];
+
+// TODO - this hash function could be better
+int XYZToIndexHashFunction(int x, int y, int z)
+{
+	return (x*62137+y*2137+z*17)% XYZTOINDEX_HASHSIZE;
+}
+
+int LookupPointIndex(int x, int y, int z)
+{
+	int hash = XYZToIndexHashFunction(x,y,z);
+	int oHash = hash;
+	
+	while(XYZToIndexHashTable[hash].x != x+1 ||
+          XYZToIndexHashTable[hash].y != y+1 ||
+		  XYZToIndexHashTable[hash].z != z+1)
+    {
+	   hash = (hash+1)%XYZTOINDEX_HASHSIZE;
+	   
+	   if (hash == oHash)
+	   {
+	     exit(-1);
+	     return -1;
+	   }
+    }
+	
+	return XYZToIndexHashTable[hash].index;
+}
+
+/* Get the point index given X,Y,Z and remove the point from the hash table */
+int pointIndexFromXYZRemove(int x, int y, int z)
+{
+	int hash = XYZToIndexHashFunction(x,y,z);
+	int oHash = hash;
+	
+//	printf("%d : %d,%d,%d\n",hash,XYZToIndexHashTable[hash].x,XYZToIndexHashTable[hash].y,XYZToIndexHashTable[hash].z);
+	while(XYZToIndexHashTable[hash].x != x+1 ||
+          XYZToIndexHashTable[hash].y != y+1 ||
+		  XYZToIndexHashTable[hash].z != z+1)
+    {
+	   hash = (hash+1)%XYZTOINDEX_HASHSIZE;
+//	   printf("%d : %d,%d,%d\n",hash,XYZToIndexHashTable[hash].x,XYZToIndexHashTable[hash].y,XYZToIndexHashTable[hash].z);
+	   
+	   if (hash == oHash)
+	   {
+	     exit(-1);
+	     return -1;
+	   }
+    }
+
+	int r = XYZToIndexHashTable[hash].index;
+
+	XYZToIndexHashTable[hash].x = 0;
+
+    return r;	
+}
+
+/* x,y,z must not already be in the hash table */
+int setPointIndexLookup(int x, int y, int z, int index)
+{
+	int hash = XYZToIndexHashFunction(x,y,z);
+	int oHash = hash;
+	
+	while(XYZToIndexHashTable[hash].x != 0)
+    {
+	   hash = (hash+1)%XYZTOINDEX_HASHSIZE;
+	   
+	   if (hash == oHash)
+	   { 
+         exit(-1);
+	     return -1;
+	   }
+    }
+
+	XYZToIndexHashTable[hash].x = x+1;
+	XYZToIndexHashTable[hash].y = y+1;
+	XYZToIndexHashTable[hash].z = z+1;
+	XYZToIndexHashTable[hash].index = index;
+
+    return 0;	
+}
+
+/* x,y,z should already be in the hash table, update the index */
+int updatePointIndexLookup(int x, int y, int z, int index)
+{
+	int hash = XYZToIndexHashFunction(x,y,z);
+	int oHash = hash;
+	
+	while(XYZToIndexHashTable[hash].x != x+1 ||
+          XYZToIndexHashTable[hash].y != y+1 ||
+		  XYZToIndexHashTable[hash].z != z+1)
+    {
+	   hash = (hash+1)%XYZTOINDEX_HASHSIZE;
+	   
+	   if (hash == oHash)
+	     return -1;
+    }
+
+	XYZToIndexHashTable[hash].x = x+1;
+	XYZToIndexHashTable[hash].y = y+1;
+	XYZToIndexHashTable[hash].z = z+1;
+	XYZToIndexHashTable[hash].index = index;
+
+    return 0;	
+}
 
 /* Load 'points' and populate 'volume' from a CSV file where each line contains the x,y,z coordinates of a point */
 /* x,y,z must all be >=0 and <= SIZE */
@@ -61,6 +166,9 @@ void loadVolume(char *v)
 			points[numPoints][0]=x;
 			points[numPoints][1]=y;
 			points[numPoints][2]=z;
+
+            setPointIndexLookup(x,y,z,numPoints);
+			
 			numPoints++;
 			
 			volume[z][y][x]=SURFACE;
@@ -218,6 +326,22 @@ int floodFill(int *x, int *y, int *z)
     return 0;
 }
 
+void removePointAtXYZ(int x, int y, int z)
+{
+	int index = pointIndexFromXYZRemove(x,y,z);
+
+	volume[z][y][x] = EMPTY;
+	
+	numPoints--;
+				
+	points[index][0] = points[numPoints][0];
+	points[index][1] = points[numPoints][1];
+	points[index][2] = points[numPoints][2];
+				
+	/* Update the index for this point */
+	updatePointIndexLookup(points[index][0],points[index][1],points[index][2],index);
+}
+
 int main(int argc, char *argv[])
 {
 	if (argc != 2)
@@ -233,12 +357,10 @@ int main(int argc, char *argv[])
 	
 	int x,y,z;
 	
-	int doing = 1000; /* Only when we have tried 1000 random points and no intersection is found do we decide that we have finished */
-	
 	srand(1);
 	
 	int iters = 0;
-	while(doing && iters++<400000)
+	while(numPoints > 0 && iters++ < 40000)
 	{	
 //		if (!testProjection())
 //		{
@@ -256,9 +378,7 @@ int main(int argc, char *argv[])
 		
 	    // If floodFill returns non-zero then x,y,z will be set to the first point that causes intersection
 		if (floodFill(&x,&y,&z) != 0)
-		{
-			doing = 1000; /* Reset try count to 1000 */
-			
+		{			
 			// x,y,z will be set to the first point that causes overlap
 //		    printf("First overlap point [%d,%d,%d],\n",x,y,z);
 			
@@ -278,17 +398,34 @@ int main(int argc, char *argv[])
 			{
 				/* Output the coordinates of the plug */
 				printf("[%d,%d,%d],\n",x,y,z);
-				volume[z][y][x] = PLUG;
-			}
 
-			/* Reset volume and projection (keeping previously found plugs intact) */
-			resetFill();
+				/* Reset volume and projection */
+				resetFill();
+				
+				/* Remove the plugged voxel from the point list */
+				removePointAtXYZ(x,y,z);
+			}
+            else
+			{
+				/* Reset volume and projection */
+				resetFill();
+			}
 		}
 		else
 		{
+			/* Flood fill didn't result in overlap, so this must be a surface patch ready to export */
+			/* Export it and remove the visited points from the points array */
+			/* TODO - I think we also need to remove plugs from the points array */
+			for(int i = 0; i<numPointsVisited; i++)
+			{
+				/* TODO Export the point */
+				
+				/* Remove the point from the points array */ 
+				removePointAtXYZ(pointsVisited[i][0],pointsVisited[i][1],pointsVisited[i][2]);
+			}
+			
 			/* Reset volume and projection (keeping previously found plugs intact) */
 			resetFill();
-			doing--;
 		}
 	}
 		
