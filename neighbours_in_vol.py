@@ -12,8 +12,7 @@ import os
 import time
 from PIL import Image
 
-volume = "s005"
-d1 = "../construct/" + volume
+d1 = "."
 matches = []
 	  
 files1 = []
@@ -114,8 +113,8 @@ for i in range(0,len(files1)):
 	    # These two tests aim to limit the number of intersections that we end up with
 		# Only join if the common boundary is more than 100 voxels, and if the number of intersection voxels is no more than a small constant
 		# times the boundary size.
-        if (len(common)>100 and len(common_xz) <= 4*len(common)):
-          matches += [( (f1[1:4],f1[5:-4]) , (f2[1:4],f2[5:-4]) ,len(common),len(common_xz) )]
+        if (len(common)>20 and len(common_xz) <= 2*len(common)):
+          matches += [(f1,f2,len(common),len(common_xz) )]
           print(matches[-1])
 
 
@@ -124,17 +123,17 @@ imageSets = []
 
 # Need to do several iterations to make sure we have a disjoint list of sets
 for i in range(0,10):
-  for ((folder1,image1) , (folder2,image2), common,common_xz) in matches:
+  for (f1,f2, common,common_xz) in matches:
     addedToExisting = False
     for i in range(0,len(imageSets)):
-      if (folder1,image1) in imageSets[i]:
-        imageSets[i].add( (folder2,image2) )
+      if f1 in imageSets[i]:
+        imageSets[i].add( f2 )
         addedToExisting = True
-      elif (folder2,image2) in imageSets[i]:
-        imageSets[i].add( (folder1,image1) )
+      elif f2 in imageSets[i]:
+        imageSets[i].add( f1 )
         addedToExisting = True
     if not addedToExisting:
-      imageSets += [set([(folder1,image1),(folder2,image2)])]
+      imageSets += [set([f1,f2])]
 
 newImageSets = []
 
@@ -149,14 +148,14 @@ for k in imageSets:
 
   dst = Image.new('L', (512,512))
 
-  for (folder,image) in k:
-    im = Image.open('../construct/s'+folder+'/' + image + '_6.png')
+  for f1 in k:
+    im = Image.open(d1 + "/v" + f1[1:-4] + ".tif")
     mask = im.copy()
     mask = mask.convert('L')
     mask = mask.point( lambda p:255 if p>0 else 0 )
     dst.paste(im, (0, 0), mask = mask)
 
-  dst.save('../construct/out_' + str(i) + '.png')
+  dst.save(d1 + "/output/out_" + str(i) + '.png')
   
   i += 1
   
@@ -164,11 +163,10 @@ for k in imageSets:
 
 print("No neighbours")
 for f1 in files1:
-  (folder,image) = (f1[1:4],f1[5:-4])
   found = False
   for i in imageSets:
-    if (folder,image) in i:
+    if f1 in i:
       found = True
 	  
   if not found:
-    print((folder,image))
+    print(f1)

@@ -14,15 +14,16 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define SIZE 512
 
 uint16_t volume[SIZE][SIZE][SIZE];
 
-uint16_t points[SIZE*SIZE*SIZE/10][3];
+uint16_t points[SIZE*SIZE*SIZE/5][3];
 uint32_t numPoints = 0;
 
-uint16_t pointsVisited[SIZE*SIZE*SIZE/10][3];
+uint16_t pointsVisited[SIZE*SIZE*SIZE/5][3];
 
 uint32_t numPointsVisited = 0;
 
@@ -36,10 +37,9 @@ uint32_t fillQueueHead = 0;
 uint32_t fillQueueTail = 0;
 
 #define EMPTY 0
-#define SURFACE 1
-#define PLUG 2
-#define SEEK 3
-#define FILL_START 4
+#define SEEK 1
+#define SURFACE 2
+#define FILL_START 3
 
 #define XYZTOINDEX_HASHSIZE 17292347
 struct {
@@ -66,6 +66,7 @@ int LookupPointIndex(int x, int y, int z)
 	   
 	   if (hash == oHash)
 	   {
+		 printf("Hash error in LookupPointIndex");
 	     exit(-1);
 	     return -1;
 	   }
@@ -90,6 +91,7 @@ int pointIndexFromXYZRemove(int x, int y, int z)
 	   
 	   if (hash == oHash)
 	   {
+		 printf("Hash error in pointIndexFromXYZRemove");		   
 	     exit(-1);
 	     return -1;
 	   }
@@ -114,6 +116,7 @@ int setPointIndexLookup(int x, int y, int z, int index)
 	   
 	   if (hash == oHash)
 	   { 
+		 printf("Hash error in setPointIndexLookup");		      
          exit(-1);
 	     return -1;
 	   }
@@ -187,7 +190,7 @@ void resetFill(void)
 		y = pointsVisited[i][1];
 		z = pointsVisited[i][2];
 		
-		if (volume[z][y][x] != PLUG)
+		if (volume[z][y][x] != EMPTY)
 			volume[z][y][x] = SURFACE;
 		
 		projection[z][x]=0;
@@ -249,7 +252,7 @@ int floodFillSeek(int *x, int *y, int *z, int seekValue)
         
         fillQueueTail &= FILLQUEUELENGTHMASK;
 
-        if (volume[*z][*y][*x]==SURFACE || volume[*z][*y][*x]>=FILL_START)
+        if (volume[*z][*y][*x]>=SURFACE)
         {
 			if (volume[*z][*y][*x] == seekValue)
 			{
@@ -281,6 +284,11 @@ int floodFill(int *x, int *y, int *z)
 {   
     int fillValue;
 
+	if (numPointsVisited != 0)
+	{
+		printf("Error - numPointsVisited non-zero in floodFill\n");
+		exit(-1);
+	}
     fillQueueHead = 0;
     fillQueueTail = 0;
     fillQueue[fillQueueHead++]=*x;
@@ -344,14 +352,25 @@ void removePointAtXYZ(int x, int y, int z)
 
 int main(int argc, char *argv[])
 {
-	if (argc != 2)
+	if (argc != 3 || strlen(argv[1])<7)
 	{
-		printf("Usage: holefiller <filename>\n");
+		printf("Usage: holefiller <filename> <outputdir>\n");
 		return -1;
 	}
 	
 	loadVolume(argv[1]);
 
+	int vnum = 0;
+
+	{
+		char *s;
+		for(s = argv[1]+strlen(argv[1]); s!=argv[1] && *s!='_'; s--);
+		
+		for(s++; *s && *s != '.'; s++)
+		{
+			vnum = vnum*10 + ((*s)-'0');
+		}					
+	}
 	
 	printf("#Total points %d\n",numPoints);
 	
@@ -359,8 +378,10 @@ int main(int argc, char *argv[])
 	
 	srand(1);
 	
+	int outputIndex = 0;
+	
 	int iters = 0;
-	while(numPoints > 0 && iters++ < 40000)
+	while(numPoints > 0 && iters++ < 400000)
 	{	
 //		if (!testProjection())
 //		{
@@ -415,19 +436,63 @@ int main(int argc, char *argv[])
 		{
 			/* Flood fill didn't result in overlap, so this must be a surface patch ready to export */
 			/* Export it and remove the visited points from the points array */
-			/* TODO - I think we also need to remove plugs from the points array */
+			printf("Exporting v%d_%d.csv (%d points)\n",vnum,outputIndex,numPointsVisited);
+			
+			int xmin=SIZE,ymin=SIZE,zmin=SIZE,xmax=-1,ymax=-1,zmax=-1;
+			FILE *f = NULL;
+			
+			// Don't export small regions
+			if (numPointsVisited >= 1000)
+			{
+				char fname[100];
+			
+				sprintf(fname,"%s/v%d_%d.csv",argv[2],vnum,outputIndex);
+			
+				f = fopen(fname,"w");
+			}
+			
+			
 			for(int i = 0; i<numPointsVisited; i++)
 			{
-				/* TODO Export the point */
+				/* Export the point */
+				if (f)
+				  fprintf(f,"%d,%d,%d\n",pointsVisited[i][0],pointsVisited[i][1],pointsVisited[i][2]);
+			  
+			    if (pointsVisited[i][0]<xmin) xmin=pointsVisited[i][0];
+			    if (pointsVisited[i][1]<ymin) ymin=pointsVisited[i][1];
+			    if (pointsVisited[i][2]<zmin) zmin=pointsVisited[i][2];
+			    if (pointsVisited[i][0]>xmax) xmax=pointsVisited[i][0];
+			    if (pointsVisited[i][1]>ymax) ymax=pointsVisited[i][1];
+			    if (pointsVisited[i][2]>zmax) zmax=pointsVisited[i][2];
 				
 				/* Remove the point from the points array */ 
 				removePointAtXYZ(pointsVisited[i][0],pointsVisited[i][1],pointsVisited[i][2]);
 			}
 			
+			if (f)
+			{
+				fclose(f);
+
+				char fname[100];
+
+				sprintf(fname,"%s/x%d_%d.csv",argv[2],vnum,outputIndex);
+			
+				f = fopen(fname,"w");
+				
+				if (f)
+				{		
+					fprintf(f,"%d,%d,%d,%d,%d,%d",xmin,ymin,zmin,xmax,ymax,zmax);    
+					fclose(f);
+				}
+			}
+			
+			outputIndex++;
+
 			/* Reset volume and projection (keeping previously found plugs intact) */
 			resetFill();
 		}
 	}
 		
+    printf("Holefiller finished\n");
 	return 0;
 }

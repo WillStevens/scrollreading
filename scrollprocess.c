@@ -7,7 +7,7 @@
  
  If using cygwin then do this with e.g.:
 
- x86_64-w64-mingw32-gcc -shared -O3 -o volumedll.dll volumedll.c -ltiff
+ x86_64-w64-mingw32-gcc -shared -O3 -o scrollprocess.dll scrollprocess.c -ltiff
  
  Released under GNU Public License V3
  */
@@ -21,7 +21,10 @@
 
 #define SIZE 512
 
-char folderSuffix[100]="";
+#define FOLDERNAME_LENGTH 256
+#define FILENAME_LENGTH 300
+char imageFolder[FOLDERNAME_LENGTH]="";
+char outputFolder[FOLDERNAME_LENGTH]="";
 unsigned zOffset=0;
 
 //#define Z_OFFSET 5800 // for 005
@@ -37,7 +40,7 @@ unsigned processed[SIZE][SIZE][SIZE]; /* TODO - this should be uint32_t */
 /* Image processed by sobel edge detection */ /* 128 Mb */
 unsigned char sobel[SIZE][SIZE][SIZE];
 
-//unsigned char sobel_orig[SIZE][SIZE][SIZE]; /* 128 Mb */
+unsigned char laplace[SIZE][SIZE][SIZE]; /* 128 Mb */
 
 /* A slice of the processed image, RGB coloured */
 unsigned processed_coloured[SIZE][SIZE];
@@ -78,15 +81,14 @@ uint32_t fillQueueTail = 0;
 /* 3 - 2147483647 = filled areas 
  * 2147483648+3 - 2^32-1 = used during dilation of filled areas */
 
-unsigned fillValue = PR_FILL_START;
-
 /* allow for 1000000 different fill colours */
 int fillExtent[1000000][6]; /* xmin,ymin,zmin,xmax,ymax,zmax for each fill colour */
 int regionVolumes[1000000];
 
-void setFolderSuffixAndZOffset(char *s, unsigned z)
+void setFoldersAndZOffset(char *s, char *d, unsigned z)
 {
-	strncpy(folderSuffix,s,100);
+	strncpy(imageFolder,s,FOLDERNAME_LENGTH-1);
+	strncpy(outputFolder,d,FOLDERNAME_LENGTH-1);
 	zOffset = z;
 }
 
@@ -120,7 +122,10 @@ int fillableVoxelBasic(int x, int y, int z)
 int fillableVoxel(int x, int y, int z, int v)
 {
 	static int rcounter = 0;
-	//return fillableVoxelBasic(x,y,z);
+	// WS 2024-09-12 - experiment with new edge detection
+	return sobel[z][y][x]==255 && processed[z][y][x]<PR_FILL_START;
+	
+	return fillableVoxelBasic(x,y,z);
 	
     if (!fillableVoxelBasic(x,y,z)) return 0;
     
@@ -242,9 +247,7 @@ int fillableVoxelNN(int x, int y, int z, int v)
 void floodFillStart(unsigned x, unsigned y, unsigned z, unsigned v)
 {
 //    if (!fillableVoxel(x,y,z,v)) return;
-	
-    fillValue = v;
-    
+	    
     fillQueueHead = 0;
     fillQueueTail = 0;
     fillQueue[fillQueueHead++]=x;
@@ -296,8 +299,8 @@ int findEmptyAndStartFill(unsigned v)
     }
 }
 
-#define FILL_CASE(xo,yo,zo,test) \
-    if (test>=0 && test<SIZE) \
+#define FILL_CASE_LO(xo,yo,zo,test) \
+    if (test>=0) \
     { \
         fillQueue[fillQueueHead++]=x+xo; \
         fillQueue[fillQueueHead++]=y+yo; \
@@ -307,7 +310,18 @@ int findEmptyAndStartFill(unsigned v)
             fillQueueHead-=FILLQUEUELENGTH; \
     } 
 
-int floodFillContinue(void)
+#define FILL_CASE_HI(xo,yo,zo,test) \
+    if (test<SIZE) \
+    { \
+        fillQueue[fillQueueHead++]=x+xo; \
+        fillQueue[fillQueueHead++]=y+yo; \
+        fillQueue[fillQueueHead++]=z+zo; \
+      \
+        if (fillQueueHead>=FILLQUEUELENGTH) \
+            fillQueueHead-=FILLQUEUELENGTH; \
+    } 
+
+int floodFillContinue(int v)
 {   
     int x,y,z;
     
@@ -322,25 +336,25 @@ int floodFillContinue(void)
         if (fillQueueTail>=FILLQUEUELENGTH)
             fillQueueTail-=FILLQUEUELENGTH;
 
-        if (fillableVoxel(x,y,z,fillValue))
+        if (fillableVoxel(x,y,z,v))
         {	
-        processed[z][y][x]=fillValue;
+        processed[z][y][x]=v;
     
-        if (x<fillExtent[fillValue][0]) fillExtent[fillValue][0]=x;
-        if (y<fillExtent[fillValue][1]) fillExtent[fillValue][1]=y;
-        if (z<fillExtent[fillValue][2]) fillExtent[fillValue][2]=z;
-        if (x>fillExtent[fillValue][3]) fillExtent[fillValue][3]=x;
-        if (y>fillExtent[fillValue][4]) fillExtent[fillValue][4]=y;
-        if (z>fillExtent[fillValue][5]) fillExtent[fillValue][5]=z;
+        if (x<fillExtent[v][0]) fillExtent[v][0]=x;
+        if (y<fillExtent[v][1]) fillExtent[v][1]=y;
+        if (z<fillExtent[v][2]) fillExtent[v][2]=z;
+        if (x>fillExtent[v][3]) fillExtent[v][3]=x;
+        if (y>fillExtent[v][4]) fillExtent[v][4]=y;
+        if (z>fillExtent[v][5]) fillExtent[v][5]=z;
     
         fillCount++;
       
-		FILL_CASE(-1,0,0,x-1)
-		FILL_CASE(1,0,0,x+1)
-		FILL_CASE(0,-1,0,y-1)
-		FILL_CASE(0,1,0,y+1)
-		FILL_CASE(0,0,-1,z-1)
-		FILL_CASE(0,0,1,z+1)			
+		FILL_CASE_LO(-1,0,0,x-1)
+		FILL_CASE_HI(1,0,0,x+1)
+		FILL_CASE_LO(0,-1,0,y-1)
+		FILL_CASE_HI(0,1,0,y+1)
+		FILL_CASE_LO(0,0,-1,z-1)
+		FILL_CASE_HI(0,0,1,z+1)			
         }
 
 	}
@@ -348,6 +362,7 @@ int floodFillContinue(void)
     return fillCount;
 }
 
+/*
 int floodFillContinuex(void)
 {   
     unsigned x,y,z;
@@ -395,7 +410,7 @@ int floodFillContinuex(void)
     
     return fillCount;
 }
-
+*/
 #define DILATE_CASE(xo,yo,zo,test) \
                 if (test>=0 && test<SIZE) \
                 { \
@@ -504,8 +519,8 @@ void loadTiffs(void)
 {
     for(uint32_t m = 0; m<SIZE; m++)
     {
-        char fname[100];
-        sprintf(fname,"../construct/e%s/e%s_0%d.tif",folderSuffix,folderSuffix,zOffset+m);
+        char fname[FILENAME_LENGTH];
+        sprintf(fname,"%s/%05d.tif",imageFolder,zOffset+m);
         TIFF *tif = TIFFOpen(fname,"r");
     
         if (tif)
@@ -542,6 +557,11 @@ unsigned char *getSlice(unsigned z)
 unsigned char *getSliceSobel(unsigned z)
 {
     return &sobel[z];
+}
+
+unsigned char *getSliceLaplace(unsigned z)
+{
+    return &laplace[z];
 }
 
 unsigned char getVoxel(unsigned x, unsigned y, unsigned z)
@@ -610,8 +630,8 @@ unsigned char *getSliceR(unsigned z)
 
 void render(int q, int o, int fill)
 {
-    char fname[100];
-    sprintf(fname,"../construct/s%s/v%s_%d.csv",folderSuffix,folderSuffix,fill);
+    char fname[FILENAME_LENGTH];
+    sprintf(fname,"%s/v_%d.csv",outputFolder,fill);
     FILE *f = fopen(fname,"w");
 
     for(int x=0; x<SIZE; x++)
@@ -660,7 +680,7 @@ void render(int q, int o, int fill)
     
     fclose(f);
     
-    sprintf(fname,"../construct/s%s/x%s_%d.csv",folderSuffix,folderSuffix,fill);
+    sprintf(fname,"%s/x_%d.csv",outputFolder,fill);
     f = fopen(fname,"w");
     
     fprintf(f,"%d,%d,%d,%d,%d,%d",
@@ -746,7 +766,21 @@ void Sobel(void)
         dy = (int)volume[z][yp1][x]-(int)volume[z][ym1][x]; 
         dz = (int)volume[zp1][y][x]-(int)volume[zm1][y][x]; 
 */
-        sobel[z][y][x] = (dy<0?sqrt(dx*dx+dy*dy+dz*dz):0)>220?255:0;
+        sobel[z][y][x] = (dy<0?sqrt(dx*dx+dy*dy+dz*dz):0)>150?255:0;
+		
+		int laplaceInRange = laplace[z][y][x]>120 && laplace[z][y][x]<136;
+		if (y>0 && !laplaceInRange)
+				laplaceInRange = laplace[z][y-1][x]<=128 && laplace[z][y][x]>128;
+		if (y<SIZE-1 && !laplaceInRange)
+				laplaceInRange = laplace[z][y][x]<=128 && laplace[z][y+1][x]>128;
+
+		if (x==143 && y>=320 && y<=335 && z==20)
+		{
+			printf("x:%d y:%d z:%d s:%d p:%d l:%d lir:%d\n",x,y,z,sobel[z][y][x],processed[z][y][x],laplace[z][y][x],laplaceInRange);
+		}
+			
+        sobel[z][y][x] = (processed[z][y][x]==PR_SCROLL && sobel[z][y][x]==255 && laplaceInRange )?255:0;
+		
 //        sobel_orig[z][y][x] = (dy<0?sqrt(dx*dx+dy*dy+dz*dz):0)>220?255:0;
         
     }
@@ -830,7 +864,148 @@ void Sobel(void)
 			}
         }       
     }
+
+    /* get rid of any dupliate surface points */
+
+    for(int z = 0; z<SIZE; z++)
+    for(int x = 0; x<SIZE; x++)
+	{
+		int prev = 0;
+		for(int y = 0; y<SIZE; y++)
+		{
+			if (sobel[z][y][x]==255)
+			{
+				if (prev>2)
+					sobel[z][y][x]=0;
+				prev++;
+			}
+			else
+			{
+				prev = 0;
+			}
+		}
+	}
+}
+
+// Temporarily use the sobel array for this
+// sobel will be overwritten with the output of sobel filtering later
+int Pascal[11][11] = { {1,0,0,0,0,0,0,0,0,0,0},
+				   {1,1,0,0,0,0,0,0,0,0,0},
+				   {1,2,1,0,0,0,0,0,0,0,0},
+				   {1,3,3,1,0,0,0,0,0,0,0},
+				   {1,4,6,4,1,0,0,0,0,0,0},
+				   {1,5,10,10,5,1,0,0,0,0,0},
+				   {1,6,15,20,15,6,1,0,0,0,0},
+				   {1,7,21,35,35,21,7,1,0,0,0},
+				   {1,8,28,56,70,56,28,8,1,0,0},
+				   {1,9,36,84,126,126,84,36,9,1,0},
+				   {1,10,45,120,210,252,210,120,45,10,1},
+                 };
+				   
+void GuassianSmooth(int w)
+{
+	int xo,yo,zo;
+	int p=1<<(w-1);
+	
+    for(int z = 0; z<SIZE; z++)
+    for(int y = 0; y<SIZE; y++)
+    for(int x = 0; x<SIZE; x++)
+    {
+		int t = 0;
+		
+		for(int i = 0; i<w; i++)
+		{
+			xo = x+i-w/2;
+			if (xo<0) xo = -xo;
+			if (xo>SIZE-1) xo = 2*SIZE-xo-1;
+			
+			t += Pascal[w-1][i]*volume[z][y][xo];
+		}
+		
+		sobel[z][y][x] = t/p;
+	}
+
+    for(int z = 0; z<SIZE; z++)
+    for(int x = 0; x<SIZE; x++)
+    for(int y = 0; y<SIZE; y++)
+    {
+		int t = 0;
+		
+		for(int i = 0; i<w; i++)
+		{
+			yo = y+i-w/2;
+			if (yo<0) yo = -yo;
+			if (yo>SIZE-1) yo = 2*SIZE-yo-1;
+			
+			t += Pascal[w-1][i]*sobel[z][yo][x];
+		}
+		
+		sobel[z][y][x] = t/p;
+	}
+
+    for(int y = 0; y<SIZE; y++)
+    for(int x = 0; x<SIZE; x++)
+    for(int z = 0; z<SIZE; z++)
+    {
+		int t = 0;
+		
+		for(int i = 0; i<w; i++)
+		{
+			zo = z+i-w/2;
+			if (zo<0) zo = -zo;
+			if (zo>SIZE-1) zo = 2*SIZE-zo-1;
+			
+			t += Pascal[w-1][i]*sobel[zo][y][x];
+		}
+		
+		sobel[z][y][x] = t/p;
+	}
+}
+
+void Laplace(void)
+{
+	GuassianSmooth(11);
+	
+    for(int z = 0; z<SIZE; z++)
+    for(int y = 0; y<SIZE; y++)
+    for(int x = 0; x<SIZE; x++)
+    {
+        int xm1 = x?x-1:x+1, ym1 = y?y-1:y+1, zm1 = z?z-1:z+1;
+        int xp1 = (x<SIZE-1)?x+1:x-1, yp1 = (y<SIZE-1)?y+1:y-1, zp1 = (z<SIZE-1)?z+1:z-1;
+                
+        int l;
+    
+		// Use sobel rather than volume because we have temporarily used sobel for doing the guassian smoothing
+        l = 2 * (int)sobel[zm1][ym1][xm1] + 2 * (int)sobel[zm1][ym1][xp1];
+        l += 3 * (int)sobel[zm1][y][xm1]  + 3 * (int)sobel[zm1][y][xp1];
+        l += 2 * (int)sobel[zm1][yp1][xm1] + 2 * (int)sobel[zm1][yp1][xp1];
+        l += 3 * (int)sobel[z][ym1][xm1]  + 3 * (int)sobel[z][ym1][xp1];
+        l += 6 * (int)sobel[z][y][xm1] + 6 * (int)sobel[z][y][xp1];
+        l += 3 * (int)sobel[z][yp1][xm1] + 3 * (int)sobel[z][yp1][xp1];
+        l += 2 * (int)sobel[zp1][ym1][xm1] + 2 * (int)sobel[zp1][ym1][xp1];
+        l += 3 * (int)sobel[zp1][y][xm1] + 3 * (int)sobel[zp1][y][xp1];
+        l += 2 * (int)sobel[zp1][yp1][xm1] + 2 * (int)sobel[zp1][yp1][xp1];
+
+        l += 3 * (int)sobel[zm1][ym1][x];
+        l += 6 * (int)sobel[zm1][y][x];
+        l += 3 * (int)sobel[zm1][yp1][x];
+        l += 6 * (int)sobel[z][ym1][x];
+        l += -88 * (int)sobel[z][y][x];
+        l += 6 * (int)sobel[z][yp1][x];
+        l += 3 * (int)sobel[zp1][ym1][x];
+        l += 6 * (int)sobel[zp1][y][x];
+        l += 3 * (int)sobel[zp1][yp1][x];
+		
+		l = 128+l/10;
         
+        if (l<0)
+			laplace[z][y][x] = 0;
+		else if (l>255)
+			laplace[z][y][x] = 255;
+		else
+			laplace[z][y][x] = l;
+
+    }
 }
 
 void sobel_and_processed(void)
@@ -845,7 +1020,7 @@ void sobel_and_processed(void)
         }
 }
 
-int findAndFill(void)
+int findAndFill(int fillValue)
 {
     int r = findEmptyAndStartFill(fillValue);
         
@@ -858,18 +1033,71 @@ int findAndFillAll(int max)
     
 	int i;
 	
-    for(i = 0; findAndFill() && i<max; i++)
+    for(i = 0; findAndFill(i+PR_FILL_START) && i<max; i++)
     {
-        if (i%100==0) printf("findAndFill %d\n",i);
-
-        totalvol = floodFillContinue();
-
-        fillValue+=1;
-        if (fillValue>1000000)
-            fillValue=PR_FILL_START; 
+        totalvol = floodFillContinue(i+PR_FILL_START);
         
+         if (i%100==0) printf("findAndFill %d, volume = %d\n",i,totalvol);
+		
         regionVolumes[i] = totalvol;
     }
 	
 	return i;
 }
+
+/* if not building as a DLL, then the pipeline is run from main */
+
+int main(int argc, char *argv[])
+{
+	if (argc != 3)
+	{
+		printf("Usage: scrollprocess <image-directory> <output-directory>\n");
+		return -1;
+	}
+
+	// assume that the last 5 digits of the image directory are the z-offset
+	int zOffset = 0;
+	
+	if (strlen(argv[1])>=5)
+	  zOffset = atoi(argv[1]+strlen(argv[1])-5);
+	
+	printf("zOffset=%d\n",zOffset);
+	
+    setFoldersAndZOffset(argv[1],argv[2],zOffset);  
+    loadTiffs();
+	
+    dilate(110);
+    dilate(110);
+    dilate(110);
+    dilate(90);
+    dilate(90);
+	Laplace();
+	Sobel();
+        
+    int i = findAndFillAll(300000);
+    printf("Found %d volumes\n",i);
+
+    printf("Unfilling...\n");               
+        
+	for(int j = 0; j<i; j++)
+        if (getRegionVolume(j) <= 5000)
+		{
+            printf("Unfilling %d\n",j);
+            unFill(j+PR_FILL_START);
+		}
+		
+    for(int j = 0; j<5; j++)
+		dilateFilledAreas();
+
+    printf("Rendering...\n");               
+    for(int j = 0; j<i; j++)
+	{
+        printf("%d volume %d\n",j,getRegionVolume(j));
+        if (getRegionVolume(j) > 5000)
+	    {
+            printf("Rendering %d\n",j);
+            render(1,6,j+PR_FILL_START);
+        }
+	}
+}
+

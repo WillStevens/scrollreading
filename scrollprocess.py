@@ -29,10 +29,11 @@ from PIL import ImageGrab,ImageTk,Image
 # To be able to load scrollprocess.dll and dependencies, the following need to be in PATH
 # C:\cygwin64\usr\x86_64-w64-mingw32\sys-root\mingw\bin
 
-folderSuffix = b'005'
+folderSuffix = b'02888_04200_05800'
 zOffset = 5800
 output_folder = "s" + folderSuffix.decode('utf-8') # Location where rendering output will be placed
-plugFileName = "plugs_v005_4.csv"
+#plugFileName = "plugs_v005_4.csv"
+plugFileName = "tmp.csv"
 
 plugs = []
 
@@ -88,6 +89,9 @@ c_lib.getSliceR.restype = POINTER(c_uint8)
 
 c_lib.getSliceSobel.argtypes = [c_int]
 c_lib.getSliceSobel.restype = POINTER(c_uint8)
+
+c_lib.getSliceLaplace.argtypes = [c_int]
+c_lib.getSliceLaplace.restype = POINTER(c_uint8)
 
 c_lib.setFolderSuffixAndZOffset.argtypes = [c_char_p,c_uint]
 
@@ -148,6 +152,15 @@ class ToolWin(tk.Toplevel):
         next100Img.pack()
         prev100Img = tk.Button(self,text="-100",command=self.prev100Img)
         prev100Img.pack()
+
+        sobel = tk.Button(self,text="Sobel",command=self.sobel)
+        sobel.pack()
+
+        laplace = tk.Button(self,text="Laplace",command=self.laplace)
+        laplace.pack()
+
+        filter = tk.Button(self,text="Filter",command=self.filter)
+        filter.pack()
 		
 # Comment out buttons that are not currently used
         """
@@ -171,11 +184,6 @@ class ToolWin(tk.Toplevel):
         dilate110 = tk.Button(self,text="Dilate 110",command=self.dilate110)
         dilate110.pack()
 
-        sobel = tk.Button(self,text="Sobel",command=self.sobel)
-        sobel.pack()
-
-        filter = tk.Button(self,text="Filter",command=self.filter)
-        filter.pack()
 
         adaptive = tk.Button(self,text="Adaptive",command=self.adaptive)
         adaptive.pack()
@@ -371,6 +379,20 @@ class ToolWin(tk.Toplevel):
         img_render=ImageTk.PhotoImage(i)
         
         fullCanvas.itemconfig(render_on_canvas, image = img_render)
+
+    def laplace(self):
+        global render_on_canvas,fullCanvas,img_render,volume_size
+        c_lib.Laplace()
+        
+        p = c_lib.getSliceLaplace(volume_z)
+
+        a = numpy.ctypeslib.as_array(p, shape=(volume_size,volume_size))
+
+        i = Image.fromarray(a)
+        
+        img_render=ImageTk.PhotoImage(i)
+        
+        fullCanvas.itemconfig(render_on_canvas, image = img_render)
         
     def renderOld(self):
         global render_on_canvas,fullCanvas,img_render,volume_size
@@ -442,8 +464,8 @@ class ToolWin(tk.Toplevel):
         c_lib.dilate(110)
         c_lib.dilate(110)
         c_lib.dilate(110)
-        c_lib.dilate(110)
-        c_lib.dilate(110)
+        c_lib.dilate(90)
+        c_lib.dilate(90)
 #        c_lib.dilate(0)
 #        c_lib.dilate(0)
 #        c_lib.dilate(0)
@@ -482,20 +504,23 @@ class ToolWin(tk.Toplevel):
         startTime = str(datetime.datetime.now())
 		
         self.filter()
+        self.laplace()
         self.sobel()
 #        c_lib.dilate(0)
 #        c_lib.dilate(0)
 #        c_lib.sobel_and_processed()
 
-        for (x,y,z) in plugs:
-          c_lib.setVoxelP(x,y,z,PR_PLUG);
+#        for (x,y,z) in plugs:
+#          c_lib.setVoxelP(x,y,z,PR_PLUG);
 
         startFillTime = str(datetime.datetime.now())
         
-        i = c_lib.findAndFillAll(300000)
+        i = c_lib.findAndFillAll(3000)
         print("Found " + str(i) + " volumes")
 
-
+        self.updateImg()
+		
+"""
         startUnfillTime = str(datetime.datetime.now())
 
         print("Unfilling...")               
@@ -532,7 +557,7 @@ class ToolWin(tk.Toplevel):
         print("Dilate: " + startDilateTime)
         print("Render: " + startRenderTime)
         print("Ended: " + endTime)
-          
+"""          
           
         
 def Draw(event):# r = 3
