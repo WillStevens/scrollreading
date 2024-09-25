@@ -180,10 +180,13 @@ void loadVolume(char *v)
 }
 
 /* Using the list of points visit so far, reset volume and proejction back to how they were after loadVolume was called, except that plugs found so far are left alone */
-void resetFill(void)
+void resetFill(int output)
 {
 	int x,y,z;
-	
+
+    if (output)
+      printf("resetFill\n");
+  
 	for(int i = 0; i<numPointsVisited; i++)
 	{
 		x = pointsVisited[i][0];
@@ -191,7 +194,12 @@ void resetFill(void)
 		z = pointsVisited[i][2];
 		
 		if (volume[z][y][x] != EMPTY)
+		{
 			volume[z][y][x] = SURFACE;
+			
+			if (output)
+				printf("%d,%d,%d\n",x,y,z);
+		}
 		
 		projection[z][x]=0;
 	}
@@ -313,6 +321,14 @@ int floodFill(int *x, int *y, int *z)
 			}
 			else
 			{
+				if (numPointsVisited==0)
+				{
+					printf("Error - numPointsVisited is zero when intersection found at %d,%d,%d\n",*x,*y,*z);
+					exit(-2);
+				}
+
+				printf("#Intersection occurred at at %d,%d,%d : %d\n",*x,*y,*z,projection[*z][*x]-1);
+				
 				return fillValue;
 			}
 			
@@ -337,7 +353,13 @@ int floodFill(int *x, int *y, int *z)
 void removePointAtXYZ(int x, int y, int z)
 {
 	int index = pointIndexFromXYZRemove(x,y,z);
-
+/*
+	if (x==74 && y==75 && z==50)
+	{
+		printf("At %d,%d,%d index = %d\n",x,y,z,index);
+		printf("Point at this index is %d,%d,%d\n",points[index][0],points[index][1],points[index][2]);
+	}
+*/	
 	volume[z][y][x] = EMPTY;
 	
 	numPoints--;
@@ -381,12 +403,12 @@ int main(int argc, char *argv[])
 	int outputIndex = 0;
 	
 	int iters = 0;
-	while(numPoints > 0 && iters++ < 400000)
+	while(numPoints > 0 && iters++ < 1600)
 	{	
-//		if (!testProjection())
-//		{
-//			printf("Projection not empty\n");
-//		}
+		if (!testProjection())
+		{
+			printf("Projection not empty 1\n");
+		}
 
         /* Pick a random point */
         int pt = rand()%numPoints;
@@ -395,7 +417,9 @@ int main(int argc, char *argv[])
 		y = points[pt][1];
 		z = points[pt][2];
 
-//		printf("Starting from [%d,%d,%d],\n",x,y,z);
+		// If starting from a zero point, it means that some point was not correctly removed from
+		// the pointlist
+		printf("#Starting from [%d,%d,%d] : %d,\n",x,y,z,volume[z][y][x]);
 		
 	    // If floodFill returns non-zero then x,y,z will be set to the first point that causes intersection
 		if (floodFill(&x,&y,&z) != 0)
@@ -403,12 +427,25 @@ int main(int argc, char *argv[])
 			// x,y,z will be set to the first point that causes overlap
 //		    printf("First overlap point [%d,%d,%d],\n",x,y,z);
 			
-			/* Reset volume and projection (keeping previously found plugs intact) */
-			resetFill();
+			int lastFv;
+			int fv;
+			
+			for(int seekIter = 0; seekIter<2 || lastFv > fv; seekIter++)
+			{
+				lastFv = fv;
+				
+				/* Reset volume and projection (keeping previously found plugs intact) */
+				resetFill(iters==6 && seekIter==0);
 
-			// Fill again from that point until overlap
-			int fv = floodFill(&x,&y,&z)-FILL_START;
+				if (!testProjection())
+				{
+					printf("Projection not empty 2\n");
+				}
 
+				// Fill again from that point until overlap
+				fv = floodFill(&x,&y,&z)-FILL_START;
+			}
+			
 //		    printf("Nearest overlap found [%d,%d,%d],\n",x,y,z);
 			
 		    // Find the fillValue that plug will have - a midpoint between where we started and where we finished
@@ -421,7 +458,7 @@ int main(int argc, char *argv[])
 				printf("[%d,%d,%d],\n",x,y,z);
 
 				/* Reset volume and projection */
-				resetFill();
+				resetFill(0);
 				
 				/* Remove the plugged voxel from the point list */
 				removePointAtXYZ(x,y,z);
@@ -429,20 +466,20 @@ int main(int argc, char *argv[])
             else
 			{
 				/* Reset volume and projection */
-				resetFill();
+				resetFill(0);
 			}
 		}
 		else
 		{
 			/* Flood fill didn't result in overlap, so this must be a surface patch ready to export */
 			/* Export it and remove the visited points from the points array */
-			printf("Exporting v%d_%d.csv (%d points)\n",vnum,outputIndex,numPointsVisited);
+			printf("#Exporting v%d_%d.csv (%d points)\n",vnum,outputIndex,numPointsVisited);
 			
 			int xmin=SIZE,ymin=SIZE,zmin=SIZE,xmax=-1,ymax=-1,zmax=-1;
 			FILE *f = NULL;
 			
 			// Don't export small regions
-			if (numPointsVisited >= 1000)
+			if (numPointsVisited >= 50)
 			{
 				char fname[100];
 			
@@ -489,10 +526,10 @@ int main(int argc, char *argv[])
 			outputIndex++;
 
 			/* Reset volume and projection (keeping previously found plugs intact) */
-			resetFill();
+			resetFill(0);
 		}
 	}
 		
-    printf("Holefiller finished\n");
+    printf("Holefiller finished, iters = %d, numPoints = %d\n",iters,numPoints);
 	return 0;
 }

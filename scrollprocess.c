@@ -123,7 +123,7 @@ int fillableVoxel(int x, int y, int z, int v)
 {
 	static int rcounter = 0;
 	// WS 2024-09-12 - experiment with new edge detection
-	return sobel[z][y][x]==255 && processed[z][y][x]<PR_FILL_START;
+	//return sobel[z][y][x]==255 && processed[z][y][x]<PR_FILL_START;
 	
 	return fillableVoxelBasic(x,y,z);
 	
@@ -768,6 +768,7 @@ void Sobel(void)
 */
         sobel[z][y][x] = (dy<0?sqrt(dx*dx+dy*dy+dz*dz):0)>150?255:0;
 		
+/*
 		int laplaceInRange = laplace[z][y][x]>120 && laplace[z][y][x]<136;
 		if (y>0 && !laplaceInRange)
 				laplaceInRange = laplace[z][y-1][x]<=128 && laplace[z][y][x]>128;
@@ -780,6 +781,7 @@ void Sobel(void)
 		}
 			
         sobel[z][y][x] = (processed[z][y][x]==PR_SCROLL && sobel[z][y][x]==255 && laplaceInRange )?255:0;
+*/
 		
 //        sobel_orig[z][y][x] = (dy<0?sqrt(dx*dx+dy*dy+dz*dz):0)>220?255:0;
         
@@ -866,7 +868,7 @@ void Sobel(void)
     }
 
     /* get rid of any dupliate surface points */
-
+/*
     for(int z = 0; z<SIZE; z++)
     for(int x = 0; x<SIZE; x++)
 	{
@@ -885,6 +887,7 @@ void Sobel(void)
 			}
 		}
 	}
+*/
 }
 
 // Temporarily use the sobel array for this
@@ -1020,6 +1023,84 @@ void sobel_and_processed(void)
         }
 }
 
+void AdaptiveHistogramEq(void)
+{
+	static int cum_freq[256],freq[256];
+	
+	int window = 6;
+	int xom,yom,zom;
+	
+    for(int z = 0; z<SIZE; z++)
+    for(int y = 0; y<SIZE; y++)
+	{
+	  for(int i = 0; i<256; i++)
+		freq[i]=0;
+	  
+	  xom = 0; yom = y-window; zom = z-window;
+	  if (yom<0) yom=0;	  
+	  if (zom<0) zom=0;
+	  if (yom>SIZE-2*window-1) yom = SIZE-2*window-1;	  
+	  if (zom>SIZE-2*window-1) zom = SIZE-2*window-1;
+
+	  for(int zo = zom; zo < zom+2*window+1; zo++)	  
+	  for(int yo = yom; yo < yom+2*window+1; yo++)	  
+	  for(int xo = xom; xo < xom+2*window+1; xo++)
+	  {
+		freq[volume[zo][yo][xo]]++;
+	  }	
+
+  	  for(int i = 0, tot=0; i<256; i++)
+	  {
+		tot += freq[i];
+		cum_freq[i]=tot;
+	  }
+	  
+      for(int x = 0; x<SIZE; x++)
+	  {
+		  if (processed[z][y][x]==PR_SCROLL)
+             //processed[z][y][x] = (256*cum_freq[volume[z][y][x]])/cum_freq[255];
+			 processed[z][y][x] = ((256*cum_freq[volume[z][y][x]])/cum_freq[255] > 128) ? PR_SCROLL : PR_EMPTY;
+
+		  // Update the cumulative frequency table if necessary...
+		  if (x>=window && x<SIZE-2*window-1)
+		  {
+	        for(int zo = zom; zo < zom+2*window+1; zo++)	  
+	        for(int yo = yom; yo < yom+2*window+1; yo++)	  
+	        {
+		      freq[volume[zo][yo][x-window]]--;
+		      freq[volume[zo][yo][x+2*window+1]]++;
+	        }
+
+  	        for(int i = 0, tot=0; i<256; i++)
+	        {
+		      tot += freq[i];
+		      cum_freq[i]=tot;
+	        }
+		  }		  
+	  }
+	}
+	
+	// Try to make the fillable lines thinner
+	//dilate(0);
+	
+    for(int z = 0; z<SIZE; z++)
+    for(int y = 0; y<SIZE; y++)
+    for(int x = 0; x<SIZE; x++)
+    {
+        if (processed[z][y][x] == PR_SCROLL && !fillableVoxelBasic(x,y,z))
+            processed[z][y][x] = PR_TMP;
+    }
+
+    for(int z = 0; z<SIZE; z++)
+    for(int y = 0; y<SIZE; y++)
+    for(int x = 0; x<SIZE; x++)
+    {
+        if (processed[z][y][x] == PR_TMP)
+            processed[z][y][x] = PR_EMPTY;
+    }
+	
+}
+
 int findAndFill(int fillValue)
 {
     int r = findEmptyAndStartFill(fillValue);
@@ -1071,8 +1152,12 @@ int main(int argc, char *argv[])
     dilate(110);
     dilate(90);
     dilate(90);
-	Laplace();
+	
 	Sobel();
+	AdaptiveHistogramEq();
+	
+//	Laplace();
+//	Sobel();
         
     int i = findAndFillAll(300000);
     printf("Found %d volumes\n",i);

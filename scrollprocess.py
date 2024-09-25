@@ -29,11 +29,11 @@ from PIL import ImageGrab,ImageTk,Image
 # To be able to load scrollprocess.dll and dependencies, the following need to be in PATH
 # C:\cygwin64\usr\x86_64-w64-mingw32\sys-root\mingw\bin
 
-folderSuffix = b'02888_04200_05800'
+folder = b'../construct/02888_04200_05800'
 zOffset = 5800
-output_folder = "s" + folderSuffix.decode('utf-8') # Location where rendering output will be placed
+output_folder = "." # Location where rendering output will be placed
 #plugFileName = "plugs_v005_4.csv"
-plugFileName = "tmp.csv"
+plugFileName = "../construct/debug/plugs.csv"
 
 plugs = []
 
@@ -93,9 +93,9 @@ c_lib.getSliceSobel.restype = POINTER(c_uint8)
 c_lib.getSliceLaplace.argtypes = [c_int]
 c_lib.getSliceLaplace.restype = POINTER(c_uint8)
 
-c_lib.setFolderSuffixAndZOffset.argtypes = [c_char_p,c_uint]
+c_lib.setFoldersAndZOffset.argtypes = [c_char_p,c_char_p,c_uint]
 
-c_lib.setFolderSuffixAndZOffset(c_char_p(folderSuffix),zOffset)  
+c_lib.setFoldersAndZOffset(c_char_p(folder),b'.',zOffset)  
 c_lib.loadTiffs()
 
 
@@ -161,6 +161,9 @@ class ToolWin(tk.Toplevel):
 
         filter = tk.Button(self,text="Filter",command=self.filter)
         filter.pack()
+
+        AHE = tk.Button(self,text="AHE",command=self.AHE)
+        AHE.pack()
 		
 # Comment out buttons that are not currently used
         """
@@ -308,6 +311,7 @@ class ToolWin(tk.Toplevel):
       for (x,y,z) in plugs:
         if volume_z==z and volume_z==z:
           colour = 'red'
+          x+=600
           self.plugSquares += [fullCanvas.create_rectangle(x-self.plugSize,y-self.plugSize,x+self.plugSize,y+self.plugSize,fill=colour)]
 
       self.processed()
@@ -380,6 +384,12 @@ class ToolWin(tk.Toplevel):
         
         fullCanvas.itemconfig(render_on_canvas, image = img_render)
 
+    def AHE(self):
+        global render_on_canvas,fullCanvas,img_render,volume_size
+        c_lib.AdaptiveHistogramEq()
+        
+        self.processed()
+		
     def laplace(self):
         global render_on_canvas,fullCanvas,img_render,volume_size
         c_lib.Laplace()
@@ -504,8 +514,9 @@ class ToolWin(tk.Toplevel):
         startTime = str(datetime.datetime.now())
 		
         self.filter()
-        self.laplace()
+#        self.laplace()
         self.sobel()
+        c_lib.AdaptiveHistogramEq()
 #        c_lib.dilate(0)
 #        c_lib.dilate(0)
 #        c_lib.sobel_and_processed()

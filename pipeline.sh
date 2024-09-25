@@ -2,11 +2,11 @@
 
 XYZ=02888_04200_05800
 
-mkdir ../construct/s$XYZ
-mkdir ../construct/s$XYZ/nonint
-mkdir ../construct/s$XYZ/nonint/output
+#mkdir ../construct/s$XYZ
+#mkdir ../construct/s$XYZ/nonint
+#mkdir ../construct/s$XYZ/nonint/output
 
-./scrollprocess ../construct/$XYZ ../construct/s$XYZ
+#./scrollprocess ../construct/$XYZ ../construct/s$XYZ
 
 for FILE in ../construct/s$XYZ/v*.csv
 do
