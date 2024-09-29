@@ -15,6 +15,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 #define SIZE 512
 
@@ -27,7 +28,15 @@ uint16_t pointsVisited[SIZE*SIZE*SIZE/5][3];
 
 uint32_t numPointsVisited = 0;
 
-uint16_t projection[SIZE][SIZE];
+// Two vectors that define the projection plane
+// The third vector in this array is the normal to the projection plane, calculated from the other two
+int32_t planeVectors[3][3] = 
+	{ { 1, 0, 0 },
+	  { 0, 0, 1 } };
+
+#define PROJECTION_SIZE 2048
+#define PROJECTION_BLANK INT32_MIN
+int32_t projection[PROJECTION_SIZE][PROJECTION_SIZE];
 
 // FILLQUEUELENGTH = 2^23 so that it can be wrapped around using an AND operation
 #define FILLQUEUELENGTH     0x00800000
@@ -154,6 +163,13 @@ int updatePointIndexLookup(int x, int y, int z, int index)
     return 0;	
 }
 
+int32_t projectN(int x, int y, int z, int n)
+{
+	int32_t r = (x*planeVectors[n][0]+y*planeVectors[n][1]+z*planeVectors[n][2])/1000;
+	
+	return r;
+}
+
 /* Load 'points' and populate 'volume' from a CSV file where each line contains the x,y,z coordinates of a point */
 /* x,y,z must all be >=0 and <= SIZE */
 void loadVolume(char *v)
@@ -201,7 +217,7 @@ void resetFill(int output)
 				printf("%d,%d,%d\n",x,y,z);
 		}
 		
-		projection[z][x]=0;
+		projection[projectN(x,y,z,0)+PROJECTION_SIZE/2][projectN(x,y,z,1)+PROJECTION_SIZE/2]=PROJECTION_BLANK;
 	}
 	
 	numPointsVisited = 0;
@@ -210,9 +226,9 @@ void resetFill(int output)
 /* Check that projection is empty - useful for debugging */
 int testProjection(void)
 {
-	for(int x = 0; x<SIZE; x++)
-		for(int y = 0; y<SIZE; y++)
-			if (projection[y][x] != 0)
+	for(int x = 0; x<PROJECTION_SIZE; x++)
+		for(int y = 0; y<PROJECTION_SIZE; y++)
+			if (projection[y][x] != PROJECTION_BLANK)
 				return 0;
 	return 1;
 }
@@ -315,19 +331,23 @@ int floodFill(int *x, int *y, int *z)
 
         if (volume[*z][*y][*x]==SURFACE)
         {
-			if (projection[*z][*x]==0 || (projection[*z][*x]>=*y+1-5 && projection[*z][*x]<=*y+1+5))
+			// Distnace of *X,*y,*z from the projection plane - positive or negative
+			int depth = projectN(*x,*y,*z,2);
+			
+			if (projection[projectN(*x,*y,*z,0)+PROJECTION_SIZE/2][projectN(*x,*y,*z,1)+PROJECTION_SIZE/2]==PROJECTION_BLANK || 
+			     (projection[projectN(*x,*y,*z,0)+PROJECTION_SIZE/2][projectN(*x,*y,*z,1)+PROJECTION_SIZE/2]>=depth-5 && projection[projectN(*x,*y,*z,0)+PROJECTION_SIZE/2][projectN(*x,*y,*z,1)+PROJECTION_SIZE/2]<=depth+5))
 			{
-				projection[*z][*x]=*y+1;
+				projection[projectN(*x,*y,*z,0)+PROJECTION_SIZE/2][projectN(*x,*y,*z,1)+PROJECTION_SIZE/2]=depth;
 			}
 			else
 			{
 				if (numPointsVisited==0)
 				{
-					printf("Error - numPointsVisited is zero when intersection found at %d,%d,%d\n",*x,*y,*z);
+					printf("Error - numPointsVisited is zero when intersection found at %d,%d,%d (%d)\n",*x,*y,*z,projection[projectN(*x,*y,*z,0)+PROJECTION_SIZE/2][projectN(*x,*y,*z,1)+PROJECTION_SIZE/2]);
 					exit(-2);
 				}
 
-				printf("#Intersection occurred at at %d,%d,%d : %d\n",*x,*y,*z,projection[*z][*x]-1);
+				printf("#Intersection occurred at at %d,%d,%d : %d\n",*x,*y,*z,projection[projectN(*x,*y,*z,0)+PROJECTION_SIZE/2][projectN(*x,*y,*z,1)+PROJECTION_SIZE/2]);
 				
 				return fillValue;
 			}
@@ -374,11 +394,45 @@ void removePointAtXYZ(int x, int y, int z)
 
 int main(int argc, char *argv[])
 {
-	if (argc != 3 || strlen(argv[1])<7)
+	if ((argc != 3 && argc != 9) || strlen(argv[1])<7)
 	{
-		printf("Usage: holefiller <filename> <outputdir>\n");
+		printf("Usage: holefiller <filename> <outputdir> [x1 y1 z1 x2 y2 z2]\n");
 		return -1;
 	}
+	
+	if (argc==9)
+	{
+		for(int i = 0; i<2; i++)
+		  for(int j = 0; j<3; j++)
+			  planeVectors[i][j] = atoi(argv[j+i*3+3]);
+	}
+	
+	printf("Projection plane vectors normalised to length 1000:\n");
+	for(int i = 0; i<2; i++)
+	{
+		double magnitude = sqrt((double)(planeVectors[i][0]*planeVectors[i][0]+planeVectors[i][1]*planeVectors[i][1]+planeVectors[i][2]*planeVectors[i][2]));
+		
+		for(int j = 0; j<3; j++)
+		{
+			planeVectors[i][j] /= (magnitude/1000);
+			
+			printf("%d ", planeVectors[i][j]);
+		}
+		
+		printf("\n");
+	}
+	
+	/* Cross product of the two plane vectors gives the normal vector */
+	planeVectors[2][0] = (planeVectors[0][1]*planeVectors[1][2]-planeVectors[0][2]*planeVectors[1][1])/1000;
+	planeVectors[2][1] = (planeVectors[0][2]*planeVectors[1][0]-planeVectors[0][0]*planeVectors[1][2])/1000;
+	planeVectors[2][2] = (planeVectors[0][0]*planeVectors[1][1]-planeVectors[0][1]*planeVectors[1][0])/1000;
+	
+	printf("Normal vector normalised to length 1000:\n");
+	printf("%d %d %d\n",planeVectors[2][0],planeVectors[2][1],planeVectors[2][2]);
+	
+	for(int i=0; i<PROJECTION_SIZE; i++)
+	  for(int j=0; j<PROJECTION_SIZE; j++)
+		projection[i][j]=PROJECTION_BLANK;
 	
 	loadVolume(argv[1]);
 
@@ -398,17 +452,17 @@ int main(int argc, char *argv[])
 	
 	int x,y,z;
 	
-	srand(1);
+	srand(5);
 	
 	int outputIndex = 0;
 	
 	int iters = 0;
-	while(numPoints > 0 && iters++ < 1600)
+	while(numPoints > 0 && iters++ < 16000000)
 	{	
-		if (!testProjection())
-		{
-			printf("Projection not empty 1\n");
-		}
+//		if (!testProjection())
+//		{
+//			printf("Projection not empty 1\n");
+//		}
 
         /* Pick a random point */
         int pt = rand()%numPoints;
@@ -437,10 +491,10 @@ int main(int argc, char *argv[])
 				/* Reset volume and projection (keeping previously found plugs intact) */
 				resetFill(iters==6 && seekIter==0);
 
-				if (!testProjection())
-				{
-					printf("Projection not empty 2\n");
-				}
+//				if (!testProjection())
+//				{
+//					printf("Projection not empty 2\n");
+//				}
 
 				// Fill again from that point until overlap
 				fv = floodFill(&x,&y,&z)-FILL_START;

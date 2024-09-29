@@ -32,20 +32,21 @@ unsigned zOffset=0;
 //#define Z_OFFSET 4776 // for 205
 
 /* This is the image */ /* 128 Mb */
-unsigned char volume[SIZE][SIZE][SIZE];
+uint8_t volume[SIZE][SIZE][SIZE];
+uint8_t volume_ahe[SIZE][SIZE][SIZE];
 
 /* This is a working area for processing the image */ 
-unsigned processed[SIZE][SIZE][SIZE]; /* TODO - this should be uint32_t */
+uint32_t processed[SIZE][SIZE][SIZE]; 
 
 /* Image processed by sobel edge detection */ /* 128 Mb */
-unsigned char sobel[SIZE][SIZE][SIZE];
+uint8_t sobel[SIZE][SIZE][SIZE];
 
-unsigned char laplace[SIZE][SIZE][SIZE]; /* 128 Mb */
+uint8_t laplace[SIZE][SIZE][SIZE]; /* 128 Mb */
 
 /* A slice of the processed image, RGB coloured */
-unsigned processed_coloured[SIZE][SIZE];
+uint32_t processed_coloured[SIZE][SIZE];
 
-unsigned char rendered[SIZE][SIZE];
+uint8_t rendered[SIZE][SIZE];
 
 typedef struct
 {
@@ -105,7 +106,7 @@ int fillableVoxelBasic(int x, int y, int z)
 	for(int xo=-1; xo<=1; xo++)
 	for(int yo=-1; yo<=1; yo++)
 	for(int zo=-1; zo<=1; zo++)
-        if (z+zo>=0 && z+zo<SIZE && y+yo>=0 && y+yo<SIZE && x+xo>=0 && x+xo<SIZE)
+        if ((xo==0 || yo==0 || zo==0) && z+zo>=0 && z+zo<SIZE && y+yo>=0 && y+yo<SIZE && x+xo>=0 && x+xo<SIZE)
         {
 			if (processed[z+zo][y+yo][x+xo]==PR_EMPTY)
 			{
@@ -1058,17 +1059,18 @@ void AdaptiveHistogramEq(void)
       for(int x = 0; x<SIZE; x++)
 	  {
 		  if (processed[z][y][x]==PR_SCROLL)
-             //processed[z][y][x] = (256*cum_freq[volume[z][y][x]])/cum_freq[255];
-			 processed[z][y][x] = ((256*cum_freq[volume[z][y][x]])/cum_freq[255] > 128) ? PR_SCROLL : PR_EMPTY;
-
+		  {
+             volume_ahe[z][y][x] = (256*cum_freq[volume[z][y][x]])/cum_freq[255];
+          }
+		  
 		  // Update the cumulative frequency table if necessary...
-		  if (x>=window && x<SIZE-2*window-1)
+		  if (x>=window && x<SIZE-window-1)
 		  {
 	        for(int zo = zom; zo < zom+2*window+1; zo++)	  
 	        for(int yo = yom; yo < yom+2*window+1; yo++)	  
 	        {
 		      freq[volume[zo][yo][x-window]]--;
-		      freq[volume[zo][yo][x+2*window+1]]++;
+		      freq[volume[zo][yo][x+window+1]]++;
 	        }
 
   	        for(int i = 0, tot=0; i<256; i++)
@@ -1079,10 +1081,18 @@ void AdaptiveHistogramEq(void)
 		  }		  
 	  }
 	}
-	
-	// Try to make the fillable lines thinner
-	//dilate(0);
-	
+}
+
+void KeepFillable(void)
+{
+/*	
+    for(int z = 0; z<SIZE; z++)
+    for(int y = 0; y<SIZE; y++)
+    for(int x = 0; x<SIZE; x++)
+    {
+		processed[z][y][x] = (processed[z][y][x]==PR_SCROLL && volume_ahe[z][y][x] > 110) ? PR_SCROLL : PR_EMPTY;
+	}
+*/			 
     for(int z = 0; z<SIZE; z++)
     for(int y = 0; y<SIZE; y++)
     for(int x = 0; x<SIZE; x++)
@@ -1150,11 +1160,12 @@ int main(int argc, char *argv[])
     dilate(110);
     dilate(110);
     dilate(110);
-    dilate(90);
-    dilate(90);
+//    dilate(90);
+//    dilate(90);
 	
+//	AdaptiveHistogramEq();
 	Sobel();
-	AdaptiveHistogramEq();
+	KeepFillable();
 	
 //	Laplace();
 //	Sobel();

@@ -33,7 +33,7 @@ folder = b'../construct/02888_04200_05800'
 zOffset = 5800
 output_folder = "." # Location where rendering output will be placed
 #plugFileName = "plugs_v005_4.csv"
-plugFileName = "../construct/debug/plugs.csv"
+plugFileName = "../construct/debug/a/plugs.csv"
 
 plugs = []
 
@@ -164,6 +164,9 @@ class ToolWin(tk.Toplevel):
 
         AHE = tk.Button(self,text="AHE",command=self.AHE)
         AHE.pack()
+
+        KeepFillable = tk.Button(self,text="Keep fillable",command=self.KeepFillable)
+        KeepFillable.pack()
 		
 # Comment out buttons that are not currently used
         """
@@ -389,6 +392,12 @@ class ToolWin(tk.Toplevel):
         c_lib.AdaptiveHistogramEq()
         
         self.processed()
+
+    def KeepFillable(self):
+        global render_on_canvas,fullCanvas,img_render,volume_size
+        c_lib.KeepFillable()
+        
+        self.processed()
 		
     def laplace(self):
         global render_on_canvas,fullCanvas,img_render,volume_size
@@ -474,8 +483,8 @@ class ToolWin(tk.Toplevel):
         c_lib.dilate(110)
         c_lib.dilate(110)
         c_lib.dilate(110)
-        c_lib.dilate(90)
-        c_lib.dilate(90)
+#        c_lib.dilate(90)
+#        c_lib.dilate(90)
 #        c_lib.dilate(0)
 #        c_lib.dilate(0)
 #        c_lib.dilate(0)
