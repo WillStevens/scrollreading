@@ -38,12 +38,12 @@ plugFileName = "../construct/debug/a/plugs.csv"
 plugs = []
 
 print("Loading plugs")
-with open(plugFileName) as plugFile:
-  for line in plugFile:
-    if line[0]=='[':
-      line=line[1:-3]
-      pt = [int(s) for s in line.split(',')]
-      plugs += [[pt[0],pt[1],pt[2]]] 
+#with open(plugFileName) as plugFile:
+#  for line in plugFile:
+#    if line[0]=='[':
+#      line=line[1:-3]
+#      pt = [int(s) for s in line.split(',')]
+#      plugs += [[pt[0],pt[1],pt[2]]] 
 print("Finished loading plugs")
 
 

@@ -533,7 +533,7 @@ int main(int argc, char *argv[])
 			FILE *f = NULL;
 			
 			// Don't export small regions
-			if (numPointsVisited >= 50)
+			if (numPointsVisited >= 2000)
 			{
 				char fname[100];
 			
