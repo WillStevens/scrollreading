@@ -733,39 +733,39 @@ void Sobel(void)
         
         int dx,dy,dz;
         
-        dx = 1 * (int)volume_ahe[zm1][ym1][xm1] - 1 * (int)volume_ahe[zm1][ym1][xp1];
-        dx += 2 * (int)volume_ahe[zm1][y][xm1]  - 2 * (int)volume_ahe[zm1][y][xp1];
-        dx += 1 * (int)volume_ahe[zm1][yp1][xm1] - 1 * (int)volume_ahe[zm1][yp1][xp1];
-        dx += 2 * (int)volume_ahe[z][ym1][xm1]  - 2 * (int)volume_ahe[z][ym1][xp1];
-        dx += 4 * (int)volume_ahe[z][y][xm1] - 4 * (int)volume_ahe[z][y][xp1];
-        dx += 2 * (int)volume_ahe[z][yp1][xm1] - 2 * (int)volume_ahe[z][yp1][xp1];
-        dx += 1 * (int)volume_ahe[zp1][ym1][xm1] - 1 * (int)volume_ahe[zp1][ym1][xp1];
-        dx += 2 * (int)volume_ahe[zp1][y][xm1] - 2 * (int)volume_ahe[zp1][y][xp1];
-        dx += 1 * (int)volume_ahe[zp1][yp1][xm1] - 1 * (int)volume_ahe[zp1][yp1][xp1];
+        dx = 1 * (int)volume[zm1][ym1][xm1] - 1 * (int)volume[zm1][ym1][xp1];
+        dx += 2 * (int)volume[zm1][y][xm1]  - 2 * (int)volume[zm1][y][xp1];
+        dx += 1 * (int)volume[zm1][yp1][xm1] - 1 * (int)volume[zm1][yp1][xp1];
+        dx += 2 * (int)volume[z][ym1][xm1]  - 2 * (int)volume[z][ym1][xp1];
+        dx += 4 * (int)volume[z][y][xm1] - 4 * (int)volume[z][y][xp1];
+        dx += 2 * (int)volume[z][yp1][xm1] - 2 * (int)volume[z][yp1][xp1];
+        dx += 1 * (int)volume[zp1][ym1][xm1] - 1 * (int)volume[zp1][ym1][xp1];
+        dx += 2 * (int)volume[zp1][y][xm1] - 2 * (int)volume[zp1][y][xp1];
+        dx += 1 * (int)volume[zp1][yp1][xm1] - 1 * (int)volume[zp1][yp1][xp1];
 
-        dy = 1 * (int)volume_ahe[zm1][ym1][xm1] - 1 * (int)volume_ahe[zm1][yp1][xm1];
-        dy += 2 * (int)volume_ahe[zm1][ym1][x] - 2 * (int)volume_ahe[zm1][yp1][x];
-        dy += 1 * (int)volume_ahe[zm1][ym1][xp1] - 1 * (int)volume_ahe[zm1][yp1][xp1];
-        dy += 2 * (int)volume_ahe[z][ym1][xm1] - 2 * (int)volume_ahe[z][yp1][xm1];
-        dy += 4 * (int)volume_ahe[z][ym1][x] - 4 * (int)volume_ahe[z][yp1][x];
-        dy += 2 * (int)volume_ahe[z][ym1][xp1] - 2 * (int)volume_ahe[z][yp1][xp1];
-        dy += 1 * (int)volume_ahe[zp1][ym1][xm1] -1 * (int)volume_ahe[zp1][yp1][xm1];
-        dy += 2 * (int)volume_ahe[zp1][ym1][x] - 2 * (int)volume_ahe[zp1][yp1][x];
-        dy += 1 * (int)volume_ahe[zp1][ym1][xp1] - 1 * (int)volume_ahe[zp1][yp1][xp1];
+        dy = 1 * (int)volume[zm1][ym1][xm1] - 1 * (int)volume[zm1][yp1][xm1];
+        dy += 2 * (int)volume[zm1][ym1][x] - 2 * (int)volume[zm1][yp1][x];
+        dy += 1 * (int)volume[zm1][ym1][xp1] - 1 * (int)volume[zm1][yp1][xp1];
+        dy += 2 * (int)volume[z][ym1][xm1] - 2 * (int)volume[z][yp1][xm1];
+        dy += 4 * (int)volume[z][ym1][x] - 4 * (int)volume[z][yp1][x];
+        dy += 2 * (int)volume[z][ym1][xp1] - 2 * (int)volume[z][yp1][xp1];
+        dy += 1 * (int)volume[zp1][ym1][xm1] -1 * (int)volume[zp1][yp1][xm1];
+        dy += 2 * (int)volume[zp1][ym1][x] - 2 * (int)volume[zp1][yp1][x];
+        dy += 1 * (int)volume[zp1][ym1][xp1] - 1 * (int)volume[zp1][yp1][xp1];
         
-        dz = 1 * (int)volume_ahe[zm1][ym1][xm1] - 1 * (int)volume_ahe[zp1][ym1][xm1];
-        dz += 2 * (int)volume_ahe[zm1][ym1][x] - 2 * (int)volume_ahe[zp1][ym1][x];
-        dz += 1 * (int)volume_ahe[zm1][ym1][xp1] - 1 * (int)volume_ahe[zp1][ym1][xp1];
-        dz += 2 * (int)volume_ahe[zm1][y][xm1] -2 * (int)volume_ahe[zp1][y][xm1];
-        dz += 4 * (int)volume_ahe[zm1][y][x] - 4 * (int)volume_ahe[zp1][y][x];
-        dz += 2 * (int)volume_ahe[zm1][y][xp1] - 2 * (int)volume_ahe[zp1][y][xp1];
-        dz += 1 * (int)volume_ahe[zm1][yp1][xm1] - 1 * (int)volume_ahe[zp1][yp1][xm1];
-        dz += 2 * (int)volume_ahe[zm1][yp1][x] - 2 * (int)volume_ahe[zp1][yp1][x];
-        dz += 1 * (int)volume_ahe[zm1][yp1][xp1] - 1 * (int)volume_ahe[zp1][yp1][xp1];
+        dz = 1 * (int)volume[zm1][ym1][xm1] - 1 * (int)volume[zp1][ym1][xm1];
+        dz += 2 * (int)volume[zm1][ym1][x] - 2 * (int)volume[zp1][ym1][x];
+        dz += 1 * (int)volume[zm1][ym1][xp1] - 1 * (int)volume[zp1][ym1][xp1];
+        dz += 2 * (int)volume[zm1][y][xm1] -2 * (int)volume[zp1][y][xm1];
+        dz += 4 * (int)volume[zm1][y][x] - 4 * (int)volume[zp1][y][x];
+        dz += 2 * (int)volume[zm1][y][xp1] - 2 * (int)volume[zp1][y][xp1];
+        dz += 1 * (int)volume[zm1][yp1][xm1] - 1 * (int)volume[zp1][yp1][xm1];
+        dz += 2 * (int)volume[zm1][yp1][x] - 2 * (int)volume[zp1][yp1][x];
+        dz += 1 * (int)volume[zm1][yp1][xp1] - 1 * (int)volume[zp1][yp1][xp1];
 /*
-        dx = (int)volume_ahe[z][y][xp1]-(int)volume_ahe[z][y][xm1]; 
-        dy = (int)volume_ahe[z][yp1][x]-(int)volume_ahe[z][ym1][x]; 
-        dz = (int)volume_ahe[zp1][y][x]-(int)volume_ahe[zm1][y][x]; 
+        dx = (int)volume[z][y][xp1]-(int)volume[z][y][xm1]; 
+        dy = (int)volume[z][yp1][x]-(int)volume[z][ym1][x]; 
+        dz = (int)volume[zp1][y][x]-(int)volume[zm1][y][x]; 
 */
         sobel[z][y][x] = (dy<0?sqrt(dx*dx+dy*dy+dz*dz):0)>150?255:0;
 		
@@ -1085,14 +1085,14 @@ void AdaptiveHistogramEq(void)
 
 void KeepFillable(void)
 {
-	
+/*	
     for(int z = 0; z<SIZE; z++)
     for(int y = 0; y<SIZE; y++)
     for(int x = 0; x<SIZE; x++)
     {
 		processed[z][y][x] = (processed[z][y][x]==PR_SCROLL && volume_ahe[z][y][x] > 110) ? PR_SCROLL : PR_EMPTY;
 	}
-			 
+*/			 
     for(int z = 0; z<SIZE; z++)
     for(int y = 0; y<SIZE; y++)
     for(int x = 0; x<SIZE; x++)
