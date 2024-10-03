@@ -24,7 +24,9 @@ The main files in this repository are:
 
 - scrollprocess.py - simple tkinter user interface for viewing x,y-plane slices, quickly moving up and down in the z-plane, and invoking processing operations
 
-- scrollprocess.c - contains processing functions used by scrollprocess.py. Compiles to a DLL, loaded by scrollprocess.py. Implements FAFF described in report.pdf
+- pipeline.sh - calls scrollprocess, holefiller, reander, jigsaw on a single specified 512x512x512 volume
+
+- scrollprocess.c - contains processing functions used by scrollprocess.py. Compiles to a DLL, loaded by scrollprocess.py. Also compiles to a standalone executable to take part in the pipeline. Implements FAFF described in report.pdf
 
 - holefiller.c - implementation of DAFF described in report.pdf (updated description in report2.pdf)
 
