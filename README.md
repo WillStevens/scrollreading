@@ -17,9 +17,10 @@ The general approach towards development is to put together a working pipeline, 
 
 The main files in this repository are:
 
-- report.pdf - a report describing this work
+- report.pdf - month 1 report describing this work
+- report2.pdf - month 2 report
 
-- *.png - some of the images that appear in report.pdf
+- *.png - some of the images that appear in the reports
 
 - scrollprocess.py - simple tkinter user interface for viewing x,y-plane slices, quickly moving up and down in the z-plane, and invoking processing operations
 
