@@ -25,10 +25,16 @@ The main files in this repository are:
 
 - scrollprocess.c - contains processing functions used by scrollprocess.py. Compiles to a DLL, loaded by scrollprocess.py. Implements FAFF described in report.pdf
 
-- holefiller.c - implementation of DAFF described in report.pdf
+- holefiller.c - implementation of DAFF described in report.pdf (updated description in report2.pdf)
 
 - neighbours.py - stitches together neighbouring-volume surfaces
 
-- neighbours_in_vol.py - stitches together in-volume surface patches
+- jigsaw.py - stitches together in-volume surface patches by starting with the largest and trying to fit successively smaller pieces in turn.
+ 
+- neighbours_in_vol.py - Older (not very good) algorithm that stitches together in-volume surface patches
+
+- crop.py - crop an x,y,z CSV file
+
+- makevtk.py - turn an x,y,z CSV file into a VTK file that can be loaded into Slicer 3D
 
 - fill3d.cpp - Experimental Hashlife 3D flood fill. Not currently used in the pipeline because it didn't outperform conventional breadth-first flood-fill, but may be useful later.
