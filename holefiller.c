@@ -347,7 +347,7 @@ int floodFill(int *x, int *y, int *z)
 					exit(-2);
 				}
 
-				printf("#Intersection occurred at at %d,%d,%d : %d\n",*x,*y,*z,projection[projectN(*x,*y,*z,0)+PROJECTION_SIZE/2][projectN(*x,*y,*z,1)+PROJECTION_SIZE/2]);
+//				printf("#Intersection occurred at at %d,%d,%d : %d\n",*x,*y,*z,projection[projectN(*x,*y,*z,0)+PROJECTION_SIZE/2][projectN(*x,*y,*z,1)+PROJECTION_SIZE/2]);
 				
 				return fillValue;
 			}
@@ -473,7 +473,7 @@ int main(int argc, char *argv[])
 
 		// If starting from a zero point, it means that some point was not correctly removed from
 		// the pointlist
-		printf("#Starting from [%d,%d,%d] : %d,\n",x,y,z,volume[z][y][x]);
+//		printf("#Starting from [%d,%d,%d] : %d,\n",x,y,z,volume[z][y][x]);
 		
 	    // If floodFill returns non-zero then x,y,z will be set to the first point that causes intersection
 		if (floodFill(&x,&y,&z) != 0)
@@ -509,7 +509,7 @@ int main(int argc, char *argv[])
 			if (floodFillSeek(&x,&y,&z,plugFillValue) == plugFillValue)
 			{
 				/* Output the coordinates of the plug */
-				printf("[%d,%d,%d],\n",x,y,z);
+//				printf("[%d,%d,%d],\n",x,y,z);
 
 				/* Reset volume and projection */
 				resetFill(0);

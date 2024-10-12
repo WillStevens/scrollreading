@@ -67,7 +67,7 @@ void loadTiffs(void)
     }
 }
 
-void render(char *d,char *v)
+void render(char *d,char *v, int renderOffset)
 {
     char fname[FILENAME_LENGTH];
 	int x,y,z;
@@ -86,9 +86,16 @@ void render(char *d,char *v)
 
 	while(fscanf(f,"%d,%d,%d\n",&x,&y,&z)==3)
 	{
-		int yr = y+6;
+		if (x<0) x=0;
+		if (x>=SIZE) x=SIZE-1;
+		if (z<0) z=0;
+		if (z>=SIZE) z=SIZE-1;
+		
+		int yr = y+renderOffset;
 		if (yr>=SIZE)
 			yr = SIZE-1;
+		if (yr<0)
+			yr = 0;
 		
 		if (rendered[z][x] == 0)
 		{
@@ -165,12 +172,17 @@ void render(char *d,char *v)
 
 int main(int argc, char *argv[])
 {
-	if (argc != 3)
+	if (argc != 3 && argc != 4)
 	{
-		printf("Usage: render <image directory> <target directory>\n");
+		printf("Usage: render <image directory> <target directory> [offset (default=6)]\n");
 		return -1;
 	}
 
+	int renderOffset = 6;
+	
+	if (argc==4)
+	  renderOffset = atoi(argv[3]);
+  
 	// assume that the last 5 digits of the image directory are the z-offset
 	int zOffset = 0;
 	
@@ -192,7 +204,7 @@ int main(int argc, char *argv[])
 				
 				if (ent->d_name[0]=='v')
 				{
-					render(argv[2],ent->d_name);
+					render(argv[2],ent->d_name,renderOffset);
 				}
 			}
 			closedir (dir);

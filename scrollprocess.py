@@ -25,21 +25,39 @@ import numpy
 import datetime
 import tkinter as tk
 from PIL import ImageGrab,ImageTk,Image
+import os
 
 # To be able to load scrollprocess.dll and dependencies, the following need to be in PATH
 # C:\cygwin64\usr\x86_64-w64-mingw32\sys-root\mingw\bin
 
-folder = b'../construct/02888_04200_05800'
-zOffset = 5800
+folder = b'../construct/03400_04200_07336'
+zOffset = 7336
 output_folder = "." # Location where rendering output will be placed
 #plugFileName = "plugs_v005_4.csv"
-plugFileName = "../construct/debug/a/plugs.csv"
+#plugFileName = "../testout/v_650.csv"
 
+plugFileNames = [("../construct/s03400_04200_07336/nonint/output_saved/v5.csv","red"),
+                 ("../construct/s03400_04200_07336/nonint/output/v5.csv","green"),
+				 ("../testout_h/v_361.csv","orange"),
+				 ]
+
+"""
+for file in os.listdir("../testout_h/"):
+  if file.endswith(".csv") and file[0]=="v":
+    plugFileNames += [("../testout_h/"+file,"green")]
+  
+for file in os.listdir("../testout_v/"):
+  if file.endswith(".csv") and file[0]=="v":
+    plugFileNames += [("../testout_v/"+file,"red")]
+"""
 plugs = []
 
 print("Loading plugs")
-#with open(plugFileName) as plugFile:
-#  for line in plugFile:
+for (plugFileName,colour) in plugFileNames:
+  with open(plugFileName) as plugFile:
+    for line in plugFile:
+      pt = [int(s) for s in line.split(',')]
+      plugs += [[pt[0],pt[1],pt[2],colour]] 
 #    if line[0]=='[':
 #      line=line[1:-3]
 #      pt = [int(s) for s in line.split(',')]
@@ -219,7 +237,7 @@ class ToolWin(tk.Toplevel):
         self.v.pack()
 
         self.clickMode="FILL"
-        self.plugSize=2
+        self.plugSize=0
         self.plugSquares = []
         
         self.fill_value=PR_FILL_START
@@ -311,11 +329,10 @@ class ToolWin(tk.Toplevel):
         fullCanvas.delete(s)
       self.plugSquares=[]
         
-      for (x,y,z) in plugs:
+      for (x,y,z,colour) in plugs:
         if volume_z==z and volume_z==z:
-          colour = 'red'
-          x+=600
-          self.plugSquares += [fullCanvas.create_rectangle(x-self.plugSize,y-self.plugSize,x+self.plugSize,y+self.plugSize,fill=colour)]
+          #x+=600
+          self.plugSquares += [fullCanvas.create_rectangle(x-self.plugSize,y-self.plugSize,x+self.plugSize,y+self.plugSize,fill=colour,outline=colour)]
 
       self.processed()
       

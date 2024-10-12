@@ -118,6 +118,7 @@ constructingExtent = []
 dst = Image.new('L', (512,512))
 outputCount = 0
 
+catString = "cat "
 while len(filesProcessed) != len(files1):
   addedAny = False
   for p in [x for x in files1 if x not in filesProcessed]:
@@ -133,17 +134,38 @@ while len(filesProcessed) != len(files1):
       mask = mask.convert('L')
       mask = mask.point( lambda p:255 if p>0 else 0 )
       dst.paste(im, (0, 0), mask = mask)
-	  
+      
       print("Added " + p)
+      catString += d1 + "/v" + p[1:-4] + ".csv "
       
   if not addedAny:
     print("Outputting " + str(outputCount))
     # Output constructingPointSet
     dst.save(d1 + "/output/out_" + str(outputCount) + '.png')
     dst = Image.new('L', (512,512))
+    
+    catString += " > " + d1 + "/output/v"+str(outputCount)+".csv"
+    
+    # concatenate all of the contributing patches
+    os.system(catString)
+    catString = "cat "
+    
+    # Output the list of points and the extent
+#    with open(d1 + "/output/v"+str(outputCount)+".csv","w") as vout:
+#      for p in constructingPointSet:
+#        z = (p%ptMult)-1
+#        p = p//ptMult
+#        x = (p%ptMult)-1
+#        y = (p//ptMult)-1
+
+#        vout.write("%d,%d,%d\n" % (x,y,z))
+
+    with open(d1 + "/output/x"+str(outputCount)+".csv","w") as xout:
+      xout.write("%d,%d,%d,%d,%d,%d\n" % (constructingExtent[0],constructingExtent[1],constructingExtent[2],constructingExtent[3],constructingExtent[4],constructingExtent[5]))
+        
     outputCount += 1
     constructingPointSet = set()        
     constructingPointSet_xz = set()        
     constructingExtent = []
 
-print("Finished")	
+print("Finished")   
