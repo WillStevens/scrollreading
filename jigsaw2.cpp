@@ -19,6 +19,7 @@
 #include <map>
 #include <string>
 #include <algorithm>
+#include <utility>
 
 #define PT_MULT 1024
 
@@ -55,7 +56,7 @@ std::vector<int16_t> LoadExtent(const char *file, bool dilate)
 	
 	fclose(f);
 	
-	return extent;
+	return std::move(extent);
 }
 
 std::unordered_set<uint32_t> LoadVolume(const char *file, bool dilate)
@@ -81,24 +82,46 @@ std::unordered_set<uint32_t> LoadVolume(const char *file, bool dilate)
 	
 	fclose(f);
 	
-	return volume;
+	return std::move(volume);
 }
 
 std::unordered_set<uint32_t> UnorderedSetIntersection(std::unordered_set<uint32_t> &a,std::unordered_set<uint32_t> &b)
 {
-	std::unordered_set<uint32_t> r;
-	
-	for(uint32_t x : a)
+	if (a.size()<=b.size())
 	{
-	   printf("in here\n");
-	   if (b.find(x)!=b.end())
-			r.insert(x);
-	}
+		std::unordered_set<uint32_t> r;
 	
-	return r;
+		for(uint32_t x : a)
+		{
+			if (b.find(x)!=b.end())
+				r.insert(x);
+		}
+	
+		return std::move(r);
+	}
+	else
+		return UnorderedSetIntersection(b,a);
 }
 
-int NeighbourTest(const char *file1, const char *file2, std::unordered_set<uint32_t> &ps1
+unsigned UnorderedSetIntersectionSize(std::unordered_set<uint32_t> &a,std::unordered_set<uint32_t> &b)
+{	
+	if (a.size()<=b.size())
+	{
+		unsigned r = 0;
+	
+		for(uint32_t x : a)
+		{
+			if (b.find(x)!=b.end())
+				r++;
+		}
+	
+		return r;
+	}
+	else
+		return UnorderedSetIntersectionSize(b,a);
+}
+
+int NeighbourTestHelper(const char *file1, const char *file2, std::unordered_set<uint32_t> &ps1
                                                       , std::unordered_set<uint32_t> &ps1_xz
 													  , std::vector<int16_t> &e1
 													  , std::unordered_set<uint32_t> &ps2
@@ -123,11 +146,10 @@ int NeighbourTest(const char *file1, const char *file2, std::unordered_set<uint3
 
   if (!overlap)
     return 0;
-  printf("NT 2: %s %s %d %d\n",file1,file2,(int)ps1.size(),(int)ps2.size());
     
-  std::unordered_set<uint32_t> common = UnorderedSetIntersection(ps1,ps2);
+  unsigned common_size = UnorderedSetIntersectionSize(ps1,ps2);
                 
-  std::unordered_set<uint32_t> common_xz = UnorderedSetIntersection(ps1_xz,ps2_xz);
+  unsigned common_xz_size = UnorderedSetIntersectionSize(ps1_xz,ps2_xz);
     
   unsigned l1 = ps1.size();
   unsigned l2 = ps2.size();
@@ -138,11 +160,13 @@ int NeighbourTest(const char *file1, const char *file2, std::unordered_set<uint3
    * Only join if the common boundary is more than a value close to the square root of the approx area of the smallest patch, and if the number of intersection voxels is no more than a small constant
    * times the boundary size.
    */
-  bool r = (common.size()*common.size()>lmin/4 && common_xz.size() <= common.size());
+  bool r = (common_size*common_size>lmin/4 && common_xz_size <= common_size);
   
   int fibreBonus = 0;
+
+//  printf("NT %s: l1=%d l2=%d len(common)=%d lmin=%d len(common_xz)=%d fibreBonus=%d (%s,%s)\n",r?"true":"false",l1,l2,(int)common.size(),lmin,(int)common_xz.size(),fibreBonus,file1,file2);
   
-  if (common.size()>0)
+  if (common_size>0)
   {
     // If the two pointsets have a fibre in common, this increases the score
     std::set<std::string> ps1Fibres;
@@ -155,22 +179,44 @@ int NeighbourTest(const char *file1, const char *file2, std::unordered_set<uint3
          ps2Fibres.insert(fibreFile);
 	}
 	
-	int fibreBonus = 0;
-	
     std::set<std::string> intersect;
     std::set_intersection(ps1Fibres.begin(), ps1Fibres.end(), ps2Fibres.begin(), ps2Fibres.end(),
                  std::inserter(intersect, intersect.begin()));
 	if (intersect.size() > 0)
 		fibreBonus = 200;
 	
-    printf("NT %s: l1=%d l2=%d len(common)=%d lmin=%d len(common_xz)=%d fibreBonus=%d (%s,%s)",r?"true":"false",l1,l2,(int)common.size(),lmin,
-	(int)common_xz.size(),fibreBonus,file1,file2);
+    printf("NT %s: l1=%d l2=%d len(common)=%d lmin=%d len(common_xz)=%d fibreBonus=%d (%s,%s)\n",r?"true":"false",l1,l2,(int)common_size,lmin,
+	(int)common_xz_size,fibreBonus,file1,file2);
   }
   
   if (r)
-    return common.size() + fibreBonus;
+    return common_size + fibreBonus;
   else
     return 0;
+}
+
+int NeighbourTest(const char *file1, const char *file2, std::unordered_set<uint32_t> &ps1
+                                                      , std::unordered_set<uint32_t> &ps1_xz
+													  , std::vector<int16_t> &e1
+													  , std::unordered_set<uint32_t> &ps2
+                                                      , std::unordered_set<uint32_t> &ps2_xz
+													  , std::vector<int16_t> &e2
+													  )
+{
+	static std::map< std::tuple<std::string,unsigned,std::string,unsigned>, int > memo;
+	
+	std::tuple<std::string,unsigned,std::string,unsigned> test = {std::string(file1),(unsigned)ps1.size(),std::string(file2),(unsigned)ps2.size()};
+	
+	if (memo.find(test) == memo.end())
+	{
+		int r = NeighbourTestHelper(file1,file2,ps1,ps1_xz,e1,ps2,ps2_xz,e2);
+		memo[test] = r;
+		return r;
+	}
+	else
+	{
+		return memo[test];
+	}
 }
 
 std::vector<int16_t> UpdateExtent(std::vector<int16_t> &a, std::vector<int16_t> &b)
@@ -249,7 +295,7 @@ int main(int argc, char *argv[])
 
           if (file[0]=='v' && file.substr(file.length()-4)==".csv")
 		  {
-			pointsets[std::string("x")+file.substr(1)] = LoadVolume( (volumeDir + "/" + file).c_str(),false);
+			pointsets[std::string("x")+file.substr(1)] = LoadVolume( (volumeDir + "/" + file).c_str(),true);
 			printf("%s %d\n",(std::string("x")+file.substr(1)).c_str(),(int)pointsets[std::string("x")+file.substr(1)].size());
 		  }
 		  else if (file[0]=='x' && file.substr(file.length()-4)==".csv")
@@ -280,9 +326,7 @@ int main(int argc, char *argv[])
   std::sort(files.begin(), files.end(), sortFilesLambda);  
   
   std::map<std::string,std::unordered_set<uint32_t> > pointsets_xz;
-
-  std::map<std::string,std::unordered_set<uint32_t> > pointsets;
-
+  
   for(const std::string &f : files)
     for(uint32_t x : pointsets[f])
 	  pointsets_xz[f].insert(x%(PT_MULT*PT_MULT));
@@ -311,7 +355,7 @@ int main(int argc, char *argv[])
         for(const std::string &p : files)
           if (filesProcessed.find(p)==filesProcessed.end() && p != prand)
 		  {
-            int score = NeighbourTest(p.c_str(),prand.c_str(),pointsets[prand],pointsets_xz[prand],extents[prand],pointsets[p],pointsets_xz[p],extents[p]);
+            int score = NeighbourTest(prand.c_str(),p.c_str(),pointsets[prand],pointsets_xz[prand],extents[prand],pointsets[p],pointsets_xz[p],extents[p]);
             if (score>bestScore)
 			{
               bestScore = score;
