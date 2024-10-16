@@ -47,8 +47,10 @@ uint32_t fillQueueTail = 0;
 
 #define EMPTY 0
 #define SEEK 1
-#define SURFACE 2
-#define FILL_START 3
+#define PLUG 2
+#define PLUG_TMP 3 // Used when filling to prevent revisiting a plug
+#define SURFACE 4
+#define FILL_START 5
 
 #define XYZTOINDEX_HASHSIZE 17292347
 struct {
@@ -195,13 +197,15 @@ void loadVolume(char *v)
 	}
 }
 
-/* Using the list of points visit so far, reset volume and proejction back to how they were after loadVolume was called, except that plugs found so far are left alone */
+/* Using the list of points visit so far, reset volume and projection back to how they were after loadVolume was called, except that plugs found so far are left alone */
 void resetFill(int output)
 {
 	int x,y,z;
 
     if (output)
       printf("resetFill\n");
+
+//	printf("Test before resetFill:%d\n",(int)volume[17][503][70]);
   
 	for(int i = 0; i<numPointsVisited; i++)
 	{
@@ -211,8 +215,11 @@ void resetFill(int output)
 		
 		if (volume[z][y][x] != EMPTY)
 		{
-			volume[z][y][x] = SURFACE;
-			
+			if (volume[z][y][x] != PLUG_TMP)
+			  volume[z][y][x] = SURFACE;
+		    else
+			  volume[z][y][x] = PLUG;
+		  
 			if (output)
 				printf("%d,%d,%d\n",x,y,z);
 		}
@@ -221,6 +228,8 @@ void resetFill(int output)
 	}
 	
 	numPointsVisited = 0;
+	
+//	printf("Test after resetFill:%d\n",(int)volume[17][503][70]);
 }
 
 /* Check that projection is empty - useful for debugging */
@@ -364,6 +373,16 @@ int floodFill(int *x, int *y, int *z)
 			FILL_CASE_LO(0,0,-1,fillValue+1,*z-1)
 			FILL_CASE_HI(0,0,1,fillValue+1,*z+1)			
         }
+        else if (volume[*z][*y][*x]==PLUG)
+        {
+			/* If it's a plug then we want to add it to the visited list so that it gets exported as part of the surface, but
+			 * we don't want to propagate fill through it */
+            pointsVisited[numPointsVisited][0]=*x;
+            pointsVisited[numPointsVisited][1]=*y;
+            pointsVisited[numPointsVisited++][2]=*z;
+			
+			volume[*z][*y][*x]=PLUG_TMP;
+		}
 
 	}
     
@@ -489,7 +508,7 @@ int main(int argc, char *argv[])
 				lastFv = fv;
 				
 				/* Reset volume and projection (keeping previously found plugs intact) */
-				resetFill(iters==6 && seekIter==0);
+				resetFill(0);
 
 //				if (!testProjection())
 //				{
@@ -509,13 +528,17 @@ int main(int argc, char *argv[])
 			if (floodFillSeek(&x,&y,&z,plugFillValue) == plugFillValue)
 			{
 				/* Output the coordinates of the plug */
-//				printf("[%d,%d,%d],\n",x,y,z);
+//				printf("[%d,%d,%d], #%d\n",x,y,z,(int)volume[z][y][x]);
 
 				/* Reset volume and projection */
 				resetFill(0);
-				
+												
 				/* Remove the plugged voxel from the point list */
 				removePointAtXYZ(x,y,z);
+				
+				/* Set it to PLUG so that it will be included in exported surfaces */
+				volume[z][y][x] = PLUG;
+
 			}
             else
 			{
@@ -556,8 +579,9 @@ int main(int argc, char *argv[])
 			    if (pointsVisited[i][1]>ymax) ymax=pointsVisited[i][1];
 			    if (pointsVisited[i][2]>zmax) zmax=pointsVisited[i][2];
 				
-				/* Remove the point from the points array */ 
-				removePointAtXYZ(pointsVisited[i][0],pointsVisited[i][1],pointsVisited[i][2]);
+				/* Remove the point from the points array */
+				if (volume[pointsVisited[i][2]][pointsVisited[i][1]][pointsVisited[i][0]] != PLUG_TMP)
+				  removePointAtXYZ(pointsVisited[i][0],pointsVisited[i][1],pointsVisited[i][2]);
 			}
 			
 			if (f)

@@ -160,7 +160,7 @@ int NeighbourTestHelper(const char *file1, const char *file2, std::unordered_set
    * Only join if the common boundary is more than a value close to the square root of the approx area of the smallest patch, and if the number of intersection voxels is no more than a small constant
    * times the boundary size.
    */
-  bool r = (common_size*common_size>lmin/4 && common_xz_size <= common_size);
+  bool r = (common_size*common_size>lmin/6 && common_xz_size <= 16*common_size);
   
   int fibreBonus = 0;
 
@@ -190,7 +190,7 @@ int NeighbourTestHelper(const char *file1, const char *file2, std::unordered_set
   }
   
   if (r)
-    return common_size + fibreBonus;
+    return common_size + fibreBonus  + (100*common_size) / common_xz_size ;
   else
     return 0;
 }
@@ -295,7 +295,7 @@ int main(int argc, char *argv[])
 
           if (file[0]=='v' && file.substr(file.length()-4)==".csv")
 		  {
-			pointsets[std::string("x")+file.substr(1)] = LoadVolume( (volumeDir + "/" + file).c_str(),true);
+			pointsets[std::string("x")+file.substr(1)] = LoadVolume( (volumeDir + "/" + file).c_str(),false);
 			printf("%s %d\n",(std::string("x")+file.substr(1)).c_str(),(int)pointsets[std::string("x")+file.substr(1)].size());
 		  }
 		  else if (file[0]=='x' && file.substr(file.length()-4)==".csv")
