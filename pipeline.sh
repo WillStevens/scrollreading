@@ -14,8 +14,8 @@ XYZ=03912_04200_05800
 #  ./holefiller $FILE ../construct/s${XYZ}/nonint 1 0 0 0 0 1
 #done
 
-#./render D:/construct/$XYZ ../construct/s$XYZ/nonint
+./render D:/construct/$XYZ ../construct/s$XYZ/nonint
  
 #./jigsaw2 ../construct/s$XYZ/nonint
 
-./render D:/construct/$XYZ ../construct/s$XYZ/nonint/output
+#./render D:/construct/$XYZ ../construct/s$XYZ/nonint/output

@@ -15,6 +15,7 @@
 #include "tiffio.h"
 
 #define SIZE 512
+#define RENDER_SIZE 2048
 
 #define FILENAME_LENGTH 300
 #define FOLDERNAME_LENGTH 256
@@ -26,7 +27,13 @@ unsigned zOffset=0;
 /* This is the image */ /* 128 Mb */
 unsigned char volume[SIZE][SIZE][SIZE];
 
-unsigned char rendered[SIZE][SIZE];
+unsigned char rendered[RENDER_SIZE][RENDER_SIZE];
+
+// Two vectors that define the projection plane
+// The third vector in this array is the normal to the projection plane, calculated from the other two
+int32_t planeVectors[3][3] = 
+	{ { 1, 0, 0 },
+	  { 0, 0, 1 } };
 
 void setFoldersAndZOffset(char *s, char *t, unsigned z)
 {
@@ -67,13 +74,21 @@ void loadTiffs(void)
     }
 }
 
+int32_t projectN(int x, int y, int z, int n)
+{
+	int32_t r = (x*planeVectors[n][0]+y*planeVectors[n][1]+z*planeVectors[n][2])/1000;
+	
+	return r;
+}
+
 void render(char *d,char *v, int renderOffset)
 {
     char fname[FILENAME_LENGTH];
 	int x,y,z;
+	int render_minx=RENDER_SIZE-1,render_miny=RENDER_SIZE-1,render_maxx=0,render_maxy=0;	
 		
-	for(int y=0; y<SIZE; y++)
-	for(int x=0; x<SIZE; x++)
+	for(int y=0; y<RENDER_SIZE; y++)
+	for(int x=0; x<RENDER_SIZE; x++)
 		rendered[y][x] = 0;
 
     sprintf(fname,"%s/%s",d,v);
@@ -86,20 +101,28 @@ void render(char *d,char *v, int renderOffset)
 
 	while(fscanf(f,"%d,%d,%d\n",&x,&y,&z)==3)
 	{
+		x += (planeVectors[2][0]*renderOffset)/1000;
+		y += (planeVectors[2][1]*renderOffset)/1000;
+		z += (planeVectors[2][2]*renderOffset)/1000;
+		
 		if (x<0) x=0;
 		if (x>=SIZE) x=SIZE-1;
 		if (z<0) z=0;
 		if (z>=SIZE) z=SIZE-1;
-		
-		int yr = y+renderOffset;
-		if (yr>=SIZE)
-			yr = SIZE-1;
-		if (yr<0)
-			yr = 0;
-		
-		if (rendered[z][x] == 0)
+		if (y<0) y=0;
+		if (y>=SIZE) y=SIZE-1;
+
+		int pa = projectN(x,y,z,0)+RENDER_SIZE/2;
+		int pb = projectN(x,y,z,1)+RENDER_SIZE/2;
+				
+		if (rendered[pb][pa] == 0)
 		{
-		  rendered[z][x] = volume[z][yr][x];
+		  if (pa<render_minx) render_minx = pa;
+		  if (pb<render_miny) render_miny = pb;
+		  if (pa>render_maxx) render_maxx = pa;
+		  if (pb>render_maxy) render_maxy = pb;
+		  
+		  rendered[pb][pa] = volume[z][y][x];
 		  points++;
 		}
 //		printf("%d,%d,%d\n",z,x,rendered[z][x]);
@@ -125,8 +148,8 @@ void render(char *d,char *v, int renderOffset)
 			tdata_t buf;
 			uint32_t row;
 			
-			TIFFSetField(tif, TIFFTAG_IMAGEWIDTH, SIZE); 
-			TIFFSetField(tif, TIFFTAG_IMAGELENGTH, SIZE); 
+			TIFFSetField(tif, TIFFTAG_IMAGEWIDTH, render_maxx-render_minx+1); 
+			TIFFSetField(tif, TIFFTAG_IMAGELENGTH, render_maxy-render_miny+1); 
 			TIFFSetField(tif, TIFFTAG_BITSPERSAMPLE, 8); 
 			TIFFSetField(tif, TIFFTAG_SAMPLESPERPIXEL, 1); 
 			TIFFSetField(tif, TIFFTAG_ROWSPERSTRIP, 1);   
@@ -136,14 +159,14 @@ void render(char *d,char *v, int renderOffset)
 			TIFFSetField(tif, TIFFTAG_SAMPLEFORMAT, SAMPLEFORMAT_UINT);
 			TIFFSetField(tif, TIFFTAG_COMPRESSION, COMPRESSION_NONE);
 			
-			buf = _TIFFmalloc(SIZE);
-			for(row=0;row<SIZE;row++)
+			buf = _TIFFmalloc(render_maxx-render_minx+1);
+			for(row=render_miny;row<=render_maxy;row++)
 			{
-				for(int i=0; i<SIZE; i++)
+				for(int i=render_minx; i<=render_maxx; i++)
 				{
-				   ((uint8_t *)buf)[i] = rendered[row][i];
+				   ((uint8_t *)buf)[i-render_minx] = rendered[row][i];
 				}
-				TIFFWriteScanline(tif,buf,row,0);
+				TIFFWriteScanline(tif,buf,row-render_miny,0);
 			}
 			_TIFFfree(buf);
 		}
@@ -172,16 +195,46 @@ void render(char *d,char *v, int renderOffset)
 
 int main(int argc, char *argv[])
 {
-	if (argc != 3 && argc != 4)
+	if (argc != 3 && argc != 4 && argc != 10)
 	{
-		printf("Usage: render <image directory> <target directory> [offset (default=6)]\n");
+		printf("Usage: render <image directory> <target directory> [offset (default=6) [x1 y1 z1 x2 y2 z2]]\n");
 		return -1;
 	}
 
 	int renderOffset = 6;
 	
-	if (argc==4)
+	if (argc==4 || argc==10)
 	  renderOffset = atoi(argv[3]);
+
+	if (argc==10)
+	{
+		for(int i = 0; i<2; i++)
+		  for(int j = 0; j<3; j++)
+			  planeVectors[i][j] = atoi(argv[j+i*3+3]);
+	}
+	
+	printf("Projection plane vectors normalised to length 1000:\n");
+	for(int i = 0; i<2; i++)
+	{
+		double magnitude = sqrt((double)(planeVectors[i][0]*planeVectors[i][0]+planeVectors[i][1]*planeVectors[i][1]+planeVectors[i][2]*planeVectors[i][2]));
+		
+		for(int j = 0; j<3; j++)
+		{
+			planeVectors[i][j] /= (magnitude/1000);
+			
+			printf("%d ", planeVectors[i][j]);
+		}
+		
+		printf("\n");
+	}
+	
+	/* Cross product of the two plane vectors gives the normal vector */
+	planeVectors[2][0] = (planeVectors[0][1]*planeVectors[1][2]-planeVectors[0][2]*planeVectors[1][1])/1000;
+	planeVectors[2][1] = (planeVectors[0][2]*planeVectors[1][0]-planeVectors[0][0]*planeVectors[1][2])/1000;
+	planeVectors[2][2] = (planeVectors[0][0]*planeVectors[1][1]-planeVectors[0][1]*planeVectors[1][0])/1000;
+	
+	printf("Normal vector normalised to length 1000:\n");
+	printf("%d %d %d\n",planeVectors[2][0],planeVectors[2][1],planeVectors[2][2]);
   
 	// assume that the last 5 digits of the image directory are the z-offset
 	int zOffset = 0;

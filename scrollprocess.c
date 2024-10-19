@@ -63,6 +63,9 @@ vector dirVectorLookup[6] =
   {0,0,-1},
 };
 
+// A vector that defines the direction to the scroll umbilicus
+int32_t normalVector[3] = {0,-1,0};
+
 #define FILLQUEUELENGTH (SIZE*SIZE*6*3)
 uint16_t fillQueue[FILLQUEUELENGTH];
 uint32_t fillQueueHead = 0;
@@ -767,7 +770,10 @@ void Sobel(void)
         dy = (int)volume[z][yp1][x]-(int)volume[z][ym1][x]; 
         dz = (int)volume[zp1][y][x]-(int)volume[zm1][y][x]; 
 */
-        sobel[z][y][x] = (dy<0?sqrt(dx*dx+dy*dy+dz*dz):0)>150?255:0;
+        /* If the dot product of the sobel vector and the direction to the scroll umbilicus is positive (i.e. the sobel points within 90
+		 * degrees of direction to scroll umbilicus), and the magnitude of the sobel vector is large enough, it is a surface point */
+		float dp = (float)normalVector[0]*dx + (float)normalVector[1]*dy + (float)normalVector[2]*dz;
+        sobel[z][y][x] = (dp>0?sqrt(dx*dx+dy*dy+dz*dz):0)>150?255:0;
 		
 /*
 		int laplaceInRange = laplace[z][y][x]>120 && laplace[z][y][x]<136;
@@ -1140,12 +1146,29 @@ int findAndFillAll(int max)
 
 int main(int argc, char *argv[])
 {
-	if (argc != 3)
+	if (argc != 3 && argc != 9)
 	{
-		printf("Usage: scrollprocess <image-directory> <output-directory>\n");
+		printf("Usage: scrollprocess <image-directory> <output-directory> [x3 y3 z3]\n");
 		return -1;
 	}
 
+	if (argc==9)
+	{
+	    for(int j = 0; j<3; j++)
+	        normalVector[j] = atoi(argv[j+3]);
+	}
+	
+	printf("Normal vector normalised to length 1000:\n");
+
+	double magnitude = sqrt((double)(normalVector[0]*normalVector[0]+normalVector[1]*normalVector[1]+normalVector[2]*normalVector[2]));
+		
+	for(int j = 0; j<3; j++)
+	{
+		normalVector[j] /= (magnitude/1000);
+			
+		printf("%d ", normalVector[j]);
+	}
+			
 	// assume that the last 5 digits of the image directory are the z-offset
 	int zOffset = 0;
 	
