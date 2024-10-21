@@ -17,9 +17,32 @@
 #include <string.h>
 #include <math.h>
 
+typedef struct
+{
+  int x,y,z;
+} vector;
+
+vector dirVectorLookup[6] =
+{
+  {0,1,0},
+  {1,0,0},
+  {0,-1,0},
+  {-1,0,0},
+  {0,0,1},
+  {0,0,-1},
+};
+
 #define SIZE 512
 
-uint16_t volume[SIZE][SIZE][SIZE];
+typedef struct
+{
+	uint16_t value;
+    // 6 LSB store the fillability of each neighbouring voxel.
+    // This makes filling more efficient because there is no need to visit unfillable neighbours
+	uint8_t neighbourFillable;
+} cell;
+
+cell volume[SIZE][SIZE][SIZE];
 
 uint16_t points[SIZE*SIZE*SIZE/5][3];
 uint32_t numPoints = 0;
@@ -192,9 +215,29 @@ void loadVolume(char *v)
 			
 			numPoints++;
 			
-			volume[z][y][x]=SURFACE;
+			volume[z][y][x].value=SURFACE;
 		}
 	}
+}
+
+void populateNeighbourFillable(void)
+{
+    for(int z = 0; z<SIZE; z++)
+    for(int y = 0; y<SIZE; y++)
+    for(int x = 0; x<SIZE; x++)
+    {		
+        for(unsigned i = 0; i<6; i++)
+        {
+            vector p = dirVectorLookup[i];
+
+			volume[z][y][x].neighbourFillable=volume[z][y][x].neighbourFillable<<1; 
+			
+            if (z+p.z>=0 && z+p.z<SIZE && y+p.y>=0 && y+p.y<SIZE && x+p.x>=0 && x+p.x<SIZE)
+            {
+				volume[z][y][x].neighbourFillable |= (volume[z+p.z][y+p.y][x+p.x].value==SURFACE?1:0);
+            }
+        }
+    }
 }
 
 /* Using the list of points visit so far, reset volume and projection back to how they were after loadVolume was called, except that plugs found so far are left alone */
@@ -213,12 +256,12 @@ void resetFill(int output)
 		y = pointsVisited[i][1];
 		z = pointsVisited[i][2];
 		
-		if (volume[z][y][x] != EMPTY)
+		if (volume[z][y][x].value != EMPTY)
 		{
-			if (volume[z][y][x] != PLUG_TMP)
-			  volume[z][y][x] = SURFACE;
+			if (volume[z][y][x].value != PLUG_TMP)
+			  volume[z][y][x].value = SURFACE;
 		    else
-			  volume[z][y][x] = PLUG;
+			  volume[z][y][x].value = PLUG;
 		  
 			if (output)
 				printf("%d,%d,%d\n",x,y,z);
@@ -242,8 +285,8 @@ int testProjection(void)
 	return 1;
 }
 
-#define FILL_CASE_LO(xo,yo,zo,v,test) \
-    if (test>=0) \
+#define FILL_CASE_LO(xo,yo,zo,v,test,neighbourMask) \
+    if (test>=0 && (0 || (c->neighbourFillable&neighbourMask))) \
     { \
         fillQueue[fillQueueHead++]=*x+xo; \
         fillQueue[fillQueueHead++]=*y+yo; \
@@ -253,8 +296,8 @@ int testProjection(void)
         fillQueueHead &= FILLQUEUELENGTHMASK; \
     } 
 
-#define FILL_CASE_HI(xo,yo,zo,v,test) \
-    if (test<SIZE) \
+#define FILL_CASE_HI(xo,yo,zo,v,test,neighbourMask) \
+    if (test<SIZE && (0 || (c->neighbourFillable&neighbourMask))) \
     { \
         fillQueue[fillQueueHead++]=*x+xo; \
         fillQueue[fillQueueHead++]=*y+yo; \
@@ -285,26 +328,28 @@ int floodFillSeek(int *x, int *y, int *z, int seekValue)
         
         fillQueueTail &= FILLQUEUELENGTHMASK;
 
-        if (volume[*z][*y][*x]>=SURFACE)
+		cell *c = &(volume[*z][*y][*x]);
+		
+        if (c->value>=SURFACE)
         {
-			if (volume[*z][*y][*x] == seekValue)
+			if (c->value == seekValue)
 			{
 				return seekValue;
 			}
 			
-			volume[*z][*y][*x]=fillValue;
+			c->value=fillValue;
 			
-			// Duplicate points will be added to pointsVisit, but this doesn't matter
+			// Duplicate points will be added to pointsVisited, but this doesn't matter
             pointsVisited[numPointsVisited][0]=*x;
             pointsVisited[numPointsVisited][1]=*y;
             pointsVisited[numPointsVisited++][2]=*z;
 			
-			FILL_CASE_LO(-1,0,0,fillValue,*x-1)
-			FILL_CASE_HI(1,0,0,fillValue,*x+1)
-			FILL_CASE_LO(0,-1,0,fillValue,*y-1)
-			FILL_CASE_HI(0,1,0,fillValue,*y+1)
-			FILL_CASE_LO(0,0,-1,fillValue,*z-1)
-			FILL_CASE_HI(0,0,1,fillValue,*z+1)			
+			FILL_CASE_LO(-1,0,0,fillValue,*x-1,0x04)
+			FILL_CASE_HI(1,0,0,fillValue,*x+1,0x10)
+			FILL_CASE_LO(0,-1,0,fillValue,*y-1,0x08)
+			FILL_CASE_HI(0,1,0,fillValue,*y+1,0x20)
+			FILL_CASE_LO(0,0,-1,fillValue,*z-1,0x01)
+			FILL_CASE_HI(0,0,1,fillValue,*z+1,0x02)			
         }
 
 	}
@@ -338,7 +383,9 @@ int floodFill(int *x, int *y, int *z)
         
         fillQueueTail &= FILLQUEUELENGTHMASK;
 
-        if (volume[*z][*y][*x]==SURFACE)
+		cell *c = &(volume[*z][*y][*x]);
+		
+        if (c->value==SURFACE)
         {
 			// Distnace of *X,*y,*z from the projection plane - positive or negative
 			int depth = projectN(*x,*y,*z,2);
@@ -361,19 +408,19 @@ int floodFill(int *x, int *y, int *z)
 				return fillValue;
 			}
 			
-			volume[*z][*y][*x]=fillValue;
+			c->value=fillValue;
             pointsVisited[numPointsVisited][0]=*x;
             pointsVisited[numPointsVisited][1]=*y;
-            pointsVisited[numPointsVisited++][2]=*z;
+            pointsVisited[numPointsVisited++][2]=*z;		
 			
-			FILL_CASE_LO(-1,0,0,fillValue+1,*x-1)
-			FILL_CASE_HI(1,0,0,fillValue+1,*x+1)
-			FILL_CASE_LO(0,-1,0,fillValue+1,*y-1)
-			FILL_CASE_HI(0,1,0,fillValue+1,*y+1)
-			FILL_CASE_LO(0,0,-1,fillValue+1,*z-1)
-			FILL_CASE_HI(0,0,1,fillValue+1,*z+1)			
+			FILL_CASE_LO(-1,0,0,fillValue+1,*x-1,0x04)
+			FILL_CASE_HI(1,0,0,fillValue+1,*x+1,0x10)
+			FILL_CASE_LO(0,-1,0,fillValue+1,*y-1,0x08)
+			FILL_CASE_HI(0,1,0,fillValue+1,*y+1,0x20)
+			FILL_CASE_LO(0,0,-1,fillValue+1,*z-1,0x01)
+			FILL_CASE_HI(0,0,1,fillValue+1,*z+1,0x02)			
         }
-        else if (volume[*z][*y][*x]==PLUG)
+        else if (c->value==PLUG)
         {
 			/* If it's a plug then we want to add it to the visited list so that it gets exported as part of the surface, but
 			 * we don't want to propagate fill through it */
@@ -381,7 +428,7 @@ int floodFill(int *x, int *y, int *z)
             pointsVisited[numPointsVisited][1]=*y;
             pointsVisited[numPointsVisited++][2]=*z;
 			
-			volume[*z][*y][*x]=PLUG_TMP;
+			c->value=PLUG_TMP;
 		}
 
 	}
@@ -399,7 +446,7 @@ void removePointAtXYZ(int x, int y, int z)
 		printf("Point at this index is %d,%d,%d\n",points[index][0],points[index][1],points[index][2]);
 	}
 */	
-	volume[z][y][x] = EMPTY;
+	volume[z][y][x].value = EMPTY;
 	
 	numPoints--;
 				
@@ -454,7 +501,8 @@ int main(int argc, char *argv[])
 		projection[i][j]=PROJECTION_BLANK;
 	
 	loadVolume(argv[1]);
-
+	populateNeighbourFillable();
+	
 	int vnum = 0;
 
 	{
@@ -537,7 +585,7 @@ int main(int argc, char *argv[])
 				removePointAtXYZ(x,y,z);
 				
 				/* Set it to PLUG so that it will be included in exported surfaces */
-				volume[z][y][x] = PLUG;
+				volume[z][y][x].value = PLUG;
 
 			}
             else
@@ -580,7 +628,7 @@ int main(int argc, char *argv[])
 			    if (pointsVisited[i][2]>zmax) zmax=pointsVisited[i][2];
 				
 				/* Remove the point from the points array */
-				if (volume[pointsVisited[i][2]][pointsVisited[i][1]][pointsVisited[i][0]] != PLUG_TMP)
+				if (volume[pointsVisited[i][2]][pointsVisited[i][1]][pointsVisited[i][0]].value != PLUG_TMP)
 				  removePointAtXYZ(pointsVisited[i][0],pointsVisited[i][1],pointsVisited[i][2]);
 			}
 			
