@@ -285,8 +285,8 @@ int testProjection(void)
 	return 1;
 }
 
-#define FILL_CASE_LO(xo,yo,zo,v,test,neighbourMask) \
-    if (test>=0 && (0 || (c->neighbourFillable&neighbourMask))) \
+#define FILL_CASE(xo,yo,zo,v,neighbourMask) \
+    if (c->neighbourFillable&neighbourMask) \
     { \
         fillQueue[fillQueueHead++]=*x+xo; \
         fillQueue[fillQueueHead++]=*y+yo; \
@@ -296,21 +296,23 @@ int testProjection(void)
         fillQueueHead &= FILLQUEUELENGTHMASK; \
     } 
 
-#define FILL_CASE_HI(xo,yo,zo,v,test,neighbourMask) \
-    if (test<SIZE && (0 || (c->neighbourFillable&neighbourMask))) \
+#define FILL_CASE_NOV(xo,yo,zo,neighbourMask) \
+    if (c->neighbourFillable&neighbourMask) \
     { \
         fillQueue[fillQueueHead++]=*x+xo; \
         fillQueue[fillQueueHead++]=*y+yo; \
         fillQueue[fillQueueHead++]=*z+zo; \
-        fillQueue[fillQueueHead++]=v; \
+        fillQueueHead++; \
       \
         fillQueueHead &= FILLQUEUELENGTHMASK; \
     } 
 
 /* Flood fill in a surface from a point looking for a particular seekValue from a previous flood fill, and stop when it is found with *x,*y,*z containing the coordinates where it is found */
-int floodFillSeek(int *x, int *y, int *z, int seekValue)
+int floodFillSeek(int *x, int *y, int *z, int seekValue, int seekStartFillValue)
 {   
-	int fillValue;
+    int first = 1;
+	
+//	printf("Call %d\n",seekValue);
 	
     fillQueueHead = 0;
     fillQueueTail = 0;
@@ -324,32 +326,40 @@ int floodFillSeek(int *x, int *y, int *z, int seekValue)
         *x = fillQueue[fillQueueTail++];
         *y = fillQueue[fillQueueTail++];
         *z = fillQueue[fillQueueTail++];
-        fillValue = fillQueue[fillQueueTail++];
+        fillQueueTail++;
         
         fillQueueTail &= FILLQUEUELENGTHMASK;
 
 		cell *c = &(volume[*z][*y][*x]);
+
+//		printf("1 : %d,%d,%d : %d\n",*x,*y,*z,c->value);
 		
-        if (c->value>=SURFACE)
+        if (c->value>SURFACE || first)
         {
+//		    printf("2 : %d,%d,%d : %d\n",*x,*y,*z,c->value);
 			if (c->value == seekValue)
 			{
+//				printf("Return seekvalue: %d\n",seekValue);
 				return seekValue;
 			}
 			
-			c->value=fillValue;
+			c->value=SEEK;
+
+			if (first)
+			{
+				pointsVisited[numPointsVisited][0]=*x;
+				pointsVisited[numPointsVisited][1]=*y;
+				pointsVisited[numPointsVisited++][2]=*z;
+			}
 			
-			// Duplicate points will be added to pointsVisited, but this doesn't matter
-            pointsVisited[numPointsVisited][0]=*x;
-            pointsVisited[numPointsVisited][1]=*y;
-            pointsVisited[numPointsVisited++][2]=*z;
-			
-			FILL_CASE_LO(-1,0,0,fillValue,*x-1,0x04)
-			FILL_CASE_HI(1,0,0,fillValue,*x+1,0x10)
-			FILL_CASE_LO(0,-1,0,fillValue,*y-1,0x08)
-			FILL_CASE_HI(0,1,0,fillValue,*y+1,0x20)
-			FILL_CASE_LO(0,0,-1,fillValue,*z-1,0x01)
-			FILL_CASE_HI(0,0,1,fillValue,*z+1,0x02)			
+			FILL_CASE_NOV(-1,0,0,0x04)
+			FILL_CASE_NOV(1,0,0,0x10)
+			FILL_CASE_NOV(0,-1,0,0x08)
+			FILL_CASE_NOV(0,1,0,0x20)
+			FILL_CASE_NOV(0,0,-1,0x01)
+			FILL_CASE_NOV(0,0,1,0x02)
+
+			first = 0;
         }
 
 	}
@@ -413,12 +423,12 @@ int floodFill(int *x, int *y, int *z)
             pointsVisited[numPointsVisited][1]=*y;
             pointsVisited[numPointsVisited++][2]=*z;		
 			
-			FILL_CASE_LO(-1,0,0,fillValue+1,*x-1,0x04)
-			FILL_CASE_HI(1,0,0,fillValue+1,*x+1,0x10)
-			FILL_CASE_LO(0,-1,0,fillValue+1,*y-1,0x08)
-			FILL_CASE_HI(0,1,0,fillValue+1,*y+1,0x20)
-			FILL_CASE_LO(0,0,-1,fillValue+1,*z-1,0x01)
-			FILL_CASE_HI(0,0,1,fillValue+1,*z+1,0x02)			
+			FILL_CASE(-1,0,0,fillValue+1,0x04)
+			FILL_CASE(1,0,0,fillValue+1,0x10)
+			FILL_CASE(0,-1,0,fillValue+1,0x08)
+			FILL_CASE(0,1,0,fillValue+1,0x20)
+			FILL_CASE(0,0,-1,fillValue+1,0x01)
+			FILL_CASE(0,0,1,fillValue+1,0x02)			
         }
         else if (c->value==PLUG)
         {
@@ -550,6 +560,7 @@ int main(int argc, char *argv[])
 			
 			int lastFv;
 			int fv;
+			int seekStartFillValue;
 			
 			for(int seekIter = 0; seekIter<2 || lastFv > fv; seekIter++)
 			{
@@ -564,7 +575,8 @@ int main(int argc, char *argv[])
 //				}
 
 				// Fill again from that point until overlap
-				fv = floodFill(&x,&y,&z)-FILL_START;
+				seekStartFillValue = floodFill(&x,&y,&z);
+				fv = seekStartFillValue-FILL_START;
 			}
 			
 //		    printf("Nearest overlap found [%d,%d,%d],\n",x,y,z);
@@ -573,7 +585,7 @@ int main(int argc, char *argv[])
 			int plugFillValue = fv/2 + FILL_START;
 		
 			// Now without resetting fill, flood fill from x,y,z until we reach the first plugFillValue
-			if (floodFillSeek(&x,&y,&z,plugFillValue) == plugFillValue)
+			if (floodFillSeek(&x,&y,&z,plugFillValue,seekStartFillValue) == plugFillValue)
 			{
 				/* Output the coordinates of the plug */
 //				printf("[%d,%d,%d], #%d\n",x,y,z,(int)volume[z][y][x]);
