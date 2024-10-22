@@ -195,8 +195,30 @@ int32_t projectN(int x, int y, int z, int n)
 	return r;
 }
 
+// These definitions use run-time variables
+//#define projectN0(x,y,z) (((x)*planeVectors[0][0]+(y)*planeVectors[0][1]+(z)*planeVectors[0][2])/1000)
+//#define projectN1(x,y,z) (((x)*planeVectors[1][0]+(y)*planeVectors[1][1]+(z)*planeVectors[1][2])/1000)
+//#define projectN2(x,y,z) (((x)*planeVectors[2][0]+(y)*planeVectors[2][1]+(z)*planeVectors[2][2])/1000)
+
+#define PLANEVECTORS_0_0 1000
+#define PLANEVECTORS_0_1 0
+#define PLANEVECTORS_0_2 0
+
+#define PLANEVECTORS_1_0 0
+#define PLANEVECTORS_1_1 0
+#define PLANEVECTORS_1_2 1000
+
+#define PLANEVECTORS_2_0 0
+#define PLANEVECTORS_2_1 -1000
+#define PLANEVECTORS_2_2 0
+
+// These definitions used compile-time constants
+#define projectN0(x,y,z) (((x)*PLANEVECTORS_0_0+(y)*PLANEVECTORS_0_1+(z)*PLANEVECTORS_0_2)/1000)
+#define projectN1(x,y,z) (((x)*PLANEVECTORS_1_0+(y)*PLANEVECTORS_1_1+(z)*PLANEVECTORS_1_2)/1000)
+#define projectN2(x,y,z) (((x)*PLANEVECTORS_2_0+(y)*PLANEVECTORS_2_1+(z)*PLANEVECTORS_2_2)/1000)
+
 /* Load 'points' and populate 'volume' from a CSV file where each line contains the x,y,z coordinates of a point */
-/* x,y,z must all be >=0 and <= SIZE */
+/* x,y,z must all be >=0 and < SIZE */
 void loadVolume(char *v)
 {
 	int x,y,z;
@@ -267,7 +289,7 @@ void resetFill(int output)
 				printf("%d,%d,%d\n",x,y,z);
 		}
 		
-		projection[projectN(x,y,z,0)+PROJECTION_SIZE/2][projectN(x,y,z,1)+PROJECTION_SIZE/2]=PROJECTION_BLANK;
+		projection[projectN0(x,y,z)+PROJECTION_SIZE/2][projectN1(x,y,z)+PROJECTION_SIZE/2]=PROJECTION_BLANK;
 	}
 	
 	numPointsVisited = 0;
@@ -284,6 +306,30 @@ int testProjection(void)
 				return 0;
 	return 1;
 }
+
+#define FILL_CASE_LO(xo,yo,zo,v,test,neighbourMask) \
+    if (test>=0 && (0 || (c->neighbourFillable&neighbourMask))) \
+    { \
+        fillQueue[fillQueueHead++]=*x+xo; \
+        fillQueue[fillQueueHead++]=*y+yo; \
+        fillQueue[fillQueueHead++]=*z+zo; \
+        fillQueue[fillQueueHead++]=v; \
+      \
+        fillQueueHead &= FILLQUEUELENGTHMASK; \
+    } 
+
+#define FILL_CASE_HI(xo,yo,zo,v,test,neighbourMask) \
+    if (test<SIZE && (0 || (c->neighbourFillable&neighbourMask))) \
+    { \
+        fillQueue[fillQueueHead++]=*x+xo; \
+        fillQueue[fillQueueHead++]=*y+yo; \
+        fillQueue[fillQueueHead++]=*z+zo; \
+        fillQueue[fillQueueHead++]=v; \
+      \
+        fillQueueHead &= FILLQUEUELENGTHMASK; \
+    } 
+
+
 
 #define FILL_CASE(xo,yo,zo,v,neighbourMask) \
     if (c->neighbourFillable&neighbourMask) \
@@ -308,7 +354,50 @@ int testProjection(void)
     } 
 
 /* Flood fill in a surface from a point looking for a particular seekValue from a previous flood fill, and stop when it is found with *x,*y,*z containing the coordinates where it is found */
-int floodFillSeek(int *x, int *y, int *z, int seekValue, int seekStartFillValue)
+int floodFillSeek(int *x, int *y, int *z, int seekValue, int tmp)
+{   	
+    fillQueueHead = 0;
+    fillQueueTail = 0;
+    fillQueue[fillQueueHead++]=*x;
+    fillQueue[fillQueueHead++]=*y;
+    fillQueue[fillQueueHead++]=*z;
+    fillQueue[fillQueueHead++]=SEEK; // Don't really need this because it is constant, but need to have 4 values in the queue
+    	    
+    while(fillQueueHead != fillQueueTail)
+    {
+        *x = fillQueue[fillQueueTail++];
+        *y = fillQueue[fillQueueTail++];
+        *z = fillQueue[fillQueueTail++];
+        fillQueueTail++;
+        
+        fillQueueTail &= FILLQUEUELENGTHMASK;
+
+		cell *c = &(volume[*z][*y][*x]);
+		
+        if (c->value>SURFACE)
+        {
+			if (c->value == seekValue)
+			{
+				return seekValue;
+			}
+			
+			c->value=SEEK;
+						
+			FILL_CASE_NOV(-1,0,0,0x04)
+			FILL_CASE_NOV(1,0,0,0x10)
+			FILL_CASE_NOV(0,-1,0,0x08)
+			FILL_CASE_NOV(0,1,0,0x20)
+			FILL_CASE_NOV(0,0,-1,0x01)
+			FILL_CASE_NOV(0,0,1,0x02)			
+        }
+
+	}
+    
+    return 0;
+}
+
+/* Flood fill in a surface from a point looking for a particular seekValue from a previous flood fill, and stop when it is found with *x,*y,*z containing the coordinates where it is found */
+int floodFillSeekX(int *x, int *y, int *z, int seekValue, int seekStartFillValue)
 {   
     int first = 1;
 	
@@ -397,19 +486,24 @@ int floodFill(int *x, int *y, int *z)
 		
         if (c->value==SURFACE)
         {
-			// Distnace of *X,*y,*z from the projection plane - positive or negative
-			int depth = projectN(*x,*y,*z,2);
+			c->value=fillValue;
+            pointsVisited[numPointsVisited][0]=*x;
+            pointsVisited[numPointsVisited][1]=*y;
+            pointsVisited[numPointsVisited++][2]=*z;		
+
+	        // Distance of *X,*y,*z from the projection plane - positive or negative
+			int depth = projectN2(*x,*y,*z);
 			
-			if (projection[projectN(*x,*y,*z,0)+PROJECTION_SIZE/2][projectN(*x,*y,*z,1)+PROJECTION_SIZE/2]==PROJECTION_BLANK || 
-			     (projection[projectN(*x,*y,*z,0)+PROJECTION_SIZE/2][projectN(*x,*y,*z,1)+PROJECTION_SIZE/2]>=depth-5 && projection[projectN(*x,*y,*z,0)+PROJECTION_SIZE/2][projectN(*x,*y,*z,1)+PROJECTION_SIZE/2]<=depth+5))
+			if (projection[projectN0(*x,*y,*z)+PROJECTION_SIZE/2][projectN1(*x,*y,*z)+PROJECTION_SIZE/2]==PROJECTION_BLANK || 
+			     (projection[projectN0(*x,*y,*z)+PROJECTION_SIZE/2][projectN1(*x,*y,*z)+PROJECTION_SIZE/2]>=depth-5 && projection[projectN0(*x,*y,*z)+PROJECTION_SIZE/2][projectN1(*x,*y,*z)+PROJECTION_SIZE/2]<=depth+5))
 			{
-				projection[projectN(*x,*y,*z,0)+PROJECTION_SIZE/2][projectN(*x,*y,*z,1)+PROJECTION_SIZE/2]=depth;
+				projection[projectN0(*x,*y,*z)+PROJECTION_SIZE/2][projectN1(*x,*y,*z)+PROJECTION_SIZE/2]=depth;
 			}
 			else
 			{
 				if (numPointsVisited==0)
 				{
-					printf("Error - numPointsVisited is zero when intersection found at %d,%d,%d (%d)\n",*x,*y,*z,projection[projectN(*x,*y,*z,0)+PROJECTION_SIZE/2][projectN(*x,*y,*z,1)+PROJECTION_SIZE/2]);
+					printf("Error - numPointsVisited is zero when intersection found at %d,%d,%d (%d)\n",*x,*y,*z,projection[projectN0(*x,*y,*z)+PROJECTION_SIZE/2][projectN1(*x,*y,*z)+PROJECTION_SIZE/2]);
 					exit(-2);
 				}
 
@@ -418,10 +512,6 @@ int floodFill(int *x, int *y, int *z)
 				return fillValue;
 			}
 			
-			c->value=fillValue;
-            pointsVisited[numPointsVisited][0]=*x;
-            pointsVisited[numPointsVisited][1]=*y;
-            pointsVisited[numPointsVisited++][2]=*z;		
 			
 			FILL_CASE(-1,0,0,fillValue+1,0x04)
 			FILL_CASE(1,0,0,fillValue+1,0x10)
