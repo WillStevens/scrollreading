@@ -12,6 +12,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <dirent.h>
+#include <math.h>
 
 #include <unordered_set>
 #include <vector>
@@ -21,6 +22,7 @@
 #include <algorithm>
 #include <utility>
 
+#define SIZE 512
 #define PT_MULT 1024
 
 std::vector<std::string> fibreFiles;
@@ -31,6 +33,19 @@ std::vector<std::string> files;
 std::map<std::string,std::vector<int16_t> > extents;
 std::map<std::string,std::unordered_set<uint32_t> > pointsets;
 
+// Two vectors that define the projection plane
+// The third vector in this array is the normal to the projection plane, calculated from the other two
+int32_t planeVectors[3][3] = 
+	{ { 1, 0, 0 },
+	  { 0, 0, 1 } };
+
+int32_t projectN(int x, int y, int z, int n)
+{
+	int32_t r = (x*planeVectors[n][0]+y*planeVectors[n][1]+z*planeVectors[n][2])/1000;
+	
+	return r;
+}
+	  
 std::vector<int16_t> LoadExtent(const char *file, bool dilate)
 {
 	int xmin,ymin,zmin,xmax,ymax,zmax;
@@ -147,20 +162,53 @@ int NeighbourTestHelper(const char *file1, const char *file2, std::unordered_set
   if (!overlap)
     return 0;
     
-  unsigned common_size = UnorderedSetIntersectionSize(ps1,ps2);
-                
-  unsigned common_xz_size = UnorderedSetIntersectionSize(ps1_xz,ps2_xz);
-    
+  /* We want to know if there are any xz_intersection_xz points that don't come from the intersection of ps1 and ps2
+   * If so then this means that two patches overlap somewhere other than on their boundary */
+  
+  std::unordered_set<uint32_t> intersection = UnorderedSetIntersection(ps1,ps2);
+  std::unordered_set<uint32_t> intersection_xz; // Intersection_xz will be the xz projection of the boundary points
+  
+  for(uint32_t u : intersection)
+  {
+    int z = (u%PT_MULT)-1;
+    int v = u/PT_MULT;
+    int x = (v%PT_MULT)-1;
+    int y = (v/PT_MULT)-1;
+
+	intersection_xz.insert( (projectN(x,y,z,0)+1024)*2048+projectN(x,y,z,1)+1024 );  
+  }
+                 
+  std::unordered_set<uint32_t> xz_intersection_xz = UnorderedSetIntersection(ps1_xz,ps2_xz);
+
+
+  int common_size = intersection.size();
+  int common_xz_size = xz_intersection_xz.size();
+  
   unsigned l1 = ps1.size();
   unsigned l2 = ps2.size();
   
   unsigned lmin = (l1<l2)?l1:l2;
-      
+  
+  /* Are there any points in xz_intersection_xz that aren't in intersection_xz : i.e. points that overlap somewhere other than the boundary */
+  int nonBoundaryOverlap = 0;
+
+  if (common_size > sqrt(lmin)/4)
+  {
+    for(uint32_t u : xz_intersection_xz) 
+    {
+		if (intersection_xz.find(u)==intersection_xz.end())
+			nonBoundaryOverlap++;	
+    }
+  }	
+  
+  
+  /* TODO - take account of nonBoundaryOverlap below */
+  
   /* These two tests aim to limit the number of intersections that we end up with
-   * Only join if the common boundary is more than a value close to the square root of the approx area of the smallest patch, and if the number of intersection voxels is no more than a small constant
-   * times the boundary size.
+   * Only join if the common boundary is more than a value close to the square root of the approx area of the smallest patch, and if the number of intersection voxels is no more than a small constant times the volume.
    */
-  bool r = (common_size*common_size>lmin/6 && common_xz_size <= 16*common_size);
+  //bool r = (common_size*common_size>lmin/8 && common_size*common_size<16*lmin && nonBoundaryOverlap < lmin/250);
+  bool r = (common_size>sqrt(lmin)/4 && nonBoundaryOverlap < lmin/30);
   
   int fibreBonus = 0;
 
@@ -185,12 +233,12 @@ int NeighbourTestHelper(const char *file1, const char *file2, std::unordered_set
 	if (intersect.size() > 0)
 		fibreBonus = 200;
 	
-    printf("NT %s: l1=%d l2=%d len(common)=%d lmin=%d len(common_xz)=%d fibreBonus=%d (%s,%s)\n",r?"true":"false",l1,l2,(int)common_size,lmin,
-	(int)common_xz_size,fibreBonus,file1,file2);
+    printf("NT %s: l1=%d l2=%d len(common)=%d lmin=%d len(common_xz)=%d nonBoundaryOverlap=%d, fibreBonus=%d (%s,%s)\n",r?"true":"false",l1,l2,(int)common_size,lmin,
+	(int)common_xz_size,nonBoundaryOverlap,fibreBonus,file1,file2);
   }
   
   if (r)
-    return common_size + fibreBonus  + (100*common_size) / common_xz_size ;
+    return common_size + fibreBonus;
   else
     return 0;
 }
@@ -238,17 +286,102 @@ std::vector<int16_t> UpdateExtent(std::vector<int16_t> &a, std::vector<int16_t> 
   return r;
 }
 
+class RunStats
+{
+	public:
+		std::vector<int> patchSizes;
+		std::vector<int> surfaceSizes;
+		
+		void Display(void)
+		{
+			std::sort(patchSizes.begin(),patchSizes.end());
+			std::sort(surfaceSizes.begin(),surfaceSizes.end());
+			
+			int totalPatchSize = 0;
+			for(int s : patchSizes)
+			{
+				totalPatchSize += s;
+			}
+
+			int totalSurfaceSize = 0;
+			int numLargeSurfaces = 0;
+			for(int s : surfaceSizes)
+			{
+				totalSurfaceSize += s;
+				if (s>SIZE*SIZE/2)
+				  numLargeSurfaces++;	
+			}
+			
+			int medianPatchSize=0;
+			if (patchSizes.size()%2==0 && patchSizes.size()>0)
+			{
+				medianPatchSize = (patchSizes[patchSizes.size()/2-1]+patchSizes[patchSizes.size()/2])/2;
+			}
+			else if (patchSizes.size()%2==1 && patchSizes.size()>0)
+			{
+				medianPatchSize = patchSizes[patchSizes.size()/2];
+			}
+
+			int medianSurfaceSize=0;
+			if (surfaceSizes.size()%2==0 && surfaceSizes.size()>0)
+			{
+				medianSurfaceSize = (surfaceSizes[surfaceSizes.size()/2-1]+surfaceSizes[surfaceSizes.size()/2])/2;
+			}
+			else if (surfaceSizes.size()%2==1 && surfaceSizes.size()>0)
+			{
+				medianSurfaceSize = surfaceSizes[surfaceSizes.size()/2];
+			}
+
+			
+			printf("----------------\n");
+			printf("Total patches: %d\n",(int)patchSizes.size());
+			printf("Total patch size: %d\n",totalPatchSize);
+			printf("Median patch size: %d\n",medianPatchSize);
+			printf("\n");
+			printf("Total surfaces: %d\n",(int)surfaceSizes.size());
+			printf("Total surface size: %d\n",totalSurfaceSize);
+			printf("Median surface size: %d\n",medianSurfaceSize);
+			printf("Number of large surfaces (>= %d voxels): %d\n",SIZE*SIZE/2,numLargeSurfaces);
+			printf("----------------\n");
+		}
+};
+
 int main(int argc, char *argv[])
 {
-  if (argc != 2 && argc != 3)
+  if (argc != 2 && argc != 3 && argc != 8 && argc != 9)
   {
-    printf("Usage: jigsaw2 <directory> [<fiber-directory>]");
+    printf("Usage: jigsaw2 <directory> [<fiber-directory>] [x1 y1 z1 x2 y2 z2]\n");
     return -1;
   }
   
+  RunStats stats;
+  
+  if (argc==8 || argc==9)
+  {
+	for(int i = 0; i<2; i++)
+	  for(int j = 0; j<3; j++)
+	    planeVectors[i][j] = atoi(argv[j+i*3+argc-6]);
+  }
+
+  printf("Projection plane vectors normalised to length 1000:\n");
+  for(int i = 0; i<2; i++)
+  {
+	double magnitude = sqrt((double)(planeVectors[i][0]*planeVectors[i][0]+planeVectors[i][1]*planeVectors[i][1]+planeVectors[i][2]*planeVectors[i][2]));
+		
+	for(int j = 0; j<3; j++)
+	{
+		planeVectors[i][j] /= (magnitude/1000);
+		
+		printf("%d ", planeVectors[i][j]);
+	}
+		
+	printf("\n");
+  }
+  
+  
   printf("Loading volumes and fibers\n");
 
-  if (argc == 3)
+  if (argc == 3 || argc == 9)
   {
 	std::string fibreDir(argv[2]);
 	{
@@ -264,7 +397,7 @@ int main(int argc, char *argv[])
 		  {
 			fibrePointsets[std::string("x")+file.substr(1)] = LoadVolume( (fibreDir + std::string("/") + file).c_str(),false);
 			printf("%s %d\n",file.c_str(),(int)fibrePointsets[std::string("x")+file.substr(1)].size());
-		  }
+ 		  }
 		  else if (file[0]=='x' && file.substr(file.length()-4)==".csv")
 		  {
 		    fibreFiles.push_back(file);
@@ -293,11 +426,14 @@ int main(int argc, char *argv[])
 		{
           std::string file(ent->d_name);
 
+		  /* As well as loading them, collect stats on total voxels, median patch size, how many patches */
           if (file[0]=='v' && file.substr(file.length()-4)==".csv")
 		  {
 			pointsets[std::string("x")+file.substr(1)] = LoadVolume( (volumeDir + "/" + file).c_str(),false);
 			printf("%s %d\n",(std::string("x")+file.substr(1)).c_str(),(int)pointsets[std::string("x")+file.substr(1)].size());
-		  }
+
+			stats.patchSizes.push_back((int)pointsets[std::string("x")+file.substr(1)].size());
+   		  }
 		  else if (file[0]=='x' && file.substr(file.length()-4)==".csv")
 		  {
 		    files.push_back(file);
@@ -328,9 +464,22 @@ int main(int argc, char *argv[])
   std::map<std::string,std::unordered_set<uint32_t> > pointsets_xz;
   
   for(const std::string &f : files)
-    for(uint32_t x : pointsets[f])
-	  pointsets_xz[f].insert(x%(PT_MULT*PT_MULT));
+    for(uint32_t u : pointsets[f])
+	{
+      int z = (u%PT_MULT)-1;
+      int v = u/PT_MULT;
+      int x = (v%PT_MULT)-1;
+      int y = (v/PT_MULT)-1;
 
+	  pointsets_xz[f].insert( (projectN(x,y,z,0)+1024)*2048+projectN(x,y,z,1)+1024 );
+	}
+	
+  printf("DBG: 1073: %d\n",(int)pointsets_xz[std::string("x4_1073.csv")].size());
+  printf("DBG: 1050: %d\n",(int)pointsets_xz[std::string("x4_1050.csv")].size());
+  
+  printf("DBG: Intersection: %d\n",UnorderedSetIntersectionSize(pointsets_xz[std::string("x4_1073.csv")],
+																pointsets_xz[std::string("x4_1050.csv")]));
+  
   std::set<std::string> filesProcessed;
 
   bool doneOuter = false;
@@ -391,13 +540,15 @@ int main(int argc, char *argv[])
   for(const std::string &p : files)
     if (filesProcessed.find(p)==filesProcessed.end())
 	{
-	  FILE *f = fopen( (std::string(argv[1]) + std::string("/output/x")+std::to_string(outputCount)+std::string(".csv")).c_str(),"w");
+	  FILE *f = fopen( (std::string(argv[1]) + std::string("/output/x")+p.substr(1)).c_str(),"w");
 
       fprintf(f,"%d,%d,%d,%d,%d,%d\n",extents[p][0],extents[p][1],extents[p][2],extents[p][3],extents[p][4],extents[p][5]);
 
 	  fclose(f);
 	  
-      f = fopen( (std::string(argv[1]) + std::string("/output/v")+std::to_string(outputCount)+std::string(".csv")).c_str(),"w");
+      f = fopen( (std::string(argv[1]) + std::string("/output/v")+p.substr(1)).c_str(),"w");
+
+ 	  stats.surfaceSizes.push_back(pointsets[p].size());
 	  
 	  for(uint32_t u : pointsets[p])
 	  {
@@ -413,5 +564,7 @@ int main(int argc, char *argv[])
 	
   printf("Finished\n");
 
+  stats.Display();
+  
   return 0;  
 }

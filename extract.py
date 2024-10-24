@@ -3,7 +3,7 @@ from PIL import Image
 
 #for i in range(5800,6312):
 #for i in range(5800-512,6312-512):
-for i in range(7336,7336+512):
+for i in range(1500,1500+512):
   im = Image.open('d:/vesuvius/0'+str(i)+'.tif')
 
   imarray = numpy.array(im)
@@ -27,8 +27,8 @@ for i in range(7336,7336+512):
   #Image.fromarray(rect).save('../construct/e205/e205_0'+str(i)+'.tif')
 
   #e206 (x+1024 neighbour of e203
-  rect = imarray[4200:4712,3400:3400+512]
-  Image.fromarray(rect).save('../construct/03400_04200_07336/0'+str(i)+'.tif')
+  rect = imarray[2000:2000+512,4500:4500+512]
+  Image.fromarray(rect).save('d:/construct/02000_04500_01500/0'+str(i)+'.tif')
 
   del im
   del imarray

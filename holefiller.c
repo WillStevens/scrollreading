@@ -1,5 +1,5 @@
 /*
- Will Stevens, August 2024
+ Will Stevens, August 2
  
  An implementation of the DAFF algorithm described in report.pdf
  This was written to experiment with creating non-intersecting surfaces in cubic volumes of the Herculanium Papyri.
@@ -16,6 +16,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+
+#define PATCH_EXPORT_LIMIT 1000
 
 typedef struct
 {
@@ -706,7 +708,7 @@ int main(int argc, char *argv[])
 			FILE *f = NULL;
 			
 			// Don't export small regions
-			if (numPointsVisited >= 2000)
+			if (numPointsVisited >= PATCH_EXPORT_LIMIT)
 			{
 				char fname[100];
 			

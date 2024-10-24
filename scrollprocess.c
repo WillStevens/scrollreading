@@ -19,6 +19,8 @@
 
 #include "tiffio.h"
 
+#define PATCH_EXPORT_LIMIT 1000
+
 #define SIZE 512
 
 #define FOLDERNAME_LENGTH 256
@@ -1146,13 +1148,13 @@ int findAndFillAll(int max)
 
 int main(int argc, char *argv[])
 {
-	if (argc != 3 && argc != 9)
+	if (argc != 3 && argc != 6)
 	{
 		printf("Usage: scrollprocess <image-directory> <output-directory> [x3 y3 z3]\n");
 		return -1;
 	}
 
-	if (argc==9)
+	if (argc==6)
 	{
 	    for(int j = 0; j<3; j++)
 	        normalVector[j] = atoi(argv[j+3]);
@@ -1199,7 +1201,7 @@ int main(int argc, char *argv[])
     printf("Unfilling...\n");               
         
 	for(int j = 0; j<i; j++)
-        if (getRegionVolume(j) <= 5000)
+        if (getRegionVolume(j) <= PATCH_EXPORT_LIMIT)
 		{
             printf("Unfilling %d\n",j);
             unFill(j+PR_FILL_START);
@@ -1212,7 +1214,7 @@ int main(int argc, char *argv[])
     for(int j = 0; j<i; j++)
 	{
         printf("%d volume %d\n",j,getRegionVolume(j));
-        if (getRegionVolume(j) > 5000)
+        if (getRegionVolume(j) > PATCH_EXPORT_LIMIT)
 	    {
             printf("Rendering %d\n",j);
             render(1,6,j+PR_FILL_START);
