@@ -28,6 +28,8 @@ unsigned zOffset=0;
 unsigned char volume[SIZE][SIZE][SIZE];
 
 unsigned char rendered[RENDER_SIZE][RENDER_SIZE];
+int renderPoint[RENDER_SIZE][RENDER_SIZE][3];
+
 
 // Two vectors that define the projection plane
 // The third vector in this array is the normal to the projection plane, calculated from the other two
@@ -84,6 +86,7 @@ int32_t projectN(int x, int y, int z, int n)
 void render(char *d,char *v, int renderOffset)
 {
     char fname[FILENAME_LENGTH];
+	int xo,yo,zo;
 	int x,y,z;
 	int render_minx=RENDER_SIZE-1,render_miny=RENDER_SIZE-1,render_maxx=0,render_maxy=0;	
 		
@@ -99,11 +102,11 @@ void render(char *d,char *v, int renderOffset)
 	
     FILE *f = fopen(fname,"r");
 
-	while(fscanf(f,"%d,%d,%d\n",&x,&y,&z)==3)
+	while(fscanf(f,"%d,%d,%d\n",&xo,&yo,&zo)==3)
 	{
-		x += (planeVectors[2][0]*renderOffset)/1000;
-		y += (planeVectors[2][1]*renderOffset)/1000;
-		z += (planeVectors[2][2]*renderOffset)/1000;
+		x = xo + (planeVectors[2][0]*renderOffset)/1000;
+		y = yo + (planeVectors[2][1]*renderOffset)/1000;
+		z = zo + (planeVectors[2][2]*renderOffset)/1000;
 		
 		if (x<0) x=0;
 		if (x>=SIZE) x=SIZE-1;
@@ -123,6 +126,9 @@ void render(char *d,char *v, int renderOffset)
 		  if (pb>render_maxy) render_maxy = pb;
 		  
 		  rendered[pb][pa] = volume[z][y][x];
+		  renderPoint[pb][pa][0] = xo;
+		  renderPoint[pb][pa][1] = yo;
+		  renderPoint[pb][pa][2] = zo;
 		  points++;
 		}
 //		printf("%d,%d,%d\n",z,x,rendered[z][x]);
@@ -132,12 +138,41 @@ void render(char *d,char *v, int renderOffset)
 
 	if (1==1)
 	{
+		char rp_fname[FILENAME_LENGTH];
+		
+		strcpy(rp_fname,fname);		
+		int l = strlen(rp_fname);
+		if (strcmp(rp_fname+l-4,".csv"))
+		  return;		
+		sprintf(rp_fname+l-4,"_%d.rnd",renderOffset);
+		
+		printf("%s\n",rp_fname);
+		
+		FILE *f = fopen(rp_fname,"w");
+		
+		if (f)
+		{
+			/* Write the renderpoint file corresponding to the tiff file */
+			for(int row=render_miny;row<=render_maxy;row++)
+			{
+				for(int i=render_minx; i<=render_maxx; i++)
+				{
+				fprintf(f,"%d,%d,%d\n",renderPoint[row][i][0],renderPoint[row][i][1],renderPoint[row][i][2]);
+				}
+			}
+		}
+		
+		fclose(f);
+	}
+		
+	if (1==1)
+	{
 		/* Now write tiff file */
 		int l = strlen(fname);
 		if (strcmp(fname+l-4,".csv"))
 		  return;
 		
-		strcpy(fname+l-4,".tif");
+		sprintf(fname+l-4,"_%d.tif",renderOffset);
 
 		printf("%s\n",fname);
 
@@ -195,22 +230,22 @@ void render(char *d,char *v, int renderOffset)
 
 int main(int argc, char *argv[])
 {
-	if (argc != 3 && argc != 4 && argc != 10)
+	if (argc != 3 && argc != 4 && argc != 9 && argc != 10)
 	{
-		printf("Usage: render <image directory> <target directory> [offset (default=6) [x1 y1 z1 x2 y2 z2]]\n");
+		printf("Usage: render <image directory> <target directory> [offset (default=-6) [x1 y1 z1 x2 y2 z2]]\n");
 		return -1;
 	}
 
-	int renderOffset = 6;
+	int renderOffset = -6;
 	
 	if (argc==4 || argc==10)
 	  renderOffset = atoi(argv[3]);
 
-	if (argc==10)
+	if (argc==10 || argc==9)
 	{
 		for(int i = 0; i<2; i++)
 		  for(int j = 0; j<3; j++)
-			  planeVectors[i][j] = atoi(argv[j+i*3+3]);
+			  planeVectors[i][j] = atoi(argv[j+i*3+argc-6]);
 	}
 	
 	printf("Projection plane vectors normalised to length 1000:\n");

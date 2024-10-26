@@ -17,7 +17,7 @@
 #include <string.h>
 #include <math.h>
 
-#define PATCH_EXPORT_LIMIT 1000
+#define PATCH_EXPORT_LIMIT 2000
 
 typedef struct
 {
