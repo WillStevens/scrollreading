@@ -1091,7 +1091,7 @@ void AdaptiveHistogramEq(void)
 	}
 }
 
-void KeepFillable(void)
+void KeepFillable(int *totalDenseVoxels, int *totalSurfaceVoxels)
 {
 /*	
     for(int z = 0; z<SIZE; z++)
@@ -1100,13 +1100,26 @@ void KeepFillable(void)
     {
 		processed[z][y][x] = (processed[z][y][x]==PR_SCROLL && volume_ahe[z][y][x] > 110) ? PR_SCROLL : PR_EMPTY;
 	}
-*/			 
+*/	
+    
+	*totalDenseVoxels = 0;
+	*totalSurfaceVoxels = 0;
+		 
     for(int z = 0; z<SIZE; z++)
     for(int y = 0; y<SIZE; y++)
     for(int x = 0; x<SIZE; x++)
     {
+		if (processed[z][y][x] == PR_SCROLL)
+		{
+			(*totalDenseVoxels)++;
+			(*totalSurfaceVoxels)++;
+		}
+		
         if (processed[z][y][x] == PR_SCROLL && !fillableVoxelBasic(x,y,z))
+		{
             processed[z][y][x] = PR_TMP;
+			(*totalSurfaceVoxels)--;
+		}
     }
 
     for(int z = 0; z<SIZE; z++)
@@ -1148,6 +1161,8 @@ int findAndFillAll(int max)
 
 int main(int argc, char *argv[])
 {
+	int totalSurfaceVoxels=0, totalDenseVoxels=0;
+	
 	if (argc != 3 && argc != 6)
 	{
 		printf("Usage: scrollprocess <image-directory> <output-directory> [x3 y3 z3]\n");
@@ -1190,7 +1205,13 @@ int main(int argc, char *argv[])
 	
 //	AdaptiveHistogramEq();
 	Sobel();
-	KeepFillable();
+	KeepFillable(&totalDenseVoxels,&totalSurfaceVoxels);
+	
+	printf("----------------\n");
+	printf("Total dense voxels: %d\n",totalDenseVoxels);
+	printf("Total surface voxels: %d\n",totalSurfaceVoxels);
+	printf("----------------\n");
+	
 	
 //	Laplace();
 //	Sobel();

@@ -30,8 +30,8 @@ import os
 # To be able to load scrollprocess.dll and dependencies, the following need to be in PATH
 # C:\cygwin64\usr\x86_64-w64-mingw32\sys-root\mingw\bin
 
-folder = b'D:/construct/03400_04200_05800'
-zOffset = 5800
+folder = b'D:/construct/02512_03988_01500'
+zOffset = 1500
 output_folder = "." # Location where rendering output will be placed
 #plugFileName = "plugs_v005_4.csv"
 #plugFileName = "../testout/v_650.csv"
@@ -41,15 +41,17 @@ output_folder = "." # Location where rendering output will be placed
 #				 ("../testout_h/v_361.csv","orange"),
 #				 ]
 
-plugFileNames = [("../construct/s03400_04200_05800/nonint/v4_1073.csv","red"),
-                 ("../construct/s03400_04200_05800/nonint/v4_1094.csv","green"),
-                 ("../construct/s03400_04200_05800/nonint/v4_1118.csv","orange"),
-                 ("../construct/s03400_04200_05800/nonint/v4_1102.csv","blue"),
-                 ("../construct/s03400_04200_05800/nonint/v4_1050.csv","yellow"),
-                 ("../construct/s03400_04200_05800/nonint/v4_1008.csv","pink"),
-                 ("../construct/s03400_04200_05800/nonint/v4_797.csv","purple"),
-                 ("../construct/s03400_04200_05800/nonint/v4_856.csv","cyan"),
-				 ]
+#plugFileNames = [("../construct/s03400_04200_05800/nonint/v4_1073.csv","red"),
+#                 ("../construct/s03400_04200_05800/nonint/v4_1094.csv","green"),
+#                 ("../construct/s03400_04200_05800/nonint/v4_1118.csv","orange"),
+#                 ("../construct/s03400_04200_05800/nonint/v4_1102.csv","blue"),
+#                 ("../construct/s03400_04200_05800/nonint/v4_1050.csv","yellow"),
+#                 ("../construct/s03400_04200_05800/nonint/v4_1008.csv","pink"),
+#                 ("../construct/s03400_04200_05800/nonint/v4_797.csv","purple"),
+#                 ("../construct/s03400_04200_05800/nonint/v4_856.csv","cyan"),
+#				 ]
+
+plugFileNames = [("../debug2/v5_2592.csv","red")]
 
 """
 for file in os.listdir("../testout_h/"):

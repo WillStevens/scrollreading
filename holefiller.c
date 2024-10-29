@@ -202,6 +202,8 @@ int32_t projectN(int x, int y, int z, int n)
 //#define projectN1(x,y,z) (((x)*planeVectors[1][0]+(y)*planeVectors[1][1]+(z)*planeVectors[1][2])/1000)
 //#define projectN2(x,y,z) (((x)*planeVectors[2][0]+(y)*planeVectors[2][1]+(z)*planeVectors[2][2])/1000)
 
+// These are now passed as compiler flags
+/*
 #define PLANEVECTORS_0_0 1000
 #define PLANEVECTORS_0_1 0
 #define PLANEVECTORS_0_2 0
@@ -213,7 +215,7 @@ int32_t projectN(int x, int y, int z, int n)
 #define PLANEVECTORS_2_0 0
 #define PLANEVECTORS_2_1 -1000
 #define PLANEVECTORS_2_2 0
-
+*/
 // These definitions used compile-time constants
 #define projectN0(x,y,z) (((x)*PLANEVECTORS_0_0+(y)*PLANEVECTORS_0_1+(z)*PLANEVECTORS_0_2)/1000)
 #define projectN1(x,y,z) (((x)*PLANEVECTORS_1_0+(y)*PLANEVECTORS_1_1+(z)*PLANEVECTORS_1_2)/1000)

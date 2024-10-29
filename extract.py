@@ -27,8 +27,8 @@ for i in range(1500,1500+512):
   #Image.fromarray(rect).save('../construct/e205/e205_0'+str(i)+'.tif')
 
   #e206 (x+1024 neighbour of e203
-  rect = imarray[2000:2000+512,4500:4500+512]
-  Image.fromarray(rect).save('d:/construct/02000_04500_01500/0'+str(i)+'.tif')
+  rect = imarray[2000:2000+512,3476:3476+512]
+  Image.fromarray(rect).save('d:/construct/02000_03476_01500/0'+str(i)+'.tif')
 
   del im
   del imarray
