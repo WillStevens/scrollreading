@@ -96,19 +96,19 @@ void Interpolate(int x, int y, int *xi, int *yi, int *zi)
 		  break;
 	  }
 	
-	if (xminus>=0 && xplus>=0)
+	if (xminus>=0 && xplus>=0 && (yminus==-1 || yplus==-1 || yplus-yminus < xplus-xminus)
 	{
-		int wminus = (1000*(x-xminus))/(xplus - xminus);
-		int wplus = 1000-wminus;
+		int wplus = (1000*(x-xminus))/(xplus - xminus);
+		int wminus = 1000-wplus;
 		
 		*xi = (renderPoint[y][xminus][0]*wminus + renderPoint[y][xplus][0]*wplus)/1000;
 		*yi = (renderPoint[y][xminus][1]*wminus + renderPoint[y][xplus][1]*wplus)/1000;
 		*zi = (renderPoint[y][xminus][2]*wminus + renderPoint[y][xplus][2]*wplus)/1000;		
 	}
-    else if (yminus>=0 && yplus>=0 && yplus-yminus <= 64)
+    else if (yminus>=0 && yplus>=0)
 	{
-		int wminus = (1000*(y-yminus))/(yplus - yminus);
-		int wplus = 1000-wminus;
+		int wplus = (1000*(y-yminus))/(yplus - yminus);
+		int wminus = 1000-wplus;
 		
 		*xi = (renderPoint[yminus][x][0]*wminus + renderPoint[yplus][x][0]*wplus)/1000;
 		*yi = (renderPoint[yminus][x][1]*wminus + renderPoint[yplus][x][1]*wplus)/1000;
@@ -166,17 +166,43 @@ int main(int argc, char *argv[])
 	if (f)
 	{
 		int xi,yi,zi;
+		int lastxi,lastyi,lastzi;
+		int interpPrev = 0;
 		
 		printf("Beginning...\n");
 		for(int y = 0; y<ySize; y++)
-		for(int x = 0; x<xSize; x++)
 		{
-			if (image[y][x]==0)
+			interpPrev = 0;
+			for(int x = 0; x<xSize; x++)
 			{
-				Interpolate(x,y,&xi,&yi,&zi);
+				if (image[y][x]==0)
+				{
+					Interpolate(x,y,&xi,&yi,&zi);
 				
-				if (xi != -1)
-				  fprintf(f,"%d,%d,%d\n",xi,yi,zi);
+					if (xi != -1)
+					{
+						if (interpPrev)
+						{
+							int possxi = (xi+lastxi)/2;
+							int possyi = (yi+lastyi)/2;
+							int posszi = (zi+lastzi)/2;
+							
+							if ((possxi != lastxi || possyi != lastyi || posszi != lastzi) &&
+							    (possxi != xi || possyi != yi || posszi != zi))
+							{
+								fprintf(f,"%d,%d,%d\n",possxi,possyi,posszi);
+							}
+						}
+						
+						fprintf(f,"%d,%d,%d\n",xi,yi,zi);
+						interpPrev = 1;
+						lastxi = xi; lastyi = yi; lastzi = zi;
+					}
+					else
+						interpPrev = 0;
+				}
+				else
+					interpPrev = 0;
 			}
 		}
 	}

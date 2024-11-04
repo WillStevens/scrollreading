@@ -19,6 +19,19 @@
 
 #include "tiffio.h"
 
+// Scroll specific scaling of grey levels
+// 8-bit grey level = (SCROLL_A*v+SCROLL_B)/(SCROLL_C)
+
+// Scroll 1:
+//#define SCROLL_A  1
+//#define SCROLL_B  0
+//#define SCROLL_C  256
+
+// Scroll 4:
+#define SCROLL_A  2
+#define SCROLL_B  72
+#define SCROLL_C  450
+
 #define PATCH_EXPORT_LIMIT 2000
 
 #define SIZE 512
@@ -543,7 +556,8 @@ void loadTiffs(void)
                 for(int i=0; i<SIZE; i++)
                 {
                     uint16_t v1 = ((uint16_t *)buf)[i];
-                    volume[m][row][i] = v1/256;
+					int v = (SCROLL_A*(int)v1 + SCROLL_B)/SCROLL_C;
+                    volume[m][row][i] = v<0 ? 0 : (v>=256 ? 255 : v);
                 }
             }
             _TIFFfree(buf);
