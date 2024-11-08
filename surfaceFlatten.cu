@@ -10,16 +10,17 @@
 #include <pthread.h>
 #include <cuda.h>
 #include <thrust/sort.h>
+#include <thrust/device_ptr.h>
 
-#define NUM_BLOCKS 512
+#define NUM_BLOCKS 4096
 #define THREADS_PER_BLOCK 128
 
 #define CELL_DIMX 3.0f
 #define CELL_DIMY 3.0f
 #define CELL_DIMZ 3.0f
-#define CELL_NUMX 100
-#define CELL_NUMY 20
-#define CELL_NUMZ 100
+#define CELL_NUMX 256
+#define CELL_NUMY 256
+#define CELL_NUMZ 256
 
 #define MAXX (CELL_NUMX*CELL_DIMX)
 #define MAXY (CELL_NUMY*CELL_DIMY)
@@ -46,10 +47,6 @@
 
 // The variables KAPPA, u, w and q from the paper are stored in a single cuda float4 type, so here they
 // are referred to has x,y,z and w respectively.
-
-#define CHEM_SCALE 4.0f
-
-#define CHEMY_DIFFUSION_CONSTANT 0.0125f // This corresponds to D_u
 
 #define RHO_0 1.0f
 
@@ -149,6 +146,7 @@ __global__ void InitialiseDevice(float4 *pPos, float4 *pAcc, unsigned *cellHash,
 	int blkIdx = blockIdx.x;		// Index of block
 	int thdIdx = threadIdx.x;		// Index of thread within a block
 	int zIdx = blkIdx*thdsPerBlk*nloops + thdIdx;
+	int stepSize = blockDim.x*gridDim.x;
 
 	for(int i = 0; i<nloops && zIdx < nParticles; i++)
 	{
@@ -165,7 +163,7 @@ __global__ void InitialiseDevice(float4 *pPos, float4 *pAcc, unsigned *cellHash,
 		trackIndex[zIdx] = zIdx;
 		pAcc[zIdx] = make_float4(0.0f,0.0f,0.0f,0.0f);
 
-		zIdx += thdsPerBlk;
+		zIdx += stepSize;
 	}
 }
 
@@ -175,35 +173,36 @@ __global__ void InitCellStart(int *cellStart, int nloops)
 	int blkIdx = blockIdx.x;		// Index of block
 	int thdIdx = threadIdx.x;		// Index of thread within a block
 	int zIdx = blkIdx*thdsPerBlk*nloops + thdIdx;
+	int stepSize = blockDim.x*gridDim.x;
 	
 	for(int i = 0; i<nloops && zIdx < CELL_NUMX*CELL_NUMY*CELL_NUMZ; i++)
 	{
 		cellStart[zIdx] = -1;
 
-		zIdx += thdsPerBlk;
+		zIdx += stepSize;
 	}
 }
 
-__global__ void ArrayCopy(float4 *a0, float4 *a1, float4 *b0, float4 *b1, float4 *c0, float4 *c1, unsigned *cellHash, int *cellStart, unsigned *pIndex, int nParticles, int nloops)
+__global__ void ArrayCopy(float4 *a0, float4 *a1, float4 *b0, float4 *b1, unsigned *cellHash, int *cellStart, unsigned *pIndex, int nParticles, int nloops)
 {
 	int thdsPerBlk = blockDim.x;	// Number of threads per block
 	int blkIdx = blockIdx.x;		// Index of block
 	int thdIdx = threadIdx.x;		// Index of thread within a block
 	int zIdx = blkIdx*thdsPerBlk*nloops + thdIdx;
+	int stepSize = blockDim.x*gridDim.x;
 
 	for(int i = 0; i<nloops && zIdx < nParticles; i++)
 	{
 		unsigned p = pIndex[zIdx];
 		a1[zIdx] = a0[p];
 		b1[zIdx] = b0[p];
-		c1[zIdx] = c0[p];
 
 		if (zIdx == 0 || cellHash[zIdx] != cellHash[zIdx-1])
 		{
 			cellStart[cellHash[zIdx]] = zIdx;
 		}
 
-		zIdx += thdsPerBlk;
+		zIdx += stepSize;
 	}
 }
 
@@ -213,13 +212,14 @@ __global__ void UpdateTrackIndex(unsigned *pIndex, unsigned *trackIndex0, unsign
 	int blkIdx = blockIdx.x;		// Index of block
 	int thdIdx = threadIdx.x;		// Index of thread within a block
 	int zIdx = blkIdx*thdsPerBlk*nloops + thdIdx;
+	int stepSize = blockDim.x*gridDim.x;
 
 	for(int i = 0; i<nloops && zIdx < nParticles; i++)
 	{
 		unsigned p = pIndex[zIdx];
 		trackIndex1[zIdx] = trackIndex0[p];
 
-		zIdx += thdsPerBlk;
+		zIdx += stepSize;
 	}
 }
 
@@ -229,6 +229,7 @@ __global__ void ParticleMove(float4 *pPos, float4 *pVel, float4 *pAcc, int *pBou
 	int blkIdx = blockIdx.x;		// Index of block
 	int thdIdx = threadIdx.x;		// Index of thread within a block
 	int zIdx = blkIdx*thdsPerBlk*nloops + thdIdx;
+	int stepSize = blockDim.x*gridDim.x;
 
 	float deltaT = 0.25f*sqrtf(H_CONSTANT/(*maxAcc));
 
@@ -244,7 +245,6 @@ __global__ void ParticleMove(float4 *pPos, float4 *pVel, float4 *pAcc, int *pBou
 		pPos[zIdx].x += (pVel[zIdx].x + pAcc[zIdx].x*deltaT)*deltaT;
 		pPos[zIdx].y += (pVel[zIdx].y + pAcc[zIdx].y*deltaT)*deltaT;
 		pPos[zIdx].z += (pVel[zIdx].z + pAcc[zIdx].z*deltaT)*deltaT;
-		pPos[zIdx].w = VISC_BASE+VISC*pChem[zIdx].x;
 
 		pVel[zIdx].x += pAcc[zIdx].x*deltaT;
 		pVel[zIdx].y += pAcc[zIdx].y*deltaT;
@@ -280,7 +280,7 @@ __global__ void ParticleMove(float4 *pPos, float4 *pVel, float4 *pAcc, int *pBou
 
 		pIndex[zIdx] = zIdx;
 
-		zIdx += thdsPerBlk;
+		zIdx += stepSize;
 	}
 }
 
@@ -293,6 +293,7 @@ __global__ void ShepardFilter(float4 *pPos, float4 *pVel, float *pNewDensity, un
 	int blkIdx = blockIdx.x;		// Index of block
 	int thdIdx = threadIdx.x;		// Index of thread within a block
 	int zIdx = blkIdx*thdsPerBlk*nloops + thdIdx;
+	int stepSize = blockDim.x*gridDim.x;
 
 	int neighbourCell,ps;
 	int cellx,celly,cellz;
@@ -340,7 +341,7 @@ __global__ void ShepardFilter(float4 *pPos, float4 *pVel, float *pNewDensity, un
 
 		pNewDensity[zIdx] = numerator/denominator;
 
-		zIdx += thdsPerBlk;
+		zIdx += stepSize;
 	}
 }
 
@@ -350,12 +351,13 @@ __global__ void UpdateDensity(float4 *pVel, float *pNewDensity, int nParticles, 
 	int blkIdx = blockIdx.x;		// Index of block
 	int thdIdx = threadIdx.x;		// Index of thread within a block
 	int zIdx = blkIdx*thdsPerBlk*nloops + thdIdx;
+	int stepSize = blockDim.x*gridDim.x;
 
 	for(int i = 0; i<nloops && zIdx < nParticles; i++)
 	{
 		pVel[zIdx].w = pNewDensity[zIdx];
 
-		zIdx += thdsPerBlk;
+		zIdx += stepSize;
 	}
 }
 
@@ -365,6 +367,7 @@ __global__ void ParticleForces(float4 *pPos, float4 *pVel, float4 *pAcc, float *
 	int blkIdx = blockIdx.x;		// Index of block
 	int thdIdx = threadIdx.x;		// Index of thread within a block
 	int zIdx = blkIdx*thdsPerBlk*nloops + thdIdx;
+	int stepSize = blockDim.x*gridDim.x;
 
 	int neighbourCell,ps;
 	int cellx,celly,cellz;
@@ -464,7 +467,7 @@ __global__ void ParticleForces(float4 *pPos, float4 *pVel, float4 *pAcc, float *
 
 		pAccLength[zIdx] = LengthVector(pAcc[zIdx]);
 
-		zIdx += thdsPerBlk;
+		zIdx += stepSize;
 	}
 }
 
@@ -487,11 +490,6 @@ float h_simTime;
 unsigned *h_trackIndex;
 
 int activeArray;
-
-bool displayRequest = false;
-bool displayReady = false;
-
-#define TCP_PORT 22345
 
 void Check(cudaError_t e)
 {
@@ -563,83 +561,76 @@ void FreeMemory(void)
 	free(h_trackIndex);
 }
 
-void Initialise(void)
+int GetNumParticles(char *fname)
 {
-	int i = 0;
-	for(float x = 0.0f; x<20.0f; x+=1.0f)
-	for(float y = 0.0f; y<20.0f; y+=1.0f)
-	for(float z = 0.0f; z<20.0f; z+=1.0f)
+    int i = 0;
+    FILE *f = fopen(fname,"r");
+	
+	if(f)
 	{
-		if (i<nParticles)
-		{
-		h_pVel[i].x = 0.0f;
-		h_pVel[i].y = 0.0f;
-		h_pVel[i].z = 0.0f;
-		h_pVel[i].w = RHO_0;
-		h_pPos[i].x = x+MAXX/2-10.0f;
-		h_pPos[i].y = y+2.0f;
-		h_pPos[i].z = z+MAXZ/2-10.0f;
-		h_pPos[i].w = VISC_BASE;
-		}
-		i++;
+		int x,y,z;
+	  
+	    while(fscanf(f,"%d,%d,%d",&x,&y,&z)==3)
+	    {
+			i++;
+	    }
 	}
+
+	return i;
 }
 
-void *SocketChildThread(void *arg);
-
-void *SocketThread(void *arg)
+void Initialise(char *fname)
 {
-	int sockfd, newsockfd;
-	socklen_t clilen;
-	struct sockaddr_in cli_addr, serv_addr;
-	pthread_t chld_thr;
-
-	if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+    FILE *f = fopen(fname,"r");
+	
+	if(f)
 	{
-		fprintf(stderr,"Server: can't open stream socket\n");
-		exit(0);
-	}
-
-	memset((char *)&serv_addr,0,sizeof(serv_addr));
-	serv_addr.sin_family = AF_INET;
-	serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-	serv_addr.sin_port = htons(TCP_PORT);
-
-	if (bind(sockfd,(struct sockaddr *)&serv_addr,sizeof(serv_addr)) < 0)
-	{
-		fprintf(stderr,"Server: can't bind local address\n");
-		exit(0);
-	}
-
-	listen(sockfd,5);
-
-	for(;;)
-	{
-		clilen = sizeof(cli_addr);
-		newsockfd = accept(sockfd,(struct sockaddr *)&cli_addr,&clilen);
-		if (newsockfd < 0)
-		{
-			fprintf(stderr,"Server: accept error\n");
-			exit(0);
-		}
-
-		pthread_create(&chld_thr,NULL,SocketChildThread,(void *)newsockfd);
+	    int i = 0;
+		int x,y,z;
+	  
+//	    printf("Loading...\n");
+	    while(fscanf(f,"%d,%d,%d",&x,&y,&z)==3)
+	    {
+			if (i<nParticles)
+			{
+				h_pVel[i].x = 0.0f;
+				h_pVel[i].y = 0.0f;
+				h_pVel[i].z = 0.0f;
+				h_pVel[i].w = RHO_0;
+				h_pPos[i].x = x;
+				h_pPos[i].y = 258-y;
+				h_pPos[i].z = z;
+				h_pPos[i].w = VISC_BASE;
+			}
+			i++;
+	    }
+//		printf("Loaded %d particles\n",i);
 	}
 }
 
 void Display(void)
 {
-	printf(":T{%f}\n",h_simTime);
+//	printf(":T{%f}\n",h_simTime);
 
 	for(int i = 0; i<nParticles; i++)
 	{
-		printf(":P{%d,%.2f,%.2f,%.2f,%.4g,%.4g,%.4g,%.2f,%.2f,%.2f,%.2f}\n",h_trackIndex[i],h_pPos[i].x,h_pPos[i].y,h_pPos[i].z,h_pVel[i].x,h_pVel[i].y,h_pVel[i].z,0.5f,1.0f,1.0f,1.0f);
+		//printf(":P{%d,%.2f,%.2f,%.2f,%.4g,%.4g,%.4g,%.2f,%.2f,%.2f,%.2f}\n",h_trackIndex[i],h_pPos[i].x,h_pPos[i].y,h_pPos[i].z,h_pVel[i].x,h_pVel[i].y,h_pVel[i].z,0.5f,1.0f,1.0f,1.0f);
+		
+		printf("%.2f,%.2f,%.2f\n",h_pPos[i].x,h_pPos[i].y,h_pPos[i].z);
 	}
 }
 
-int main(void)
+int main(int argc, char *argv[])
 {
-	nParticles = 8000;
+	if (argc != 2)
+	{
+	  printf("Usage: surfaceFlatten <input.csv>\n");
+	  exit(1);
+	}
+
+	nParticles = GetNumParticles(argv[1]);
+	//nParticles = 350000; // with v7_2758.csv v342500 fails, 342000 works
+	
 	activeArray = 0;
 	int nthds = THREADS_PER_BLOCK;
 	int nblks = NUM_BLOCKS;
@@ -648,6 +639,7 @@ int main(void)
 
 	float time = 0.0f;
 
+	
 	cudaSetDevice(0);
 
 	cudaEvent_t start,stop;
@@ -655,7 +647,7 @@ int main(void)
 	cudaEventCreate(&stop);
 
 	AllocateMemory();
-	Initialise();
+	Initialise(argv[1]);
 
 	CopyToDevice();
 
@@ -671,7 +663,7 @@ int main(void)
 
 	cudaEventRecord(start,0);
 
-	int iters = 1000;
+	int iters = 70000;
 
 	float *maxAcc;
 
@@ -708,7 +700,7 @@ int main(void)
 	cudaEventSynchronize(stop);
 	cudaEventElapsedTime(&time,start,stop);
 
-	printf("%f %d\n",time,iters);
+	//printf("%f %d\n",time,iters);
 
 	FreeMemory();
 	return 0;
