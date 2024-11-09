@@ -18,6 +18,9 @@
 #define CELL_DIMX 3.0f
 #define CELL_DIMY 3.0f
 #define CELL_DIMZ 3.0f
+#define MAX_NEIGHBOURS 30
+#define MAX_NEIGHBOUR_DISTANCE_SQUARED (1.2f*1.2f)
+
 #define CELL_NUMX 256
 #define CELL_NUMY 256
 #define CELL_NUMZ 256
@@ -287,6 +290,62 @@ __global__ void ParticleMove(float4 *pPos, float4 *pVel, float4 *pAcc, int *pBou
 #define CELLNUMAUX(x,y,z) ((x)*CELL_NUMX+(y))*CELL_NUMY+(z)
 #define CELLNUM(x,y,z) ((x)<0 || (y)<0 || (z)<0 || (x)>=CELL_NUMX || (y)>=CELL_NUMY || (z)>=CELL_NUMZ)?-1:CELLNUMAUX(x,y,z)
 
+/* This is only called once */
+__global__ void InitialiseNeighbours(float4 *pPos, int *neighbourStart, float *neighbourDistance, int nParticles, int nloops)
+{
+	int thdsPerBlk = blockDim.x;	// Number of threads per block
+	int blkIdx = blockIdx.x;		// Index of block
+	int thdIdx = threadIdx.x;		// Index of thread within a block
+	int zIdx = blkIdx*thdsPerBlk*nloops + thdIdx;
+	int stepSize = blockDim.x*gridDim.x;
+
+	int neighbourCell,ps;
+	int cellx,celly,cellz;
+	int neighbourCount = 0;
+
+	for(int i = 0; i<nloops && zIdx < nParticles; i++)
+	{
+		cellx = (int)(pPos[zIdx].x/CELL_DIMX); 
+		celly = (int)(pPos[zIdx].y/CELL_DIMY);
+		cellz = (int)(pPos[zIdx].z/CELL_DIMZ);
+
+		for(int xo=-1;xo<=1;xo++) for(int yo=-1;yo<=1;yo++) for(int zo=-1;zo<=1;zo++)
+		{	
+			if ((neighbourCell = CELLNUM(cellx+xo,celly+yo,cellz+zo)) != -1 &&
+			    (ps = cellStart[neighbourCell]) != -1)
+			{
+				while(ps < nParticles && cellHash[ps] == neighbourCell)
+				{
+					if (ps != zIdx)
+					{
+						float3 diff = make_float3(
+					        	pPos[ps].x - pPos[zIdx].x,
+							pPos[ps].y - pPos[zIdx].y,
+							pPos[ps].z - pPos[zIdx].z);
+
+						float dist2 = diff.x*diff.x+diff.y*diff.y+diff.z*diff.z;
+						if (dist2 < MAX_NEIGHBOUR_DISTANCE_SQUARED)
+						{
+						  neighbourIndex[zIdx*MAX_NEIGHBOURS+neighbourCount] = ps;
+						  neighbourDistance[zIdx*MAX_NEIGHBOURS+neighbourCount] = dist2;
+						  neighbourCount++;
+						}
+					}
+					ps++;
+				}
+			}
+		}
+
+		while(neighbourCount<MAX_NEIGHBOURS)
+		{
+		  neighbourIndex[zIdx*MAX_NEIGHBOURS+neighbourCount] = -1;
+		  neighbourCount++;
+		}
+		
+		zIdx += stepSize;
+	}
+}
+
 __global__ void ShepardFilter(float4 *pPos, float4 *pVel, float *pNewDensity, unsigned *cellHash, int *cellStart, int nParticles, int nloops)
 {
 	int thdsPerBlk = blockDim.x;	// Number of threads per block
@@ -483,11 +542,15 @@ int *d_cellStart;
 unsigned *d_pIndex;
 unsigned *d_trackIndex[2];
 float *d_simTime;
+int *d_neighbourIndex;
+float *d_neighbourDist;
+
 
 float4 *h_pVel;
 float4 *h_pPos;
 float h_simTime;
 unsigned *h_trackIndex;
+
 
 int activeArray;
 
@@ -535,6 +598,9 @@ void AllocateMemory(void)
 	Check( cudaMalloc((void**)&d_cellStart,sizeof(int)*CELL_NUMX*CELL_NUMY*CELL_NUMZ) );
 	Check( cudaMalloc((void**)&d_pIndex,sizeof(unsigned)*nParticles) );
 	Check( cudaMalloc((void**)&d_simTime,sizeof(float)) );
+	Check( cudaMalloc((void**)&d_neighbourIndex,sizeof(int)*nParticles*MAX_NEIGHBOURS) );	
+	Check( cudaMalloc((void**)&d_neighbourDistance,sizeof(float)*nParticles*MAX_NEIGHBOURS) );	
+	
 	h_pVel = (float4 *)malloc(sizeof(float4)*nParticles);
 	h_pPos = (float4 *)malloc(sizeof(float4)*nParticles);
 	h_trackIndex = (unsigned *)malloc(sizeof(unsigned)*nParticles);
