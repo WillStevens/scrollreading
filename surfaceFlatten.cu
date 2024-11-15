@@ -53,6 +53,8 @@
 
 #define RHO_0 1.0f
 
+#define ATTRACT_FORCE_CONSTANT 0.8f	// This corresponds to A
+
 #define BOUNDARY_VISC_CONSTANT 10.0f	// This corresponds to T
 
 #define PI 3.14159265358979323846264f
@@ -219,8 +221,8 @@ __global__ void UpdateTrackIndex(unsigned *pIndex, unsigned *trackIndex0, unsign
 
 	for(int i = 0; i<nloops && zIdx < nParticles; i++)
 	{
-		unsigned p = pIndex[zIdx];
-		trackIndex1[zIdx] = trackIndex0[p];
+	    unsigned p = trackIndex0[zIdx]; // The particle that originally had index zIdx did have index p
+		trackIndex1[zIdx] = pIndex[p];  // Now updated trackIndex[<index at start>] using pIndex
 
 		zIdx += stepSize;
 	}
@@ -290,8 +292,8 @@ __global__ void ParticleMove(float4 *pPos, float4 *pVel, float4 *pAcc, int *pBou
 #define CELLNUMAUX(x,y,z) ((x)*CELL_NUMX+(y))*CELL_NUMY+(z)
 #define CELLNUM(x,y,z) ((x)<0 || (y)<0 || (z)<0 || (x)>=CELL_NUMX || (y)>=CELL_NUMY || (z)>=CELL_NUMZ)?-1:CELLNUMAUX(x,y,z)
 
-/* This is only called once */
-__global__ void InitialiseNeighbours(float4 *pPos, int *neighbourStart, float *neighbourDistance, int nParticles, int nloops)
+/* Called once to count how many neighbours each particle has */
+__global__ void CountNeighbours(float4 *pPos, unsigned *cellHash, int *cellStart, int *neighbourCount, unsigned *pIndex, int nParticles, int nloops)
 {
 	int thdsPerBlk = blockDim.x;	// Number of threads per block
 	int blkIdx = blockIdx.x;		// Index of block
@@ -301,10 +303,12 @@ __global__ void InitialiseNeighbours(float4 *pPos, int *neighbourStart, float *n
 
 	int neighbourCell,ps;
 	int cellx,celly,cellz;
-	int neighbourCount = 0;
-
+	int numNeighbours;
+	
 	for(int i = 0; i<nloops && zIdx < nParticles; i++)
 	{
+	    numNeighbours = 0;
+		
 		cellx = (int)(pPos[zIdx].x/CELL_DIMX); 
 		celly = (int)(pPos[zIdx].y/CELL_DIMY);
 		cellz = (int)(pPos[zIdx].z/CELL_DIMZ);
@@ -314,21 +318,20 @@ __global__ void InitialiseNeighbours(float4 *pPos, int *neighbourStart, float *n
 			if ((neighbourCell = CELLNUM(cellx+xo,celly+yo,cellz+zo)) != -1 &&
 			    (ps = cellStart[neighbourCell]) != -1)
 			{
+			
 				while(ps < nParticles && cellHash[ps] == neighbourCell)
 				{
 					if (ps != zIdx)
 					{
 						float3 diff = make_float3(
-					        	pPos[ps].x - pPos[zIdx].x,
+					        pPos[ps].x - pPos[zIdx].x,
 							pPos[ps].y - pPos[zIdx].y,
 							pPos[ps].z - pPos[zIdx].z);
-
+							
 						float dist2 = diff.x*diff.x+diff.y*diff.y+diff.z*diff.z;
 						if (dist2 < MAX_NEIGHBOUR_DISTANCE_SQUARED)
 						{
-						  neighbourIndex[zIdx*MAX_NEIGHBOURS+neighbourCount] = ps;
-						  neighbourDistance[zIdx*MAX_NEIGHBOURS+neighbourCount] = dist2;
-						  neighbourCount++;
+						  numNeighbours++;
 						}
 					}
 					ps++;
@@ -336,10 +339,79 @@ __global__ void InitialiseNeighbours(float4 *pPos, int *neighbourStart, float *n
 			}
 		}
 
-		while(neighbourCount<MAX_NEIGHBOURS)
-		{
-		  neighbourIndex[zIdx*MAX_NEIGHBOURS+neighbourCount] = -1;
-		  neighbourCount++;
+	    neighbourCount[pIndex[zIdx]] = numNeighbours;
+		
+		zIdx += stepSize;
+	}
+}
+
+/* This is only called once */
+__global__ void InitialiseNeighbours(float4 *pPos, unsigned *cellHash, int *cellStart, int *neighbourCount, int2 *neighbourList, float *neighbourDistance, unsigned *pIndex, int nParticles, int nloops)
+{
+	int thdsPerBlk = blockDim.x;	// Number of threads per block
+	int blkIdx = blockIdx.x;		// Index of block
+	int thdIdx = threadIdx.x;		// Index of thread within a block
+	int zIdx = blkIdx*thdsPerBlk*nloops + thdIdx;
+	int stepSize = blockDim.x*gridDim.x;
+
+	int neighbourCell,ps;
+	int cellx,celly,cellz;
+	int neighbourIndex;
+
+	if (zIdx==0) printf("Here...%d\n",pIndex[zIdx]);
+	
+	for(int i = 0; i<nloops && zIdx < nParticles; i++)
+	{
+	    neighbourIndex = 0;
+		
+		cellx = (int)(pPos[zIdx].x/CELL_DIMX); 
+		celly = (int)(pPos[zIdx].y/CELL_DIMY);
+		cellz = (int)(pPos[zIdx].z/CELL_DIMZ);
+
+		if (zIdx==0) printf("cell:%d,%d,%d\n",cellx,celly,cellz);
+
+		for(int xo=-1;xo<=1;xo++) for(int yo=-1;yo<=1;yo++) for(int zo=-1;zo<=1;zo++)
+		{	
+			if ((neighbourCell = CELLNUM(cellx+xo,celly+yo,cellz+zo)) != -1 &&
+			    (ps = cellStart[neighbourCell]) != -1)
+			{
+			
+		        if (zIdx==0) printf("cellx+xo,celly+yo,cellz+zo:%d,%d,%d\n",cellx+xo,celly+yo,cellz+zo);
+				while(ps < nParticles && cellHash[ps] == neighbourCell)
+				{
+					if (zIdx==0) printf("ps:%d\n",ps);
+					if (zIdx==0) printf("pIndex[ps]:%d\n",pIndex[ps]);
+					if (zIdx==0) printf("ps xyz:%f,%f,%f\n",pPos[ps].x,pPos[ps].y,pPos[ps].z);
+					if (zIdx==0) printf("neighbourCell:%d\n",neighbourCell);
+
+					if (ps != zIdx)
+					{
+						float3 diff = make_float3(
+					        	pPos[ps].x - pPos[zIdx].x,
+							pPos[ps].y - pPos[zIdx].y,
+							pPos[ps].z - pPos[zIdx].z);
+
+						if (zIdx==0) printf("xyz:%f,%f,%f\n",pPos[zIdx].x,pPos[zIdx].y,pPos[zIdx].z);
+						if (zIdx==0) printf("diff:%f,%f,%f\n",diff.x,diff.y,diff.z);
+							
+						float dist2 = diff.x*diff.x+diff.y*diff.y+diff.z*diff.z;
+						if (zIdx==0) printf("dist2:%f,%d\n",dist2,neighbourCount);
+						if (dist2 < MAX_NEIGHBOUR_DISTANCE_SQUARED)
+						{
+						  // We want neighbourIndex to be the index that the particle originally have (so that we can use trackIndex)
+						  // This is currently stored in pIndex, so we can use that to obtain it using trackIndex
+						  int zIdxOrigIndex = pIndex[zIdx];
+						  int psOrigIndex = pIndex[ps];
+						  int offset = neighbourCount[zIdxOrigIndex];
+						  neighbourList[neighbourIndex+offset].x = zIdxOrigIndex;
+						  neighbourList[neighbourIndex+offset].y = psOrigIndex;
+						  neighbourDistance[neighbourIndex+offset] = sqrtf(dist2);
+						  neighbourIndex++;
+						}
+					}
+					ps++;
+				}
+			}
 		}
 		
 		zIdx += stepSize;
@@ -420,7 +492,7 @@ __global__ void UpdateDensity(float4 *pVel, float *pNewDensity, int nParticles, 
 	}
 }
 
-__global__ void ParticleForces(float4 *pPos, float4 *pVel, float4 *pAcc, float *pAccLength, int *pBoundary, unsigned *cellHash, int *cellStart, int nParticles, int nloops, unsigned *trackIndex)
+__global__ void ParticleForces(float4 *pPos, float4 *pVel, float4 *pAcc, float *pAccLength, int *pBoundary, unsigned *cellHash, int *cellStart, int *neighbourIndex, float *neighbourDistance, int nParticles, int nloops, unsigned *trackIndex)
 {
 	int thdsPerBlk = blockDim.x;	// Number of threads per block
 	int blkIdx = blockIdx.x;		// Index of block
@@ -530,6 +602,51 @@ __global__ void ParticleForces(float4 *pPos, float4 *pVel, float4 *pAcc, float *
 	}
 }
 
+
+__global__ void ConnectForces(float4 *pPos, float4 *pVel, float4 *pAcc, float *pAccLength, int *pBoundary, unsigned *cellHash, int *cellStart, int2 *neighbourList, float *neighbourDistance, int nParticlePairs, int nloops, unsigned *trackIndex)
+{
+	int thdsPerBlk = blockDim.x;	// Number of threads per block
+	int blkIdx = blockIdx.x;		// Index of block
+	int thdIdx = threadIdx.x;		// Index of thread within a block
+	int zIdx = blkIdx*thdsPerBlk*nloops + thdIdx;
+	int stepSize = blockDim.x*gridDim.x;
+	
+	float4 thisAcc;
+
+	for(int i = 0; i<nloops && zIdx < nParticlePairs; i++)
+	{
+		thisAcc = make_float4(0.0f,0.0f,0.0f,0.0f);
+
+		int p1,p2;
+	    float dist;
+		
+		// trackIndex gives us the current index of the particle that was originally the one in the neighbourList
+		p1 = trackIndex[neighbourList[zIdx].x];
+		p2 = trackIndex[neighbourList[zIdx].x];
+		distTarget = neighbourDistance[zIdx];
+
+		// TODO - working out how to get the right indices for neighbours
+		float3 diff = make_float3(
+			        	pPos[p1].x - pPos[p2].x,
+						pPos[p1].y - pPos[p2].y,
+						pPos[p1].z - pPos[p2].z);
+
+		float dist = sqrtf(diff.x*diff.x + diff.y*diff.y + diff.z*diff.z);
+							
+		float distFromTarget = dist - digtTarget;
+
+        float f = distFromTarget*distFromTarget*ATTRACT_FORCE_CONSTANT;
+
+		float3 a = MultiplyVector(diff,f/dist);
+					
+		pAcc[p1].x += a.x;
+		pAcc[p1].y += a.y;
+		pAcc[p1].z += a.z;
+		pAcc[p1].w += a.w;
+	
+		zIdx += stepSize;
+	}
+}
 int nParticles;
 float4 *d_pVel[2];
 float *d_pNewDensity;
@@ -542,15 +659,16 @@ int *d_cellStart;
 unsigned *d_pIndex;
 unsigned *d_trackIndex[2];
 float *d_simTime;
-int *d_neighbourIndex;
-float *d_neighbourDist;
+int *d_neighbourCount;       // How many neighbours does each particle have? Calculate this before allocating memory for below
+uint2 *d_neighbourList;     // List of all pairs of particles p,q that are neighbours 
+float *d_neighbourDistance;  // The distances between the neighbours in neighbourList
 
 
 float4 *h_pVel;
 float4 *h_pPos;
 float h_simTime;
 unsigned *h_trackIndex;
-
+int *h_neighbourCount;
 
 int activeArray;
 
@@ -598,13 +716,35 @@ void AllocateMemory(void)
 	Check( cudaMalloc((void**)&d_cellStart,sizeof(int)*CELL_NUMX*CELL_NUMY*CELL_NUMZ) );
 	Check( cudaMalloc((void**)&d_pIndex,sizeof(unsigned)*nParticles) );
 	Check( cudaMalloc((void**)&d_simTime,sizeof(float)) );
-	Check( cudaMalloc((void**)&d_neighbourIndex,sizeof(int)*nParticles*MAX_NEIGHBOURS) );	
-	Check( cudaMalloc((void**)&d_neighbourDistance,sizeof(float)*nParticles*MAX_NEIGHBOURS) );	
+	Check( cudaMalloc((void**)&d_neighbourCount,sizeof(int)*nParticles) );	
 	
 	h_pVel = (float4 *)malloc(sizeof(float4)*nParticles);
 	h_pPos = (float4 *)malloc(sizeof(float4)*nParticles);
 	h_trackIndex = (unsigned *)malloc(sizeof(unsigned)*nParticles);
+	h_neighbourCount = (unsigned *)malloc(sizeof(int)*nParticles);
 }
+
+void AllocateNeighbourMemory(void)
+{
+	int numNeighbourPairs = 0;
+	
+	cudaMemcpy(h_neighbourCount,d_neighbourCount,sizeof(int)*nParticles,cudaMemcpyDeviceToHost);
+
+	// Count how many pairs of neighbours there are in total, and make a cumulative total so that we know the offset into
+	// neighbourList and neighbourDistance to user for each particle, when building these
+	
+	for(int i=0; i<nParticles; i++)
+	{
+	    numNeighbourPairs += h_neighbourCount[i];
+	    h_neighbourCount[i] = numNeighbourPairs;
+	}
+
+	cudaMemcpy(d_neighbourCount,h_neighbourCount,sizeof(int2)*numNeighbourPairs,cudaMemcpyHostToDevice);
+
+	Check( cudaMalloc((void**)&d_neighbourList,sizeof(int2)*numNeighbourPairs) );	
+	Check( cudaMalloc((void**)&d_neighbourDistance,sizeof(float)*numNeighbourPairs) );	
+}	
+
 
 void FreeMemory(void)
 {
@@ -622,9 +762,13 @@ void FreeMemory(void)
 	cudaFree(d_cellStart);
 	cudaFree(d_pIndex);
 	cudaFree(d_simTime);
+	cudeFree(d_neighbourCount);
+	cudeFree(d_neighbourList);
+	cudaFree(d_neighbourDistance);
 	free(h_pVel);
 	free(h_pPos);
 	free(h_trackIndex);
+	free(h_neighbourCount);
 }
 
 int GetNumParticles(char *fname)
@@ -726,10 +870,14 @@ int main(int argc, char *argv[])
 	UpdateTrackIndex<<< nblks, nthds >>>(d_pIndex,d_trackIndex[activeArray],d_trackIndex[1-activeArray],nParticles,nloops);
 	
 	activeArray = 1-activeArray;
-
+ 
+    CountNeighbours<<< nblks, nthds >>>(d_pPos[activeArray],d_cellHash,d_cellStart,d_neighbourCount, d_pIndex,nParticles, nloops);
+	AllocateNeighbourMemory();
+    InitialiseNeighbours<<< nblks, nthds >>>(d_pPos[activeArray],d_cellHash,d_cellStart,d_neighbourCount, d_neighbourList, d_neighbourDistance, d_pIndex,nParticles, nloops);
+	
 	cudaEventRecord(start,0);
 
-	int iters = 70000;
+	int iters = 7000;
 
 	float *maxAcc;
 
@@ -741,7 +889,10 @@ int main(int argc, char *argv[])
 				UpdateDensity<<< nblks, nthds >>>(d_pVel[activeArray],d_pNewDensity,nParticles,nloops);
 			}
 
-			ParticleForces<<< nblks, nthds >>>(d_pPos[activeArray],d_pVel[activeArray],d_pAcc,d_pAccLength,d_pBoundary,d_cellHash,d_cellStart,nParticles,nloops,d_trackIndex[activeArray]);
+			ParticleForces<<< nblks, nthds >>>(d_pPos[activeArray],d_pVel[activeArray],d_pAcc,d_pAccLength,d_pBoundary,d_cellHash,d_cellStart,d_neighbourIndex,d_neighbourDistance,nParticles,nloops,d_trackIndex[activeArray]);
+
+			ConnectForces<<< nblks, nthds >>>(d_pPos[activeArray],d_pVel[activeArray],d_pAcc,d_pAccLength,d_pBoundary,d_cellHash,d_cellStart,d_neighbourIndex,d_neighbourDistance,nParticles,nloops,d_trackIndex[activeArray]);
+
 			maxAcc = thrust::raw_pointer_cast(
 					thrust::max_element(thrust::device_ptr<float>(d_pAccLength),
 					thrust::device_ptr<float>(d_pAccLength+nParticles))
@@ -760,7 +911,9 @@ int main(int argc, char *argv[])
 		
 
 	CopyFromDevice();
-	Display();
+//	Display();
+    for(int i = 0; i<200; i++)
+	  printf("%d\n",h_neighbourIndex[i]);
 
 	cudaEventRecord(stop,0);
 	cudaEventSynchronize(stop);
