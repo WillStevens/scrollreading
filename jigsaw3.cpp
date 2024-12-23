@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <dirent.h>
 #include <math.h>
+#include <stdlib.h>
 
 #include <unordered_set>
 #include <vector>
@@ -25,9 +26,18 @@
 #define SIZE 512
 #define PT_MULT 1024
 
+#define PROJECTION_SIZE 2048
+#define PROJECTION_BLANK INT32_MIN
+int32_t projection[PROJECTION_SIZE][PROJECTION_SIZE];
+
 std::vector<std::string> files;
 std::map<std::string,std::vector<int16_t> > extents;
 std::map<std::string,std::unordered_set<uint32_t> > pointsets;
+std::map<std::string,std::unordered_set<uint32_t> > pointsets_xz;
+std::map<std::string,std::unordered_set<uint32_t> > plugs;
+std::map<std::string,std::unordered_set<uint32_t> > plugs_xz;
+
+std::map<std::string,int> groupPenaltyCache;
 
 // Two vectors that define the projection plane
 // The third vector in this array is the normal to the projection plane, calculated from the other two
@@ -114,11 +124,24 @@ std::unordered_set<uint32_t> UnorderedSetIntersection(std::unordered_set<uint32_
 		return UnorderedSetIntersection(b,a);
 }
 
-unsigned UnorderedSetIntersectionSize(std::unordered_set<uint32_t> &a,std::unordered_set<uint32_t> &b)
+std::unordered_set<uint32_t> UnorderedSetDifference(std::unordered_set<uint32_t> &a,std::unordered_set<uint32_t> &b)
+{
+	std::unordered_set<uint32_t> r;
+	
+	for(uint32_t x : a)
+	{
+		if (b.find(x)==b.end())
+			r.insert(x);
+	}
+	
+	return std::move(r);
+}
+
+int UnorderedSetIntersectionSize(std::unordered_set<uint32_t> &a,std::unordered_set<uint32_t> &b)
 {	
 	if (a.size()<=b.size())
 	{
-		unsigned r = 0;
+		int r = 0;
 	
 		for(uint32_t x : a)
 		{
@@ -126,142 +149,95 @@ unsigned UnorderedSetIntersectionSize(std::unordered_set<uint32_t> &a,std::unord
 				r++;
 		}
 	
+	    //printf("USIS:%d\n",r);
 		return r;
 	}
 	else
 		return UnorderedSetIntersectionSize(b,a);
 }
 
-int NeighbourTestHelper(const char *file1, const char *file2, std::unordered_set<uint32_t> &ps1
-                                                      , std::unordered_set<uint32_t> &ps1_xz
-													  , std::vector<int16_t> &e1
-													  , std::unordered_set<uint32_t> &ps2
-                                                      , std::unordered_set<uint32_t> &ps2_xz
-													  , std::vector<int16_t> &e2
-													  )
+bool PointInCube(int x, int y, int z, int cxmin, int cymin, int czmin, int cxmax, int cymax, int czmax)
 {
+	return x>=cxmin && x<=cxmax && y>=cymin && y<=cymax && z>=czmin && z<=czmax;
+}
+
+int Abutting(std::unordered_set<uint32_t> &ps1,
+			 std::unordered_set<uint32_t> &plugs1,
+			 std::unordered_set<uint32_t> &ps1_xz,
+			 std::unordered_set<uint32_t> &plugs1_xz,
+             std::vector<int16_t> &e1,
+		     std::unordered_set<uint32_t> &ps2,
+		     std::unordered_set<uint32_t> &plugs2,
+		     std::unordered_set<uint32_t> &ps2_xz,
+		     std::unordered_set<uint32_t> &plugs2_xz,
+			 std::vector<int16_t> &e2
+			)
+{
+
   int xmin1=e1[0], ymin1=e1[1], zmin1=e1[2], xmax1=e1[3], ymax1=e1[4], zmax1=e1[5];
   int xmin2=e2[0], ymin2=e2[1], zmin2=e2[2], xmax2=e2[3], ymax2=e2[4], zmax2=e2[5];
   
   bool overlap = false;
-  
-  if (((xmin2 >= xmin1 && xmin2 <= xmax1) || (xmax2 >= xmin1 && xmax2 <= xmax1)) &&
-      ((ymin2 >= ymin1 && ymin2 <= ymax1) || (ymax2 >= ymin1 && ymax2 <= ymax1)) &&
-      ((zmin2 >= zmin1 && zmin2 <= zmax1) || (zmax2 >= zmin1 && zmax2 <= zmax1)))
-    overlap = true;
-   
-  if (((xmin1 >= xmin2 && xmin1 <= xmax2) || (xmax1 >= xmin2 && xmax1 <= xmax2)) &&
-      ((ymin1 >= ymin2 && ymin1 <= ymax2) || (ymax1 >= ymin2 && ymax1 <= ymax2)) &&
-      ((zmin1 >= zmin2 && zmin1 <= zmax2) || (zmax1 >= zmin2 && zmax1 <= zmax2)))
-    overlap = true;
+
+  if (PointInCube(xmin1,ymin1,zmin1,xmin2,ymin2,zmin2,xmax2,ymax2,zmax2))
+	  overlap=true;
+  else if (PointInCube(xmax1,ymin1,zmin1,xmin2,ymin2,zmin2,xmax2,ymax2,zmax2))
+	  overlap=true;
+  else if (PointInCube(xmin1,ymax1,zmin1,xmin2,ymin2,zmin2,xmax2,ymax2,zmax2))
+	  overlap=true;
+  else if (PointInCube(xmax1,ymax1,zmin1,xmin2,ymin2,zmin2,xmax2,ymax2,zmax2))
+	  overlap=true;
+  else if (PointInCube(xmin1,ymin1,zmax1,xmin2,ymin2,zmin2,xmax2,ymax2,zmax2))
+	  overlap=true;
+  else if (PointInCube(xmax1,ymin1,zmax1,xmin2,ymin2,zmin2,xmax2,ymax2,zmax2))
+	  overlap=true;
+  else if (PointInCube(xmin1,ymax1,zmax1,xmin2,ymin2,zmin2,xmax2,ymax2,zmax2))
+	  overlap=true;
+  else if (PointInCube(xmax1,ymax1,zmax1,xmin2,ymin2,zmin2,xmax2,ymax2,zmax2))
+	  overlap=true;
+  else if (PointInCube(xmin2,ymin2,zmin2,xmin1,ymin1,zmin1,xmax1,ymax1,zmax1))
+	  overlap=true;
+  else if (PointInCube(xmax2,ymin2,zmin2,xmin1,ymin1,zmin1,xmax1,ymax1,zmax1))
+	  overlap=true;
+  else if (PointInCube(xmin2,ymax2,zmin2,xmin1,ymin1,zmin1,xmax1,ymax1,zmax1))
+	  overlap=true;
+  else if (PointInCube(xmax2,ymax2,zmin2,xmin1,ymin1,zmin1,xmax1,ymax1,zmax1))
+	  overlap=true;
+  else if (PointInCube(xmin2,ymin2,zmax2,xmin1,ymin1,zmin1,xmax1,ymax1,zmax1))
+	  overlap=true;
+  else if (PointInCube(xmax2,ymin2,zmax2,xmin1,ymin1,zmin1,xmax1,ymax1,zmax1))
+	  overlap=true;
+  else if (PointInCube(xmin2,ymax2,zmax2,xmin1,ymin1,zmin1,xmax1,ymax1,zmax1))
+	  overlap=true;
+  else if (PointInCube(xmax2,ymax2,zmax2,xmin1,ymin1,zmin1,xmax1,ymax1,zmax1))
+	  overlap=true;
 
   if (!overlap)
     return 0;
-    
-  /* We want to know if there are any xz_intersection_xz points that don't come from the intersection of ps1 and ps2
-   * If so then this means that two patches overlap somewhere other than on their boundary */
+   
   
-  std::unordered_set<uint32_t> intersection = UnorderedSetIntersection(ps1,ps2);
-  std::unordered_set<uint32_t> intersection_xz; // Intersection_xz will be the xz projection of the boundary points
-  
-  for(uint32_t u : intersection)
-  {
-    int z = (u%PT_MULT)-1;
-    int v = u/PT_MULT;
-    int x = (v%PT_MULT)-1;
-    int y = (v/PT_MULT)-1;
+  int common = UnorderedSetIntersectionSize(plugs1,plugs2);
 
-	intersection_xz.insert( (projectN(x,y,z,0)+1024)*2048+projectN(x,y,z,1)+1024 );  
-  }
-                 
-  std::unordered_set<uint32_t> xz_intersection_xz = UnorderedSetIntersection(ps1_xz,ps2_xz);
+  //printf("p1:%d p2:%d c:%d\n",(int)plugs1.size(),(int)plugs2.size(),common);
 
-
-  int common_size = intersection.size();
-  int common_xz_size = xz_intersection_xz.size();
+  if (common==0)
+	  return 0;
   
-  unsigned l1 = ps1.size();
-  unsigned l2 = ps2.size();
+  // When working out the intersection , discount points projecting to the same points as plugs
+  std::unordered_set<uint32_t> intersection = UnorderedSetIntersection(ps1_xz,ps2_xz);
+  intersection = UnorderedSetDifference(intersection,plugs1_xz);
+  intersection = UnorderedSetDifference(intersection,plugs2_xz);
   
-  unsigned lmin = (l1<l2)?l1:l2;
+  int intersectionSize = intersection.size();
   
-  /* Are there any points in xz_intersection_xz that aren't in intersection_xz : i.e. points that overlap somewhere other than the boundary */
-  int nonBoundaryOverlap = 0;
-
-  if (common_size > sqrt(lmin)/4)
-  {
-    for(uint32_t u : xz_intersection_xz) 
-    {
-		if (intersection_xz.find(u)==intersection_xz.end())
-			nonBoundaryOverlap++;	
-    }
-  }	
+  //printf("i:%d, c:%d\n",intersectionSize,common);
   
+  if (intersectionSize > common*20)
+	  return 0;
   
-  /* TODO - take account of nonBoundaryOverlap below */
-  
-  /* These two tests aim to limit the number of intersections that we end up with
-   * Only join if the common boundary is more than a value close to the square root of the approx area of the smallest patch, and if the number of intersection voxels is no more than a small constant times the volume.
-   */
-  //bool r = (common_size*common_size>lmin/8 && common_size*common_size<16*lmin && nonBoundaryOverlap < lmin/250);
-  bool r = (common_size>sqrt(lmin)/4 && nonBoundaryOverlap < lmin/30);
-  
-  int fibreBonus = 0;
-
-//  printf("NT %s: l1=%d l2=%d len(common)=%d lmin=%d len(common_xz)=%d fibreBonus=%d (%s,%s)\n",r?"true":"false",l1,l2,(int)common.size(),lmin,(int)common_xz.size(),fibreBonus,file1,file2);
-  
-  if (common_size>0)
-  {
-    // If the two pointsets have a fibre in common, this increases the score
-    std::set<std::string> ps1Fibres;
-    std::set<std::string> ps2Fibres;
-    for(const std::string &fibreFile : fibreFiles)
-	{
-      if (UnorderedSetIntersection(fibrePointsets[fibreFile],ps1).size()>0)
-         ps1Fibres.insert(fibreFile);
-      if (UnorderedSetIntersection(fibrePointsets[fibreFile],ps2).size()>0)
-         ps2Fibres.insert(fibreFile);
-	}
-	
-    std::set<std::string> intersect;
-    std::set_intersection(ps1Fibres.begin(), ps1Fibres.end(), ps2Fibres.begin(), ps2Fibres.end(),
-                 std::inserter(intersect, intersect.begin()));
-	if (intersect.size() > 0)
-		fibreBonus = 200;
-	
-    printf("NT %s: l1=%d l2=%d len(common)=%d lmin=%d len(common_xz)=%d nonBoundaryOverlap=%d, fibreBonus=%d (%s,%s)\n",r?"true":"false",l1,l2,(int)common_size,lmin,
-	(int)common_xz_size,nonBoundaryOverlap,fibreBonus,file1,file2);
-  }
-  
-  if (r)
-    return common_size + fibreBonus;
-  else
-    return 0;
+  return common;
 }
 
-int NeighbourTest(const char *file1, const char *file2, std::unordered_set<uint32_t> &ps1
-                                                      , std::unordered_set<uint32_t> &ps1_xz
-													  , std::vector<int16_t> &e1
-													  , std::unordered_set<uint32_t> &ps2
-                                                      , std::unordered_set<uint32_t> &ps2_xz
-													  , std::vector<int16_t> &e2
-													  )
-{
-	static std::map< std::tuple<std::string,unsigned,std::string,unsigned>, int > memo;
-	
-	std::tuple<std::string,unsigned,std::string,unsigned> test = {std::string(file1),(unsigned)ps1.size(),std::string(file2),(unsigned)ps2.size()};
-	
-	if (memo.find(test) == memo.end())
-	{
-		int r = NeighbourTestHelper(file1,file2,ps1,ps1_xz,e1,ps2,ps2_xz,e2);
-		memo[test] = r;
-		return r;
-	}
-	else
-	{
-		return memo[test];
-	}
-}
 
 std::vector<int16_t> UpdateExtent(std::vector<int16_t> &a, std::vector<int16_t> &b)
 {
@@ -282,13 +258,287 @@ std::vector<int16_t> UpdateExtent(std::vector<int16_t> &a, std::vector<int16_t> 
   return r;
 }
 
-int EvaluateSolution(std::vector<std::pair<std::string,std::string> > &possibleNeighbours, std::vecto<bool> &solution)
+int EvaluateSolution(std::vector<std::tuple<std::string,std::string,int> > &possibleNeighbours, std::vector<bool> &solution)
 {
+	int score = 0, penalty = 0;
+	
+	int nextFreeGroupId = 0;
+	
+	static int projIndex = INT32_MIN+1;
+	
+	std::set<int> groupIds;
+	std::map<std::string,int> groupMap;
+	
+	// Work out which patches are in which sets
 	for(int i = 0; i<solution.size(); i++)
-	{
-		f1 = possibleNeighbours[i].first;
-		f2 = possibleNeighbours[i].second;
+	{		
+		if (solution[i])
+		{
+			std::string f1 = std::get<0>(possibleNeighbours[i]);
+			std::string f2 = std::get<1>(possibleNeighbours[i]);
+			int abutScore = std::get<2>(possibleNeighbours[i]);
+
+			// Add to the score based on the size of the overlap
+			score += abutScore;
+			
+			if (groupMap.count(f1) == 0 && groupMap.count(f2) == 0)
+			{
+				groupIds.insert(nextFreeGroupId);
+				groupMap[f1] = groupMap[f2] = nextFreeGroupId++;
+			}
+			else if (groupMap.count(f1) == 0)
+			{
+				groupMap[f1] = groupMap[f2];
+			}
+			else if (groupMap.count(f2) == 0)
+			{
+				groupMap[f2] = groupMap[f1];
+			}
+			else if (groupMap[f2] != groupMap[f1])
+			{
+				int toRelabel = groupMap[f2];
+				int newLabel = groupMap[f1];
+				for(std::map<std::string,int>::iterator iter = groupMap.begin(); iter != groupMap.end(); ++iter)
+				{
+					std::string i = iter->first;
+					if (groupMap[i]==toRelabel)
+						groupMap[i] = newLabel;
+				}		
+
+				groupIds.erase(toRelabel);
+			}
+		}
 	}
+	
+	int maxGroupSize = 0;
+	int maxGroupNumPoints = 0;
+	std::string groupWithMax;
+	
+	for(int i : groupIds)
+	{
+//		printf("GroupId %d\n",i);
+
+        int groupPenalty = 0;
+		int groupNumPoints = 0;
+		
+    	int minProjIndex = projIndex;
+		
+        std::vector<std::string> filesInGroup;
+
+        std::string groupString;		
+		for(std::map<std::string,int>::iterator iter = groupMap.begin(); iter != groupMap.end(); ++iter)
+		{
+			if (iter->second==i)
+			{
+			    filesInGroup.push_back(iter->first);
+				groupString += iter->first + std::string(":");
+				
+				groupNumPoints += pointsets[iter->first].size();
+			}
+		}
+
+		if (groupNumPoints > maxGroupNumPoints)
+		{
+			maxGroupNumPoints = groupNumPoints;
+			groupWithMax = groupString;
+		}
+		
+		if (groupPenaltyCache.count(groupString)==1)
+		{
+			penalty += groupPenaltyCache[groupString];
+		}
+		else
+		{
+			for(const std::string& file : filesInGroup)
+			{
+				//printf("Here A\n");
+				std::unordered_set<uint32_t> s = UnorderedSetDifference(pointsets_xz[file],plugs_xz[file]); 
+				for(uint32_t u : s)
+				{
+					int pz = (u%2048)-1;
+					int px = (u/2048)-1;
+
+					//printf("u:%d px:%d pz:%d\n",u,px,pz);
+					
+					if (projection[px][pz]<minProjIndex)
+					{
+						projection[px][pz]=projIndex;
+					}
+					else if (projection[px][pz]!=projIndex)
+					{
+				        groupPenalty++;
+					    projection[px][pz]=projIndex;
+					}
+				}
+				//printf("Here B\n");
+				
+				projIndex++;	
+			}
+
+			groupPenaltyCache[groupString] = groupPenalty;
+			
+			penalty += groupPenalty;
+		}
+		
+		if (filesInGroup.size() > maxGroupSize)
+			maxGroupSize = filesInGroup.size();
+		
+	}
+	
+	printf("Groups:%d, maxGroupSize:%d, maxGroupNumPoints:%d, Score: %d, Penalty: %d\n",(int)groupIds.size(),maxGroupSize,maxGroupNumPoints,score,penalty);
+	printf(groupWithMax.c_str());
+	
+	return 25*score - 5*penalty;
+}
+
+class RunStats
+{
+	public:
+		std::vector<int> patchSizes;
+		std::vector<int> surfaceSizes;
+		
+		void Display(void)
+		{
+			std::sort(patchSizes.begin(),patchSizes.end());
+			std::sort(surfaceSizes.begin(),surfaceSizes.end());
+			
+			int totalPatchSize = 0;
+			for(int s : patchSizes)
+			{
+				totalPatchSize += s;
+			}
+
+			int totalSurfaceSize = 0;
+			int numLargeSurfaces = 0;
+			for(int s : surfaceSizes)
+			{
+				totalSurfaceSize += s;
+				if (s>SIZE*SIZE/2)
+				  numLargeSurfaces++;	
+			}
+			
+			int medianPatchSize=0;
+			if (patchSizes.size()%2==0 && patchSizes.size()>0)
+			{
+				medianPatchSize = (patchSizes[patchSizes.size()/2-1]+patchSizes[patchSizes.size()/2])/2;
+			}
+			else if (patchSizes.size()%2==1 && patchSizes.size()>0)
+			{
+				medianPatchSize = patchSizes[patchSizes.size()/2];
+			}
+
+			int medianSurfaceSize=0;
+			if (surfaceSizes.size()%2==0 && surfaceSizes.size()>0)
+			{
+				medianSurfaceSize = (surfaceSizes[surfaceSizes.size()/2-1]+surfaceSizes[surfaceSizes.size()/2])/2;
+			}
+			else if (surfaceSizes.size()%2==1 && surfaceSizes.size()>0)
+			{
+				medianSurfaceSize = surfaceSizes[surfaceSizes.size()/2];
+			}
+
+			
+			printf("----------------\n");
+			printf("Total patches: %d\n",(int)patchSizes.size());
+			printf("Total patch size: %d\n",totalPatchSize);
+			printf("Median patch size: %d\n",medianPatchSize);
+			printf("\n");
+			printf("Total surfaces: %d\n",(int)surfaceSizes.size());
+			printf("Total surface size: %d\n",totalSurfaceSize);
+			printf("Median surface size: %d\n",medianSurfaceSize);
+			printf("Number of large surfaces (>= %d voxels): %d\n",SIZE*SIZE/2,numLargeSurfaces);
+			printf("----------------\n");
+		}
+};
+
+void ExportAllGroups(const char *directory, std::vector<std::tuple<std::string,std::string,int> > &possibleNeighbours, std::vector<bool> &solution, RunStats &stats)
+{
+	int nextFreeGroupId = 0;
+		
+	std::set<int> groupIds;
+	std::map<std::string,int> groupMap;
+	
+	// Work out which patches are in which sets
+	for(int i = 0; i<solution.size(); i++)
+	{		
+		if (solution[i])
+		{
+			std::string f1 = std::get<0>(possibleNeighbours[i]);
+			std::string f2 = std::get<1>(possibleNeighbours[i]);
+			
+			if (groupMap.count(f1) == 0 && groupMap.count(f2) == 0)
+			{
+				groupIds.insert(nextFreeGroupId);
+				groupMap[f1] = groupMap[f2] = nextFreeGroupId++;
+			}
+			else if (groupMap.count(f1) == 0)
+			{
+				groupMap[f1] = groupMap[f2];
+			}
+			else if (groupMap.count(f2) == 0)
+			{
+				groupMap[f2] = groupMap[f1];
+			}
+			else if (groupMap[f2] != groupMap[f1])
+			{
+				int toRelabel = groupMap[f2];
+				int newLabel = groupMap[f1];
+				for(std::map<std::string,int>::iterator iter = groupMap.begin(); iter != groupMap.end(); ++iter)
+				{
+					std::string i = iter->first;
+					if (groupMap[i]==toRelabel)
+						groupMap[i] = newLabel;
+				}		
+
+				groupIds.erase(toRelabel);
+			}
+		}
+	}
+		
+	for(int i : groupIds)
+	{		
+        std::vector<std::string> filesInGroup;
+
+		for(std::map<std::string,int>::iterator iter = groupMap.begin(); iter != groupMap.end(); ++iter)
+		{
+			if (iter->second==i)
+			{
+			    filesInGroup.push_back(iter->first);
+			}
+		}
+
+		// Sort files in descending order of size
+		auto sortFilesLambda = [] (std::string const& s1, std::string const& s2) -> bool
+		{
+			return pointsets[s1].size() > pointsets[s2].size();
+		};
+    
+		std::sort(filesInGroup.begin(), filesInGroup.end(), sortFilesLambda);  
+			
+		// Name of output corresponds to first file in list
+		FILE *f = fopen((std::string(directory) + std::string("/output_jigsaw3/v")+filesInGroup[0].substr(1)).c_str(),"w");
+		
+		std::unordered_set<uint32_t> outputPointSet;
+		
+		for(const std::string& file : filesInGroup)
+		{
+			outputPointSet.merge(pointsets[file]);
+		}	
+
+ 	    stats.surfaceSizes.push_back(outputPointSet.size());
+		
+        for(uint32_t u : outputPointSet)
+		{
+			int z = (u%PT_MULT)-1;
+			int v = u/PT_MULT;
+			int x = (v%PT_MULT)-1;
+			int y = (v/PT_MULT)-1;
+			
+			fprintf(f,"%d,%d,%d\n",x,y,z);
+		}
+		
+		fclose(f);
+	}	
 }
 
 int main(int argc, char *argv[])
@@ -298,6 +548,8 @@ int main(int argc, char *argv[])
     printf("Usage: jigsaw3 <directory> [x1 y1 z1 x2 y2 z2]\n");
     return -1;
   }
+
+  RunStats stats;
   
   if (argc==8)
   {
@@ -320,10 +572,22 @@ int main(int argc, char *argv[])
 		
 	printf("\n");
   }
+
+  /* Cross product of the two plane vectors gives the normal vector */
+  planeVectors[2][0] = (planeVectors[0][1]*planeVectors[1][2]-planeVectors[0][2]*planeVectors[1][1])/1000;
+  planeVectors[2][1] = (planeVectors[0][2]*planeVectors[1][0]-planeVectors[0][0]*planeVectors[1][2])/1000;
+  planeVectors[2][2] = (planeVectors[0][0]*planeVectors[1][1]-planeVectors[0][1]*planeVectors[1][0])/1000;
+	
+  printf("Normal vector normalised to length 1000:\n");
+  printf("%d %d %d\n",planeVectors[2][0],planeVectors[2][1],planeVectors[2][2]);
   
+  for(int j = 0; j<PROJECTION_SIZE; j++)
+	for(int k = 0; k<PROJECTION_SIZE; k++)
+	  projection[j][k] = PROJECTION_BLANK;
+
   printf("Loading volumes\n");
 
-  if (argc == 3 || argc == 9)
+  if (argc == 2 || argc == 8)
   {
 	std::string volumeDir(argv[1]);
 	{
@@ -360,7 +624,7 @@ int main(int argc, char *argv[])
 	}
   }
   
-  printf("Finished loading volumes\n");
+  printf("Finished loading %d volumes\n",(int)files.size());
 
   // Sort files in descending order of size
   auto sortFilesLambda = [] (std::string const& s1, std::string const& s2) -> bool
@@ -369,8 +633,27 @@ int main(int argc, char *argv[])
   };
     
   std::sort(files.begin(), files.end(), sortFilesLambda);  
+
+  // Populate 'plugs' for each volume - these are any points that a volume shares with any other volume
+  for(int i = 0; i<files.size(); i++)
+  {
+	plugs[files[i]]=std::unordered_set<uint32_t>();
+  }
   
-  std::map<std::string,std::unordered_set<uint32_t> > pointsets_xz;
+  for(int i = 0; i<files.size(); i++)
+  {  
+    for(int j=0; j<files.size(); j++)
+	{
+		if (j!=i)
+		{
+	      std::unordered_set<uint32_t> tmp = UnorderedSetIntersection(pointsets[files[i]],pointsets[files[j]]);
+		  plugs[files[i]].merge(tmp);
+		  //plugs[files[j]].merge(tmp);
+		}
+    }
+	
+	printf("%s has %d plugs\n",files[i].c_str(),(int)plugs[files[i]].size());
+  }
   
   for(const std::string &f : files)
     for(uint32_t u : pointsets[f])
@@ -382,19 +665,99 @@ int main(int argc, char *argv[])
 
 	  pointsets_xz[f].insert( (projectN(x,y,z,0)+1024)*2048+projectN(x,y,z,1)+1024 );
 	}
+
+  for(const std::string &f : files)
+    for(uint32_t u : plugs[f])
+	{
+      int z = (u%PT_MULT)-1;
+      int v = u/PT_MULT;
+      int x = (v%PT_MULT)-1;
+      int y = (v/PT_MULT)-1;
+
+	  plugs_xz[f].insert( (projectN(x,y,z,0)+1024)*2048+projectN(x,y,z,1)+1024 );
+	}
 	
-  std::vector<std::pair<std::string,std::string> > possibleNeighbours;
+  std::vector<std::tuple<std::string,std::string,int> > possibleNeighbours;
   
+  int numWithNoNeighbours = 0;
   // Work out wihch patches abut each other - any that do are neighbour candidates
   for(int i = 0; i<files.size(); i++)
+  {
+	bool anyNeighbours = false;
     for(int j=i+1; j<files.size(); j++)
 	{
-	  if they abut each other
+	  int a = Abutting(pointsets[files[i]],plugs[files[i]],pointsets_xz[files[i]],plugs_xz[files[i]],extents[files[i]],pointsets[files[j]],plugs[files[j]],pointsets_xz[files[j]],plugs_xz[files[j]],extents[files[j]]);
+	  
+	  if (a>0)
 	  {
-		possibleNeighbours.push_back(str::pair(files[i],files[j]));
+		possibleNeighbours.push_back(std::tuple(files[i],files[j],a));
+		anyNeighbours = true;
 	  }
 	}
+	
+	if (!anyNeighbours)
+		numWithNoNeighbours++;
+  }
+  
+  printf("numWithNoNeighbours=%d\n",numWithNoNeighbours);
+  
+  // This vector stores the current state
+  std::vector<bool> currentState(possibleNeighbours.size());
 
+  printf("currentState size %d\n",(int)currentState.size());
+  
+  for(int i = 0; i<currentState.size(); i++)
+    currentState[i]=false;
+
+  //currentState[0]=true;
+  int maxTemperature = 40;
+  int temperature = maxTemperature;
+  int counter = 0;
+  
+  int currentScore = EvaluateSolution(possibleNeighbours,currentState);
+  
+  while(temperature>0)
+  {
+	printf("Temperature %d, Score %d\n",temperature,currentScore);
+	
+    std::vector<bool> newState = currentState;
+	
+    for(int i = 0; i<newState.size(); i++)
+	{
+	  // rule for deciding whether to mutate
+	  if (rand()%(1000*maxTemperature) < temperature)
+	  {
+        newState[i]=!newState[i];
+	  }
+    }
+	
+	int newScore = EvaluateSolution(possibleNeighbours,newState);
+	
+	// rule for deciding whether to accept new state
+	if (newScore > currentScore || (1==0 && rand()%(5000*maxTemperature) < temperature))
+	{
+		currentState = newState;
+		currentScore = newScore;
+	}
+	
+	if (counter%1000==0)
+	  temperature--;
+  
+    counter++;
+  }
+
+  ExportAllGroups(argv[1],possibleNeighbours,currentState,stats);
+
+  printf("Finished\n");
+
+  stats.Display();
+  
+  return 0;    
+}
+/*  
+  
+  // change it
+  evaluate  
 	
   std::set<std::string> filesProcessed;
 
@@ -484,3 +847,4 @@ int main(int argc, char *argv[])
   
   return 0;  
 }
+*/

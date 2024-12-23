@@ -167,7 +167,7 @@ int NeighbourTestHelper(const char *file1, const char *file2, std::unordered_set
   
   std::unordered_set<uint32_t> intersection = UnorderedSetIntersection(ps1,ps2);
   std::unordered_set<uint32_t> intersection_xz; // Intersection_xz will be the xz projection of the boundary points
-  
+	
   for(uint32_t u : intersection)
   {
     int z = (u%PT_MULT)-1;

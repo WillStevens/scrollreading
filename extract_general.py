@@ -1,3 +1,4 @@
+import gc
 import sys
 from pathlib import Path
 import numpy
@@ -32,4 +33,5 @@ for (x,y,z) in [(x_start,y_start,z_start)]:
     del im
     del imarray
     del rect
+    print(gc.collect())
   
