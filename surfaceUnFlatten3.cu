@@ -36,11 +36,13 @@
 #define MAXZE (MAXZ-EPSILON)
 
 #define REPEL_FORCE_CONSTANT            0.2f
-#define ATTRACT_FORCE_CONSTANT          0.04f
+#define ATTRACT_FORCE_CONSTANT          0.2f
 #define FRICTION_FORCE_CONSTANT         0.9f
-#define GRAVITY_FORCE_CONSTANT 			0.0005f
+#define GRAVITY_FORCE_CONSTANT 			0.0f
 
 #define PI 3.14159265358979323846264f
+
+#define RESTORE_TIME 20000 // Number of iterations after which target particles will be back to their original positions 
 
 #define DEBUG_OUT
 
@@ -164,7 +166,7 @@ __global__ void UpdateTrackIndex(unsigned *pIndex, unsigned *trackIndex0, unsign
 	}
 }
 
-__global__ void ParticleMove(float4 *pPos, float4 *pVel, float4 *pAcc, unsigned *cellHash, unsigned *pIndex, int nParticles, int nloops)
+__global__ void ParticleMove(float4 *pPos, float4 *pVel, float4 *pAcc, float4 *pOriginalPos, float4 *pTargetPos, unsigned *cellHash, unsigned *trackIndex, unsigned *pIndex, int nParticles, int nloops, int nTargetParticles, int iters)
 {
 	int thdsPerBlk = blockDim.x;	// Number of threads per block
 	int blkIdx = blockIdx.x;		// Index of block
@@ -172,6 +174,9 @@ __global__ void ParticleMove(float4 *pPos, float4 *pVel, float4 *pAcc, unsigned 
 	int zIdx = blkIdx*thdsPerBlk*nloops + thdIdx;
 	int stepSize = blockDim.x*gridDim.x;
 
+	float a = RESTORE_TIME-iters;
+	float b = iters;
+	
 /*
 	if (zIdx==0)
 	{
@@ -193,10 +198,24 @@ __global__ void ParticleMove(float4 *pPos, float4 *pVel, float4 *pAcc, unsigned 
 		pVel[zIdx].y *= FRICTION_FORCE_CONSTANT;
 		pVel[zIdx].z *= FRICTION_FORCE_CONSTANT;
 
-   	    pPos[zIdx].x += pVel[zIdx].x;
-		pPos[zIdx].y += pVel[zIdx].y;
-		pPos[zIdx].z += pVel[zIdx].z;
-
+		unsigned ti = trackIndex[zIdx];
+		if (ti < nTargetParticles)
+		{
+			pPos[zIdx].x = (pOriginalPos[ti].x*a + pTargetPos[ti].x*b)/(a+b);
+			pPos[zIdx].y = (pOriginalPos[ti].y*a + pTargetPos[ti].y*b)/(a+b);
+			pPos[zIdx].z = (pOriginalPos[ti].z*a + pTargetPos[ti].z*b)/(a+b);
+		    if (pOriginalPos[ti].x==430 && pOriginalPos[ti].y==310)
+				printf("%f,%f,%f\n",pPos[zIdx].x,pPos[zIdx].y,pPos[zIdx].z);
+		}
+		else
+		{
+//		    if (ti>258907 && ti<=258917)
+//				printf("%d:%f,%f,%f\n",ti,pPos[zIdx].x,pPos[zIdx].y,pPos[zIdx].z);
+			pPos[zIdx].x += pVel[zIdx].x;
+			pPos[zIdx].y += pVel[zIdx].y;
+			pPos[zIdx].z += pVel[zIdx].z;
+		}
+		
 		// Apply gravitational force at this point, ready for next iteration
 		// pAcc[zIdx].w is deltaDensity - set it to zero here
 		pAcc[zIdx] = make_float4(0.0f,-GRAVITY_FORCE_CONSTANT,0.0f,0.0f);
@@ -408,6 +427,7 @@ __global__ void ParticleForces(float4 *pPos, float4 *pVel, float4 *pAcc, unsigne
 							pPos[ps].y - pPos[zIdx].y,
 							pPos[ps].z - pPos[zIdx].z);
 
+							
 						float dist = sqrtf(diff.x*diff.x + diff.y*diff.y + diff.z*diff.z);
 						if (dist < 1.0f)
 						{
@@ -420,12 +440,13 @@ __global__ void ParticleForces(float4 *pPos, float4 *pVel, float4 *pAcc, unsigne
 							thisAcc.y += -f * diff.y;
 							thisAcc.z += -f * diff.z;
 							
-						    if (dist<0.2)
+						    if (dist<0.2 && 0)
 							{
 							  printf("%d,%d separated by %f (x1,y1,z1=%f,%f,%f x2,y2,z2=%f,%f,%f force=%f,%f,%f)\n",zIdx,ps,dist,pPos[zIdx].x,pPos[zIdx].y,pPos[zIdx].z,pPos[ps].x,pPos[ps].y,pPos[ps].z,-f*diff.x,-f*diff.y,-f*diff.z);
 							}
 
 						}
+
 					}
 					ps++;
 				}
@@ -500,11 +521,16 @@ __global__ void ConnectForces(float4 *pPos, float4 *pVel, float4 *pAcc, unsigned
 		zIdx += stepSize;
 	}
 }
+
+int nTargetParticles;
+int nHoleParticles;
 int nParticles;
 int nParticlePairs;
 float4 *d_pVel[2];
 float4 *d_pPos[2];
 float4 *d_pAcc;
+float4 *d_pTargetPos;
+float4 *d_pOriginalPos;
 unsigned *d_cellHash;
 int *d_cellStart;
 unsigned *d_pIndex;
@@ -517,6 +543,7 @@ float *d_neighbourDistance;  // The distances between the neighbours in neighbou
 
 float4 *h_pVel;
 float4 *h_pPos;
+float4 *h_pTargetPos;
 unsigned *h_trackIndex;
 unsigned *h_reverseTrackIndex;
 int *h_neighbourCount;
@@ -543,6 +570,8 @@ void CopyToDevice(void)
 {
 	cudaMemcpy(d_pVel[activeArray],h_pVel,sizeof(float4)*nParticles,cudaMemcpyHostToDevice);
 	cudaMemcpy(d_pPos[activeArray],h_pPos,sizeof(float4)*nParticles,cudaMemcpyHostToDevice);
+	cudaMemcpy(d_pOriginalPos,h_pPos,sizeof(float4)*nTargetParticles,cudaMemcpyHostToDevice);
+	cudaMemcpy(d_pTargetPos,h_pTargetPos,sizeof(float4)*nTargetParticles,cudaMemcpyHostToDevice);
 }
 
 void CopyFromDevice(void)
@@ -561,6 +590,8 @@ void AllocateMemory(void)
 		Check( cudaMalloc((void**)&d_pPos[i],sizeof(float4)*nParticles) );
 		Check( cudaMalloc((void**)&d_trackIndex[i],sizeof(unsigned)*nParticles) );
 	}
+	Check( cudaMalloc((void**)&d_pTargetPos,sizeof(float4)*nTargetParticles) );
+	Check( cudaMalloc((void**)&d_pOriginalPos,sizeof(float4)*nTargetParticles) );
 	Check( cudaMalloc((void**)&d_pAcc,sizeof(float4)*nParticles) );
 	Check( cudaMalloc((void**)&d_reverseTrackIndex,sizeof(unsigned)*nParticles) );
 	Check( cudaMalloc((void**)&d_cellHash,sizeof(unsigned)*nParticles) );
@@ -570,6 +601,7 @@ void AllocateMemory(void)
 	
 	h_pVel = (float4 *)malloc(sizeof(float4)*nParticles);
 	h_pPos = (float4 *)malloc(sizeof(float4)*nParticles);
+	h_pTargetPos = (float4 *)malloc(sizeof(float4)*nTargetParticles);
 	h_trackIndex = (unsigned *)malloc(sizeof(unsigned)*nParticles);
 	h_reverseTrackIndex = (unsigned *)malloc(sizeof(unsigned)*nParticles);
 	h_neighbourCount = (int *)malloc(sizeof(int)*nParticles);
@@ -612,6 +644,8 @@ void FreeMemory(void)
 		cudaFree(d_pPos[i]);
 		cudaFree(d_trackIndex[i]);
 	}
+	cudaFree(d_pTargetPos);
+	cudaFree(d_pOriginalPos);
 	cudaFree(d_pAcc);
 	cudaFree(d_reverseTrackIndex);
 	cudaFree(d_cellHash);
@@ -622,6 +656,7 @@ void FreeMemory(void)
 	cudaFree(d_neighbourDistance);
 	free(h_pVel);
 	free(h_pPos);
+	free(h_pTargetPos);
 	free(h_trackIndex);
 	free(h_reverseTrackIndex);
 	free(h_neighbourCount);
@@ -660,9 +695,9 @@ float projectN(float x, float y, float z, int n)
 	return r;
 }
 
-void Initialise(char *fname)
+void Initialise(char *target, char *flat, char *holes)
 {
-    FILE *f = fopen(fname,"r");
+    FILE *f = fopen(target,"r");
 	
 	if(f)
 	{
@@ -673,29 +708,82 @@ void Initialise(char *fname)
 //	    printf("Loading...\n");
 	    while(fscanf(f,"%f,%f,%f",&x,&y,&z)==3)
 	    {
+			if (i<nParticles-nHoleParticles)
+			{
+				h_pTargetPos[i].x = projectN(x,y,z,0);
+				h_pTargetPos[i].y = projectN(x,y,z,2);
+				h_pTargetPos[i].z = projectN(x,y,z,1);
+				
+				if (h_pTargetPos[i].x < minx) minx = h_pTargetPos[i].x;
+				if (h_pTargetPos[i].y < miny) miny = h_pTargetPos[i].y;
+				if (h_pTargetPos[i].z < minz) minz = h_pTargetPos[i].z;
+			}
+			i++;
+	    }
+		for(i = 0; i<nParticles-nHoleParticles; i++)
+		{
+		   h_pTargetPos[i].x -= minx;
+		   h_pTargetPos[i].y -= miny;
+		   h_pTargetPos[i].z -= minz;
+		}
+		
+		printf("Loaded %d target particles\n",i);
+		
+		fclose(f);
+	}
+
+    f = fopen(flat,"r");
+
+	if(f)
+	{
+	    int i = 0;
+		float x,y,z;
+	  
+//	    printf("Loading...\n");
+	    while(fscanf(f,"%f,%f,%f",&x,&y,&z)==3)
+	    {
 			if (i<nParticles)
 			{
 				h_pVel[i].x = 0.0f;
 				h_pVel[i].y = 0.0f;
 				h_pVel[i].z = 0.0f;
-				h_pPos[i].x = projectN(x,y,z,0);
-				h_pPos[i].y = projectN(x,y,z,2);
-				h_pPos[i].z = projectN(x,y,z,1);
-				
-				if (h_pPos[i].x < minx) minx = h_pPos[i].x;
-				if (h_pPos[i].y < miny) miny = h_pPos[i].y;
-				if (h_pPos[i].z < minz) minz = h_pPos[i].z;
+				h_pPos[i].x = x;
+				h_pPos[i].y = y;
+				h_pPos[i].z = z;
 			}
 			i++;
 	    }
-		for(i = 0; i<nParticles; i++)
-		{
-		   h_pPos[i].x -= minx;
-		   h_pPos[i].y -= miny;
-		   h_pPos[i].z -= minz;
-		}
 		
-//		printf("Loaded %d particles\n",i);
+		printf("Loaded %d flat particles\n",i);
+		
+		fclose(f);
+	}
+
+    f = fopen(holes,"r");
+	
+	if(f)
+	{
+	    int i = 0;
+		float x,y,z;
+	  
+//	    printf("Loading...\n");
+	    while(fscanf(f,"%f,%f,%f",&x,&y,&z)==3)
+	    {
+			if (i<nHoleParticles)
+			{
+				h_pVel[i+nTargetParticles].x = 0.0f;
+				h_pVel[i+nTargetParticles].y = 0.0f;
+				h_pVel[i+nTargetParticles].z = 0.0f;
+				h_pPos[i+nTargetParticles].x = x;
+				h_pPos[i+nTargetParticles].y = y;
+				h_pPos[i+nTargetParticles].z = z;
+			}
+			i++;
+	    }
+		
+		printf("Loaded %d hole particles\n",i);
+		
+		fclose(f);
 	}
 }
 
@@ -728,9 +816,9 @@ void Display(void)
 
 int main(int argc, char *argv[])
 {
-	if (argc != 8)
+	if (argc != 10)
 	{
-	  printf("Usage: surfaceFlatten <input.csv> x1 y1 z1 x2 y2 z2\n");
+	  printf("Usage: surfaceUnFlatten <input.csv> <flat.csv> <holes.csv> x1 y1 z1 x2 y2 z2\n");
 	  exit(1);
 	}
 
@@ -765,7 +853,15 @@ int main(int argc, char *argv[])
     }
 
 	
-	nParticles = GetNumParticles(argv[1]);
+	nTargetParticles = GetNumParticles(argv[1]);
+	nHoleParticles = GetNumParticles(argv[3]);
+	nParticles = GetNumParticles(argv[2])+ nHoleParticles;
+	
+	if (nParticles != nTargetParticles+nHoleParticles)
+	{
+	  printf("Particle count mismatch\n");
+	  exit(2);
+	}
 	
 	activeArray = 0;
 	int nthds = THREADS_PER_BLOCK;
@@ -783,7 +879,7 @@ int main(int argc, char *argv[])
 	cudaEventCreate(&stop);
 
 	AllocateMemory();
-	Initialise(argv[1]);
+	Initialise(argv[1],argv[2],argv[3]);
 
 	CopyToDevice();
 
@@ -791,8 +887,12 @@ int main(int argc, char *argv[])
 	thrust::sort_by_key(	thrust::device_ptr<uint>(d_cellHash),
 				thrust::device_ptr<uint>(d_cellHash+nParticles),
 				thrust::device_ptr<uint>(d_pIndex));
+
+								
 	InitCellStart<<< nblks, nthds >>>(d_cellStart,nCellLoops);
+	
 	ArrayCopy<<< nblks, nthds >>>(d_pPos[activeArray],d_pPos[1-activeArray],d_pVel[activeArray],d_pVel[1-activeArray],d_cellHash,d_cellStart,d_pIndex,nParticles,nloops);
+
 	UpdateTrackIndex<<< nblks, nthds >>>(d_pIndex,d_trackIndex[activeArray],d_trackIndex[1-activeArray],d_reverseTrackIndex,nParticles,nloops);
 	
 	activeArray = 1-activeArray;
@@ -828,7 +928,8 @@ int main(int argc, char *argv[])
 
 			ConnectForces<<< nblks, nthds >>>(d_pPos[activeArray],d_pVel[activeArray],d_pAcc,d_cellHash,d_cellStart,d_neighbourList,d_neighbourDistance,nParticlePairs,nPPloops,d_reverseTrackIndex,i);
 
-			ParticleMove<<< nblks, nthds >>>(d_pPos[activeArray],d_pVel[activeArray],d_pAcc,d_cellHash,d_pIndex,nParticles,nloops);
+			ParticleMove<<< nblks, nthds >>>(d_pPos[activeArray],d_pVel[activeArray],d_pAcc,d_pOriginalPos,d_pTargetPos,d_cellHash,d_trackIndex[activeArray]
+			,d_pIndex,nParticles,nloops,nTargetParticles,i);
 			thrust::sort_by_key(thrust::device_ptr<uint>(d_cellHash),
 				    thrust::device_ptr<uint>(d_cellHash+nParticles),
 				    thrust::device_ptr<uint>(d_pIndex));
