@@ -13,7 +13,7 @@
 #include <thrust/device_ptr.h>
 
 #define NUM_BLOCKS 4096
-#define THREADS_PER_BLOCK 128
+#define THREADS_PER_BLOCK 1024
 
 #define CELL_DIMX 3.0f
 #define CELL_DIMY 3.0f
@@ -39,6 +39,7 @@
 #define ATTRACT_FORCE_CONSTANT          0.2f
 #define FRICTION_FORCE_CONSTANT         0.9f
 #define GRAVITY_FORCE_CONSTANT 			0.0f
+#define RESTORE_FORCE_CONSTANT 			0.0005f
 
 #define PI 3.14159265358979323846264f
 
@@ -189,6 +190,13 @@ __global__ void ParticleMove(float4 *pPos, float4 *pVel, float4 *pAcc, float4 *p
 */	
 	for(int i = 0; i<nloops && zIdx < nParticles; i++)
 	{
+		unsigned ti = trackIndex[zIdx];
+
+			if ((ti==189357 || ti==189358) && 0)
+			{
+				printf("%d: xyz is: %f,%f,%f\n",ti,pPos[zIdx].x,pPos[zIdx].y,pPos[zIdx].z);		
+				printf("%d: force is: %f,%f,%f\n",ti,pAcc[zIdx].x,pAcc[zIdx].y,pAcc[zIdx].z);			    
+			}
 
 		pVel[zIdx].x += pAcc[zIdx].x;
 		pVel[zIdx].y += pAcc[zIdx].y;
@@ -198,28 +206,36 @@ __global__ void ParticleMove(float4 *pPos, float4 *pVel, float4 *pAcc, float4 *p
 		pVel[zIdx].y *= FRICTION_FORCE_CONSTANT;
 		pVel[zIdx].z *= FRICTION_FORCE_CONSTANT;
 
-		unsigned ti = trackIndex[zIdx];
-		if (ti < nTargetParticles)
-		{
-			pPos[zIdx].x = (pOriginalPos[ti].x*a + pTargetPos[ti].x*b)/(a+b);
-			pPos[zIdx].y = (pOriginalPos[ti].y*a + pTargetPos[ti].y*b)/(a+b);
-			pPos[zIdx].z = (pOriginalPos[ti].z*a + pTargetPos[ti].z*b)/(a+b);
-		    if (pOriginalPos[ti].x==430 && pOriginalPos[ti].y==310)
-				printf("%f,%f,%f\n",pPos[zIdx].x,pPos[zIdx].y,pPos[zIdx].z);
-		}
-		else
-		{
-//		    if (ti>258907 && ti<=258917)
-//				printf("%d:%f,%f,%f\n",ti,pPos[zIdx].x,pPos[zIdx].y,pPos[zIdx].z);
-			pPos[zIdx].x += pVel[zIdx].x;
-			pPos[zIdx].y += pVel[zIdx].y;
-			pPos[zIdx].z += pVel[zIdx].z;
-		}
-		
+		pPos[zIdx].x += pVel[zIdx].x;
+		pPos[zIdx].y += pVel[zIdx].y;
+		pPos[zIdx].z += pVel[zIdx].z;
+
 		// Apply gravitational force at this point, ready for next iteration
 		// pAcc[zIdx].w is deltaDensity - set it to zero here
 		pAcc[zIdx] = make_float4(0.0f,-GRAVITY_FORCE_CONSTANT,0.0f,0.0f);
+		
+		if (ti < nTargetParticles)
+		{
+			// Apply a constant-magnitude force directed towards where the particle should end up...
+			float3 diff = make_float3(
+	        	pTargetPos[ti].x - pPos[zIdx].x,
+			    pTargetPos[ti].y - pPos[zIdx].y,
+				pTargetPos[ti].z - pPos[zIdx].z);
 
+			float dist = sqrtf(diff.x*diff.x + diff.y*diff.y + diff.z*diff.z);
+
+			if (dist > 0.1f)
+			{
+				float f = RESTORE_FORCE_CONSTANT / dist;
+			
+				pAcc[zIdx].x += f*diff.x;
+				pAcc[zIdx].y += f*diff.y;
+				pAcc[zIdx].z += f*diff.z;
+			}
+			
+		}
+
+		
 		if (pPos[zIdx].x >= MAXXE) {pPos[zIdx].x = MAXXE; pVel[zIdx].x = 0.0f;}
 		if (pPos[zIdx].y >= MAXYE) {pPos[zIdx].y = MAXYE; pVel[zIdx].y = 0.0f;}
 		if (pPos[zIdx].z >= MAXZE) {pPos[zIdx].z = MAXZE; pVel[zIdx].z = 0.0f;}
@@ -440,9 +456,9 @@ __global__ void ParticleForces(float4 *pPos, float4 *pVel, float4 *pAcc, unsigne
 							thisAcc.y += -f * diff.y;
 							thisAcc.z += -f * diff.z;
 							
-						    if (dist<0.2 && 0)
+						    if (dist<0.2 && 0) // debug output for too close particles
 							{
-							  printf("%d,%d separated by %f (x1,y1,z1=%f,%f,%f x2,y2,z2=%f,%f,%f force=%f,%f,%f)\n",zIdx,ps,dist,pPos[zIdx].x,pPos[zIdx].y,pPos[zIdx].z,pPos[ps].x,pPos[ps].y,pPos[ps].z,-f*diff.x,-f*diff.y,-f*diff.z);
+							  printf("%d,%d separated by %f (x1,y1,z1=%f,%f,%f x2,y2,z2=%f,%f,%f force=%f,%f,%f)\n",trackIndex[zIdx],trackIndex[ps],dist,pPos[zIdx].x,pPos[zIdx].y,pPos[zIdx].z,pPos[ps].x,pPos[ps].y,pPos[ps].z,-f*diff.x,-f*diff.y,-f*diff.z);
 							}
 
 						}
@@ -624,6 +640,8 @@ int AllocateNeighbourMemory(void)
 //		printf("neighbourCount[%d]=%d\n",i,numNeighbourPairs);
 	}
 
+	printf("numNeighbourParis:%d\n",numNeighbourPairs);
+	
 	cudaMemcpy(d_neighbourCount,h_neighbourCount,sizeof(int)*nParticles,cudaMemcpyHostToDevice);
 
 	Check( cudaMalloc((void**)&d_neighbourList,sizeof(uint2)*numNeighbourPairs) );	
@@ -677,6 +695,8 @@ int GetNumParticles(char *fname)
 	    {
 			i++;
 	    }
+		
+		fclose(f);
 	}
 
 	return i;
@@ -738,8 +758,7 @@ void Initialise(char *target, char *flat, char *holes)
 	{
 	    int i = 0;
 		float x,y,z;
-	  
-//	    printf("Loading...\n");
+		  
 	    while(fscanf(f,"%f,%f,%f",&x,&y,&z)==3)
 	    {
 			if (i<nParticles)
@@ -878,6 +897,7 @@ int main(int argc, char *argv[])
 	cudaEventCreate(&start);
 	cudaEventCreate(&stop);
 
+	printf("About to allocate memory\n");
 	AllocateMemory();
 	Initialise(argv[1],argv[2],argv[3]);
 
@@ -899,6 +919,7 @@ int main(int argc, char *argv[])
  
     CountNeighbours<<< nblks, nthds >>>(d_pPos[activeArray],d_cellHash,d_cellStart,d_neighbourCount, d_pIndex,nParticles, nloops);
 
+	printf("About to allocate neighbour memory\n");
 	nParticlePairs = AllocateNeighbourMemory();
 
 	int nPPloops = 1+(nParticlePairs-1)/(nthds*nblks);
@@ -918,7 +939,7 @@ int main(int argc, char *argv[])
 
 	cudaEventRecord(start,0);
 
-	int iters = 20000;
+	int iters = 40000;
 
 	for(int i = 0; i<iters;i++)
 	{
