@@ -51,7 +51,10 @@ output_folder = "." # Location where rendering output will be placed
 #                 ("../construct/s03400_04200_05800/nonint/v4_856.csv","cyan"),
 #				 ]
 
-plugFileNames = [("../debug2/v5_2592.csv","red")]
+#plugFileNames = [("../debug2/v5_2592.csv","red")]
+
+plugFileNames = [("../flatten_interp_test/s02512_03988_01500/resample/interp.csv","red")]
+#plugFileNames = []
 
 """
 for file in os.listdir("../testout_h/"):
@@ -68,7 +71,7 @@ print("Loading plugs")
 for (plugFileName,colour) in plugFileNames:
   with open(plugFileName) as plugFile:
     for line in plugFile:
-      pt = [int(s) for s in line.split(',')]
+      pt = [int(float(s)) for s in line.split(',')]
       plugs += [[pt[0],pt[1],pt[2],colour]] 
 #    if line[0]=='[':
 #      line=line[1:-3]
@@ -248,7 +251,7 @@ class ToolWin(tk.Toplevel):
         self.v.config(font =("Courier", 14))        
         self.v.pack()
 
-        self.clickMode="FILL"
+        self.clickMode="CAPTURE"
         self.plugSize=0
         self.plugSquares = []
         
@@ -363,6 +366,8 @@ class ToolWin(tk.Toplevel):
               for zo in range(volume_z-self.plugSize,volume_z+self.plugSize+1):
                 print("Setting %d %d %d" % (xo,yo,zo))
                 c_lib.setVoxel(xo,yo,zo,254);
+        elif self.clickMode=="CAPTURE":
+          print("%d,%d,%d" % (event.x,event.y,volume_z))
         
         self.v.config(text=valueString)
         self.updateImg()

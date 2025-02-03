@@ -83,9 +83,14 @@ weightedPointSet FindNearestPoints(float x, float y, float z, pointSet &flat, po
 		float yp = std::get<1>(p);
 		float zp = std::get<2>(p);
 		
+		if (x>=510 && z>=510)
+		{
+			printf("%f,%f,%f,%f,%f\n",x,z,xp,yp,zp);
+		}
+		
 		float dist2 = (x-xp)*(x-xp)+(y-yp)*(y-yp)+(z-zp)*(z-zp);
 		
-		if (dist2 <= 1.1f*1.1f)
+		if (dist2 <= 1.1f*1.1f*1.1f)
 		{	
 			float xt = std::get<0>(target[i]);
 			float yt = std::get<1>(target[i]);
@@ -162,7 +167,7 @@ int main(int argc, char *argv[])
 		for(float z=zmin; z<=zmax; z+=zstep)
 		{
 			weightedPointSet p = FindNearestPoints(x,0,z,flatVolume,targetVolume);
-			
+						
 			if (Interpolate(p,xi,yi,zi))
 			{
 				flatOutput.push_back( std::tuple<float,float,float>(x,0,z) );
