@@ -1,3 +1,4 @@
+import datetime
 import torch
 from torch import nn
 from torch.utils.data import Dataset
@@ -118,24 +119,47 @@ def test(dataloader, model, loss_fn):
     correct /= size
     print(f"Test Error: \n Accuracy: {(100*correct):>0.1f}%, Avg loss: {test_loss:>8f} \n")
 	
-epochs = 2
+epochs = 250
 for t in range(epochs):
     print(f"Epoch {t+1}\n-------------------------------")
     train(train_dataloader, model, loss_fn, optimizer)
     test(train_dataloader, model, loss_fn)
 print("Done!")
 
-# Load a stack of 33 tifs
-imageStack = torch.zeros([1,33,1089],dtype=torch.float32)
-
+images = []
 for i in range(0,33):
-    img = PIL.Image.open("../construct/02512_03988_02012/%05d.tif" % (i+2012))
-    img = PIL.Image.fromarray(np.uint8(np.array(img)/256))
-    imageStack[0,:,i:i+33]= (ToTensor()(img))[0,0:33,0:33]
-	
-print(imageStack.shape)
-imageStack = imageStack.to(device="cuda")
-print(model(imageStack))
+    imgTmp = PIL.Image.open("../construct/02512_03988_02012/%05d.tif" % (i+2012))
+    images += [ToTensor()(PIL.Image.fromarray(np.uint8(np.array(imgTmp)/256))).to(device="cuda")]
 
+debug = True
+(outx,outy)=(470,464)
+step = 32
+outImageArray = np.empty((outx,outy),dtype=np.uint8)
+for y in range(0,outy,step):
+    for x in range(0,outx):
+        if debug:
+            print("Before tensor init " + str(datetime.datetime.now()))
+        inputTensor = torch.zeros([step,33,1089],dtype=torch.float32).to(device="cuda")	
+        if debug:
+            print("Before tensor populate " + str(datetime.datetime.now()))
+        for z in range(0,33):
+            for s in range(0,step):
+                inputTensor[s,:,z*33:z*33+33]= images[z][0,x:x+33,y+s:y+s+33]
+        if debug:
+            print("Before tensor target " + str(datetime.datetime.now()))
+
+        #inputTensor = inputTensor.to(device="cuda")
+        
+        if debug:
+            print("Before NN " + str(datetime.datetime.now()))
+        output = model(inputTensor)
+        if debug:
+            print("After NN " + str(datetime.datetime.now()))
+        for s in range(0,step):
+            outImageArray[x,y+s]=0 if output[s][0].item() < 0.5 else 255
+    print(str(y) + " " + str(datetime.datetime.now()))
+
+PIL.Image.fromarray(outImageArray).save("testout.png")
+	
 # TODO - check that training and applied images are both constructed in the same way
 # run it over a whole cube
