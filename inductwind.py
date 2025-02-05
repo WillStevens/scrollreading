@@ -133,7 +133,7 @@ for i in range(0,33):
 
 debug = True
 (outx,outy)=(470,464)
-step = 32
+step = 16
 outImageArray = np.empty((outx,outy),dtype=np.uint8)
 for y in range(0,outy,step):
     for x in range(0,outx):

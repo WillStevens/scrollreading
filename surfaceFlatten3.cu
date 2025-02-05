@@ -13,7 +13,7 @@
 #include <thrust/device_ptr.h>
 
 #define NUM_BLOCKS 4096
-#define THREADS_PER_BLOCK 128
+#define THREADS_PER_BLOCK 1024
 
 #define CELL_DIMX 3.0f
 #define CELL_DIMY 3.0f
@@ -29,6 +29,8 @@
 #define MAXY (CELL_NUMY*CELL_DIMY)
 #define MAXZ (CELL_NUMZ*CELL_DIMZ)
 
+#define XZ_OFFSET 128
+
 #define EPSILON 0.01f
 
 #define MAXXE (MAXX-EPSILON)
@@ -38,7 +40,9 @@
 #define REPEL_FORCE_CONSTANT            0.2f
 #define ATTRACT_FORCE_CONSTANT          0.04f
 #define FRICTION_FORCE_CONSTANT         0.9f
-#define GRAVITY_FORCE_CONSTANT 			0.0005f
+#define GRAVITY_FORCE_CONSTANT 			0.008f
+
+#define INITIAL_VELOCITY				0.08f
 
 #define PI 3.14159265358979323846264f
 
@@ -676,7 +680,7 @@ void Initialise(char *fname)
 			if (i<nParticles)
 			{
 				h_pVel[i].x = 0.0f;
-				h_pVel[i].y = 0.0f;
+				h_pVel[i].y = -INITIAL_VELOCITY;
 				h_pVel[i].z = 0.0f;
 				h_pPos[i].x = projectN(x,y,z,0);
 				h_pPos[i].y = projectN(x,y,z,2);
@@ -690,47 +694,56 @@ void Initialise(char *fname)
 	    }
 		for(i = 0; i<nParticles; i++)
 		{
-		   h_pPos[i].x -= minx;
-		   h_pPos[i].y -= miny;
-		   h_pPos[i].z -= minz;
+		   h_pPos[i].x = h_pPos[i].x - minx + XZ_OFFSET;
+		   h_pPos[i].y = h_pPos[i].y - miny;
+		   h_pPos[i].z = h_pPos[i].z - minz + XZ_OFFSET;
 		}
 		
 //		printf("Loaded %d particles\n",i);
 	}
 }
 
-void Display(void)
+void Output(const char *oname)
 {
 //	printf(":T{%f}\n",h_simTime);
 
-    float maxy = 0.0f;
+    FILE *f = fopen(oname,"w");
 	
-	for(int i = 0; i<nParticles; i++)
+	if (f)
 	{
-	  if (h_pPos[i].y>maxy) maxy = h_pPos[i].y;
-    }
-	
-	printf("maxy=%f\n",maxy);
-	
-	
-	for(int i = 0; i<nParticles; i++)
-	{
-		//printf(":P{%d,%.2f,%.2f,%.2f,%.4g,%.4g,%.4g,%.2f,%.2f,%.2f,%.2f}\n",h_trackIndex[i],h_pPos[i].x,h_pPos[i].y,h_pPos[i].z,h_pVel[i].x,h_pVel[i].y,h_pVel[i].z,0.5f,1.0f,1.0f,1.0f);
+		float maxy = 0.0f;
+		
+		for(int i = 0; i<nParticles; i++)
+		{
+		  if (h_pPos[i].y>maxy) maxy = h_pPos[i].y;
+		}
+		
+		printf("maxy=%f\n",maxy);
+		
 
-		// Output in the same order as the input particles
+        // Output the number of particles
 		
-		int currentIndex = h_reverseTrackIndex[i];
+		for(int i = 0; i<nParticles; i++)
+		{
+			//printf(":P{%d,%.2f,%.2f,%.2f,%.4g,%.4g,%.4g,%.2f,%.2f,%.2f,%.2f}\n",h_trackIndex[i],h_pPos[i].x,h_pPos[i].y,h_pPos[i].z,h_pVel[i].x,h_pVel[i].y,h_pVel[i].z,0.5f,1.0f,1.0f,1.0f);
+
+			// Output in the same order as the input particles
+			
+			int currentIndex = h_reverseTrackIndex[i];
+			
+			fprintf(f,"%.2f,%.2f,%.2f\n",h_pPos[currentIndex].x,h_pPos[currentIndex].y,h_pPos[currentIndex].z);
+		}
 		
-		printf("%.2f,%.2f,%.2f\n",h_pPos[currentIndex].x,h_pPos[currentIndex].y,h_pPos[currentIndex].z);
+		fclose(f);
 	}
 	
 }
 
 int main(int argc, char *argv[])
 {
-	if (argc != 8)
+	if (argc != 9)
 	{
-	  printf("Usage: surfaceFlatten <input.csv> x1 y1 z1 x2 y2 z2\n");
+	  printf("Usage: surfaceFlatten <input.csv> <output.csv> x1 y1 z1 x2 y2 z2\n");
 	  exit(1);
 	}
 
@@ -816,9 +829,10 @@ int main(int argc, char *argv[])
 	}
 */
 
+
 	cudaEventRecord(start,0);
 
-	int iters = 20000;
+	int iters = 1500;
 
 	for(int i = 0; i<iters;i++)
 	{
@@ -841,7 +855,7 @@ int main(int argc, char *argv[])
 		
 
 	CopyFromDevice();
-	Display();
+	Output(argv[2]);
 	
 //    for(int i = 0; i<200; i++)
 //	  printf("%d\n",h_neighbourIndex[i]);
@@ -850,7 +864,7 @@ int main(int argc, char *argv[])
 	cudaEventSynchronize(stop);
 	cudaEventElapsedTime(&time,start,stop);
 
-	//printf("%f %d\n",time,iters);
+	printf("Time taken for simulation part: %f for %d iters\n",time,iters);
 
 	FreeMemory();
 	return 0;
