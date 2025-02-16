@@ -7,7 +7,7 @@
 #include <unordered_set>
 #include <vector>
 #include <set>
-#include <map>
+#include <unordered_map>
 #include <string>
 #include <algorithm>
 #include <utility>
@@ -72,25 +72,26 @@ bool GoodSpan(weightedPointSet &wp)
 }
 
 // returns an unnormalised weighted point set for the target point
+// could do this much more efficiently is flat is sorted.
 weightedPointSet FindNearestPoints(float x, float y, float z, pointSet &flat, pointSet &target)
 {
 	weightedPointSet r;
+    float neighbourDistance = 1.1f*1.1f*1.1f;
 	
 	int i = 0;
 	for(const std::tuple<float,float,float> &p : flat)
 	{
 		float xp = std::get<0>(p);
+		
+		if ((x-xp)*(x-xp) > neighbourDistance)
+			continue;
+		
 		float yp = std::get<1>(p);
 		float zp = std::get<2>(p);
-		
-		if (x>=510 && z>=510)
-		{
-			printf("%f,%f,%f,%f,%f\n",x,z,xp,yp,zp);
-		}
-		
+				
 		float dist2 = (x-xp)*(x-xp)+(y-yp)*(y-yp)+(z-zp)*(z-zp);
 		
-		if (dist2 <= 1.1f*1.1f*1.1f)
+		if (dist2 <= neighbourDistance)
 		{	
 			float xt = std::get<0>(target[i]);
 			float yt = std::get<1>(target[i]);
@@ -157,13 +158,21 @@ int main(int argc, char *argv[])
 	float xstep = (xmax-xmin)/(float)(int)(xmax-xmin);
 	float zstep = (zmax-zmin)/(float)(int)(zmax-zmin);
 	
-	pointSet targetOutput,flatOutput,holeOutput;
+	pointSet targetOutput,flatOutput,holeOutput,holeOutputBuffer;
+	std::unordered_map<float,float> xminByZ;
+	std::unordered_map<float,float> xmaxByZ;
+	std::unordered_map<float,float> zminByX;
+	std::unordered_map<float,float> zmaxByX;
 	
 	float xi,yi,zi;
 	
 	for(float x=xmin; x<=xmax; x+=xstep)
 	{
 		printf("At x-coord: %f\n",x);
+		
+		float zminByX_tmp = zmax;
+		float zmaxByX_tmp = zmin;
+		
 		for(float z=zmin; z<=zmax; z+=zstep)
 		{
 			weightedPointSet p = FindNearestPoints(x,0,z,flatVolume,targetVolume);
@@ -172,14 +181,37 @@ int main(int argc, char *argv[])
 			{
 				flatOutput.push_back( std::tuple<float,float,float>(x,0,z) );
 				targetOutput.push_back( std::tuple<float,float,float>(xi,yi,zi) );
+				
+				if (xminByZ.count(z)==0 || x<xminByZ[z])
+					xminByZ[z]=x;
+				if (xmaxByZ.count(z)==0 || x>xmaxByZ[z])
+					xmaxByZ[z]=x;
+				if (z<zminByX_tmp)
+					zminByX_tmp=z;
+				if (z>zmaxByX_tmp)
+					zmaxByX_tmp=z;
 			}
 			else
 			{
-				holeOutput.push_back( std::tuple<float,float,float>(x,0,z) );
+				holeOutputBuffer.push_back( std::tuple<float,float,float>(x,0,z) );
 			}
 		}
+
+		zminByX[x]=zminByX_tmp;
+		zmaxByX[x]=zmaxByX_tmp;;
 		
-		printf("target:%d, flat:%d, hole:%d\n",(int)targetOutput.size(),(int)flatOutput.size(),(int)holeOutput.size());
+		printf("target:%d, flat:%d, hole:%d\n",(int)targetOutput.size(),(int)flatOutput.size(),(int)holeOutputBuffer.size());
+	}
+	
+	for(const std::tuple<float,float,float> &p : holeOutputBuffer)
+	{
+		float x = std::get<0>(p);
+		float z = std::get<2>(p);
+		
+		if (x>=xminByZ[z] && x<=xmaxByZ[z] || z>=zminByX[x] && z<=zmaxByX[x])
+		{
+			holeOutput.push_back(p);
+		}			
 	}
 	
 	SaveVolume(argv[3],targetOutput);

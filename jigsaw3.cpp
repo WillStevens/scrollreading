@@ -39,6 +39,8 @@ std::map<std::string,std::unordered_set<uint32_t> > plugs_xz;
 
 std::map<std::string,int> groupPenaltyCache;
 
+std::map<std::string,std::unordered_set<uint32_t> > unorderedSetDifferenceCache; 
+
 // Two vectors that define the projection plane
 // The third vector in this array is the normal to the projection plane, calculated from the other two
 int32_t planeVectors[3][3] = 
@@ -161,19 +163,8 @@ bool PointInCube(int x, int y, int z, int cxmin, int cymin, int czmin, int cxmax
 	return x>=cxmin && x<=cxmax && y>=cymin && y<=cymax && z>=czmin && z<=czmax;
 }
 
-int Abutting(std::unordered_set<uint32_t> &ps1,
-			 std::unordered_set<uint32_t> &plugs1,
-			 std::unordered_set<uint32_t> &ps1_xz,
-			 std::unordered_set<uint32_t> &plugs1_xz,
-             std::vector<int16_t> &e1,
-		     std::unordered_set<uint32_t> &ps2,
-		     std::unordered_set<uint32_t> &plugs2,
-		     std::unordered_set<uint32_t> &ps2_xz,
-		     std::unordered_set<uint32_t> &plugs2_xz,
-			 std::vector<int16_t> &e2
-			)
+bool ExtentsOverlap(std::vector<int16_t> &e1,std::vector<int16_t> &e2)
 {
-
   int xmin1=e1[0], ymin1=e1[1], zmin1=e1[2], xmax1=e1[3], ymax1=e1[4], zmax1=e1[5];
   int xmin2=e2[0], ymin2=e2[1], zmin2=e2[2], xmax2=e2[3], ymax2=e2[4], zmax2=e2[5];
   
@@ -212,7 +203,22 @@ int Abutting(std::unordered_set<uint32_t> &ps1,
   else if (PointInCube(xmax2,ymax2,zmax2,xmin1,ymin1,zmin1,xmax1,ymax1,zmax1))
 	  overlap=true;
 
-  if (!overlap)
+  return overlap;
+}
+
+int Abutting(std::unordered_set<uint32_t> &ps1,
+			 std::unordered_set<uint32_t> &plugs1,
+			 std::unordered_set<uint32_t> &ps1_xz,
+			 std::unordered_set<uint32_t> &plugs1_xz,
+             std::vector<int16_t> &e1,
+		     std::unordered_set<uint32_t> &ps2,
+		     std::unordered_set<uint32_t> &plugs2,
+		     std::unordered_set<uint32_t> &ps2_xz,
+		     std::unordered_set<uint32_t> &plugs2_xz,
+			 std::vector<int16_t> &e2
+			)
+{
+  if (!ExtentsOverlap(e1,e2))
     return 0;
    
   
@@ -352,7 +358,7 @@ int EvaluateSolution(std::vector<std::tuple<std::string,std::string,int> > &poss
 			for(const std::string& file : filesInGroup)
 			{
 				//printf("Here A\n");
-				std::unordered_set<uint32_t> s = UnorderedSetDifference(pointsets_xz[file],plugs_xz[file]); 
+				std::unordered_set<uint32_t> s = unorderedSetDifferenceCache[file]; 
 				for(uint32_t u : s)
 				{
 					int pz = (u%2048)-1;
@@ -388,7 +394,7 @@ int EvaluateSolution(std::vector<std::tuple<std::string,std::string,int> > &poss
 	printf("Groups:%d, maxGroupSize:%d, maxGroupNumPoints:%d, Score: %d, Penalty: %d\n",(int)groupIds.size(),maxGroupSize,maxGroupNumPoints,score,penalty);
 	printf(groupWithMax.c_str());
 	
-	return 25*score - 5*penalty;
+	return 30*score - 5*penalty;
 }
 
 class RunStats
@@ -646,9 +652,12 @@ int main(int argc, char *argv[])
 	{
 		if (j!=i)
 		{
-	      std::unordered_set<uint32_t> tmp = UnorderedSetIntersection(pointsets[files[i]],pointsets[files[j]]);
-		  plugs[files[i]].merge(tmp);
-		  //plugs[files[j]].merge(tmp);
+		  if (ExtentsOverlap(extents[files[i]],extents[files[j]]))
+		  {
+	        std::unordered_set<uint32_t> tmp = UnorderedSetIntersection(pointsets[files[i]],pointsets[files[j]]);
+		    plugs[files[i]].merge(tmp);
+		    //plugs[files[j]].merge(tmp);
+		  }
 		}
     }
 	
@@ -676,6 +685,11 @@ int main(int argc, char *argv[])
 
 	  plugs_xz[f].insert( (projectN(x,y,z,0)+1024)*2048+projectN(x,y,z,1)+1024 );
 	}
+
+  for(const std::string &f : files)
+  {
+	  unorderedSetDifferenceCache[f] = UnorderedSetDifference(pointsets_xz[f],plugs_xz[f]);
+  }
 	
   std::vector<std::tuple<std::string,std::string,int> > possibleNeighbours;
   
@@ -710,7 +724,7 @@ int main(int argc, char *argv[])
     currentState[i]=false;
 
   //currentState[0]=true;
-  int maxTemperature = 40;
+  int maxTemperature = 60;
   int temperature = maxTemperature;
   int counter = 0;
   

@@ -29,6 +29,8 @@
 #define MAXY (CELL_NUMY*CELL_DIMY)
 #define MAXZ (CELL_NUMZ*CELL_DIMZ)
 
+#define XZ_OFFSET 128
+
 #define EPSILON 0.01f
 
 #define MAXXE (MAXX-EPSILON)
@@ -36,10 +38,10 @@
 #define MAXZE (MAXZ-EPSILON)
 
 #define REPEL_FORCE_CONSTANT            0.2f
-#define ATTRACT_FORCE_CONSTANT          0.2f
+#define ATTRACT_FORCE_CONSTANT          0.4f
 #define FRICTION_FORCE_CONSTANT         0.9f
 #define GRAVITY_FORCE_CONSTANT 			0.0f
-#define RESTORE_FORCE_CONSTANT 			0.0005f
+#define RESTORE_FORCE_CONSTANT 			0.001f
 
 #define PI 3.14159265358979323846264f
 
@@ -57,12 +59,12 @@ __device__ float LengthVector(float4 a)
 	return sqrtf(a.x*a.x+a.y*a.y+a.z*a.z);
 }
 
-__device__ float3 MultiplyVector(float3 a, float f)
+__device__ float3 MultiplyVector(float3 a,float f)
 {
 	return make_float3(a.x*f,a.y*f,a.z*f);
 }
 
-__device__ float DotProduct(float3 a, float3 b)
+__device__ float DotProduct(float3 a,float3 b)
 {
 	return a.x*b.x+a.y*b.y+a.z*b.z;
 }
@@ -715,6 +717,41 @@ float projectN(float x, float y, float z, int n)
 	return r;
 }
 
+float inverseRotate[3][3];
+float inverseTranslate[3];
+
+float inverseProjectN(float x, float y, float z, int n)
+{
+	float r = (x*inverseRotate[n][0]+y*inverseRotate[n][1]+z*inverseRotate[n][2])/1000.0f;
+	
+	return r;
+}
+
+void InitialiseInverse(void)
+{
+  printf("Initialising inverse\n");
+  
+  // computes the inverse of a matrix m
+  double det = planeVectors[0][0] * (planeVectors[1][1] * planeVectors[2][2] - planeVectors[2][1] * planeVectors[1][2]) -
+               planeVectors[0][1] * (planeVectors[1][0] * planeVectors[2][2] - planeVectors[1][2] * planeVectors[2][0]) +
+               planeVectors[0][2] * (planeVectors[1][0] * planeVectors[2][1] - planeVectors[1][1] * planeVectors[2][0]);
+
+  double invdet = 1000000.0f / det;
+
+  inverseRotate[0][ 0] = (planeVectors[1][ 1] * planeVectors[2][ 2] - planeVectors[2][ 1] * planeVectors[1][ 2]) * invdet;
+  inverseRotate[0][ 1] = (planeVectors[0][ 2] * planeVectors[2][ 1] - planeVectors[0][ 1] * planeVectors[2][ 2]) * invdet;
+  inverseRotate[0][ 2] = (planeVectors[0][ 1] * planeVectors[1][ 2] - planeVectors[0][ 2] * planeVectors[1][ 1]) * invdet;
+  inverseRotate[1][ 0] = (planeVectors[1][ 2] * planeVectors[2][ 0] - planeVectors[1][ 0] * planeVectors[2][ 2]) * invdet;
+  inverseRotate[1][ 1] = (planeVectors[0][ 0] * planeVectors[2][ 2] - planeVectors[0][ 2] * planeVectors[2][ 0]) * invdet;
+  inverseRotate[1][ 2] = (planeVectors[1][ 0] * planeVectors[0][ 2] - planeVectors[0][ 0] * planeVectors[1][ 2]) * invdet;
+  inverseRotate[2][ 0] = (planeVectors[1][ 0] * planeVectors[2][ 1] - planeVectors[2][ 0] * planeVectors[1][ 1]) * invdet;
+  inverseRotate[2][ 1] = (planeVectors[2][ 0] * planeVectors[0][ 1] - planeVectors[0][ 0] * planeVectors[2][ 1]) * invdet;
+  inverseRotate[2][ 2] = (planeVectors[0][ 0] * planeVectors[1][ 1] - planeVectors[1][ 0] * planeVectors[0][ 1]) * invdet;	   
+
+  printf("Done initialising inverse\n");
+  
+}
+
 void Initialise(char *target, char *flat, char *holes)
 {
     FILE *f = fopen(target,"r");
@@ -740,11 +777,16 @@ void Initialise(char *target, char *flat, char *holes)
 			}
 			i++;
 	    }
+		
+		inverseTranslate[0] = minx - XZ_OFFSET;
+		inverseTranslate[1] = miny;
+		inverseTranslate[2] = minz - XZ_OFFSET;
+		
 		for(i = 0; i<nParticles-nHoleParticles; i++)
 		{
-		   h_pTargetPos[i].x -= minx;
+		   h_pTargetPos[i].x = h_pTargetPos[i].x - minx + XZ_OFFSET;
 		   h_pTargetPos[i].y -= miny;
-		   h_pTargetPos[i].z -= minz;
+		   h_pTargetPos[i].z = h_pTargetPos[i].z - minz + XZ_OFFSET;
 		}
 		
 		printf("Loaded %d target particles\n",i);
@@ -809,7 +851,8 @@ void Initialise(char *target, char *flat, char *holes)
 void Display(void)
 {
 //	printf(":T{%f}\n",h_simTime);
-
+	float x,y,z;
+	
     float maxy = 0.0f;
 	
 	for(int i = 0; i<nParticles; i++)
@@ -828,7 +871,15 @@ void Display(void)
 		
 		int currentIndex = h_reverseTrackIndex[i];
 		
-		printf("%.2f,%.2f,%.2f\n",h_pPos[currentIndex].x,h_pPos[currentIndex].y,h_pPos[currentIndex].z);
+		x = h_pPos[currentIndex].x + inverseTranslate[0];
+		y = h_pPos[currentIndex].y + inverseTranslate[1];
+		z = h_pPos[currentIndex].z + inverseTranslate[2];
+		
+		x = inverseProjectN(x,z,y,0);
+		y = inverseProjectN(x,z,y,1);
+		z = inverseProjectN(x,z,y,2);
+		
+		printf("%.2f,%.2f,%.2f\n",x,y,z);
 	}
 	
 }
@@ -865,12 +916,19 @@ int main(int argc, char *argv[])
 	  {
 		planeVectors[i][j] /= (magnitude/1000.0f);
 		
-		  printf("%f ", planeVectors[i][j]);
+		  printf("%f ",planeVectors[i][j]);
 	  }
 		
 	  printf("\n");
     }
 
+	InitialiseInverse();
+
+	for(int i = 0; i<3; i++)
+	  for(int j = 0; j<3; j++)
+	  {
+		printf("%f\n",inverseRotate[i][j]);
+	  }
 	
 	nTargetParticles = GetNumParticles(argv[1]);
 	nHoleParticles = GetNumParticles(argv[3]);

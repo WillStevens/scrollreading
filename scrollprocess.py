@@ -53,7 +53,9 @@ output_folder = "." # Location where rendering output will be placed
 
 #plugFileNames = [("../debug2/v5_2592.csv","red")]
 
-plugFileNames = [("../flatten_interp_test/s02512_03988_01500/resample/interp.csv","red")]
+plugFileNames = [("../flatten_interp_test/s02512_03988_01500/refining/v5_1193_interp.csv","red"),
+                 ("../flatten_interp_test/s02512_03988_01500/refining/v5_1101_interp.csv","green"),
+]
 #plugFileNames = []
 
 """

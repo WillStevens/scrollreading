@@ -94,7 +94,7 @@ pointSet LoadVolume(const char *file)
 	return std::move(volume);
 }
 
-bool ExportImageStack(std::tuple<float,float,float> &p, const char *targetFilePrefix, int fileNumber)
+bool ExportImageStack(std::tuple<float,float,float> &p, const char *targetFilePrefix, int fileNumber, bool xFlip)
 {
 	int x = (int)std::get<0>(p);
 	int y = (int)std::get<1>(p);
@@ -139,7 +139,10 @@ bool ExportImageStack(std::tuple<float,float,float> &p, const char *targetFilePr
 			    {
 					for(int xo=x-RENDER_SIZE/2; xo<=x+RENDER_SIZE/2; xo++,i++)
 					{
-						((uint8_t *)buf)[i] = volume[zo][yo][xo];
+						if (xFlip)
+						  ((uint8_t *)buf)[i] = volume[zo][yo][2*x-xo];
+						else							
+						  ((uint8_t *)buf)[i] = volume[zo][yo][xo];
 					}
 				}
 				TIFFWriteScanline(tif,buf,row,0);
@@ -174,7 +177,7 @@ int main(int argc, char *argv[])
 	
 	std::set<int> done;
 	
-	while (count<150)
+	while (count<2000)
 	{
 		int r = rand()%surface.size();
 	
@@ -182,7 +185,9 @@ int main(int argc, char *argv[])
 		{
 			done.insert(r);
 			
-			if (ExportImageStack(surface[r],argv[3],count+atoi(argv[4])))
+			if (ExportImageStack(surface[r],argv[3],count+atoi(argv[4]),false))
+				count++;
+			if (ExportImageStack(surface[r],argv[3],count+atoi(argv[4]),true))
 				count++;
 		}
 	}
