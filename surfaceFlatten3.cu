@@ -832,7 +832,7 @@ int main(int argc, char *argv[])
 
 	cudaEventRecord(start,0);
 
-	int iters = 1500;
+	int iters = 3000;
 
 	for(int i = 0; i<iters;i++)
 	{

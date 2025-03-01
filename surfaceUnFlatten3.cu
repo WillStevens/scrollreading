@@ -997,7 +997,7 @@ int main(int argc, char *argv[])
 
 	cudaEventRecord(start,0);
 
-	int iters = 40000;
+	int iters = 80000;
 
 	for(int i = 0; i<iters;i++)
 	{

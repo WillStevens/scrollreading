@@ -1,63 +1,45 @@
 import zarr
 from PIL import ImageGrab,ImageTk,Image
 
-# This zarr has coordinates X=1961-5393, y=2135-5280, z=7000-11249
+za = zarr.open(r'D:\1213_aug_erode_threshold-ome.zarr\0',mode='r')
 
-# I want to extract x=3400, y=4200 z=7336
+#print(za.shape)
 
-(xOffset,yOffset,zOffset)=(1961,2135,7000)
- 
-ySlice = 0
+#print(za.attrs.asdict())
 
-(xWant,yWant,zWant)=(3400,4200+ySlice,7336)
+# e.g. s02512_03988_01500 : y,x,z
 
-(xSize,ySize,zSize)=(512,512,512) 
- 
-z = zarr.open(r'D:\1213_aug_erode_threshold-ome.zarr\0',mode='r')
+yp = 2512
+xp = 3477
+zp = 2522
 
-print(z.shape)
+# Index as z,y,x
 
-print(z.attrs.asdict())
+k = za[zp:zp+512,yp:yp+512,xp:xp+512]
 
-for zz in range(2000,2000+5):
-  for x in range(2000,2000+100):
-    for y in range(2000,2000+50):
-      print('0' if z[zz,y,x]==0 else '1',end='')
-    print()
-  print("---")
-  
-"""
-k = z[zWant-zOffset:zWant-zOffset+zSize, yWant-yOffset:yWant-yOffset+ySize, xWant-xOffset:xWant-xOffset+xSize]
-
-print(type(k))
+zSize = 512
 
 for i in range(0,zSize):
   j = Image.fromarray(k[i])
-  j.save("../test/%05d.tif" % (i))
- 
-#print(k[0:10,0:10,0:10])
-# iterate through all, picking out the distinct fibres
+  j.save("d:/scroll1_surfaces/02512_03477_02522/%05d.tif" % (i))
 
-#fibrePoints = {}
-
-#for z in range(0,zSize):
-#  print(z)
-#  for y in range(0,ySize):
-#    for x in range(0,xSize):
-#      v = k[z,y,x]
-#      if v != 0:
-#        if v not in fibrePoints:
-#          fibrePoints[v] = []
-#        fibrePoints[v] += [(x,y+ySlice,z)]       
-
-#for k in fibrePoints.keys():
-#  print("%d : %d" % (k,len(fibrePoints[k])))
-#print(fibrePoints.keys())
-
-
-#dict_keys([155548, 216204, 215787, 155704, 216303, 216060, 216179, 155773, 216345, 155326, 216012, 215653, 215648, 215591, 215873, 215983, 215714, 155650, 215821, 215599, 215497, 215479, 155731, 215967, 155235, 216005, 155665, 155632, 215569, 216059, 215965, 215788, 215920, 215877, 215557, 216032, 216834, 156875, 156761, 216497, 216965, 156843, 217220, 216665, 216766, 216676, 216757, 216975, 216954, 156938, 156863, 217155, 217157, 216732, 216609, 156732, 217061, 216692, 216471, 216475, 156436, 216817, 216780, 216951, 216635, 216509, 216527, 217191, 217051, 217010, 156834, 217047, 216470, 216896, 216569, 156942, 217170, 156809, 216905, 217147, 217196, 156817, 216529, 216532, 216640, 217120, 217138, 216832, 156814, 156877, 156888, 156884, 217004, 217025, 217181, 217184, 216784, 216952, 216637, 216702, 156836, 156406, 216867, 216879, 216865, 156849, 217109])
-
-#for (x,y,z) in fibrePoints[1]:
-#  print("[%d,%d,%d]," %(x,y,z))
-  
-"""
+for z in range(0,512):
+  for x in range(0,512):
+    count=0
+    y=0
+    for s in k[z,:,x]:
+      if s==255:
+        count+=1
+        if count<=2:
+          print("%d,%d,%d" % (x,y,z))
+      else:
+        count=0	    
+      y+=1
+	  
+#    for y in range(0,512):
+#      if k[z,y,x]==255:
+#        count+=1
+#        if count<=2:
+#          print("%d,%d,%d" % (x,y,z))
+#      else:
+#        count=0

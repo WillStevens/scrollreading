@@ -693,6 +693,8 @@ int main(int argc, char *argv[])
 	
   std::vector<std::tuple<std::string,std::string,int> > possibleNeighbours;
   
+  std::vector<std::string> noNeighbours;
+  
   int numWithNoNeighbours = 0;
   // Work out wihch patches abut each other - any that do are neighbour candidates
   for(int i = 0; i<files.size(); i++)
@@ -710,10 +712,10 @@ int main(int argc, char *argv[])
 	}
 	
 	if (!anyNeighbours)
-		numWithNoNeighbours++;
+		noNeighbours.push_back(files[i]);
   }
   
-  printf("numWithNoNeighbours=%d\n",numWithNoNeighbours);
+  printf("numWithNoNeighbours=%d\n",(int)noNeighbours.size());
   
   // This vector stores the current state
   std::vector<bool> currentState(possibleNeighbours.size());
@@ -724,7 +726,7 @@ int main(int argc, char *argv[])
     currentState[i]=false;
 
   //currentState[0]=true;
-  int maxTemperature = 60;
+  int maxTemperature = 40;
   int temperature = maxTemperature;
   int counter = 0;
   
@@ -754,7 +756,7 @@ int main(int argc, char *argv[])
 		currentScore = newScore;
 	}
 	
-	if (counter%1000==0)
+	if (counter%500==0)
 	  temperature--;
   
     counter++;
@@ -762,6 +764,26 @@ int main(int argc, char *argv[])
 
   ExportAllGroups(argv[1],possibleNeighbours,currentState,stats);
 
+  // Export the ones that have no neighbours
+  for(const std::string &file : noNeighbours)
+  {
+	FILE *f = fopen((std::string(argv[1]) + std::string("/output_jigsaw3/v")+file.substr(1)).c_str(),"w");
+		
+    stats.surfaceSizes.push_back(pointsets[file].size());
+		
+    for(uint32_t u : pointsets[file])
+	{
+	  int z = (u%PT_MULT)-1;
+	  int v = u/PT_MULT;
+	  int x = (v%PT_MULT)-1;
+	  int y = (v/PT_MULT)-1;
+			
+	  fprintf(f,"%d,%d,%d\n",x,y,z);
+	}
+		
+	fclose(f);
+  }
+  
   printf("Finished\n");
 
   stats.Display();

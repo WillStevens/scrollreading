@@ -1,7 +1,7 @@
 # Will Stevens, October 2024
 # 
 # Experiment in finding abutting surfaces in neighbouring cubic volumes.
-##
+#
 # Released under GNU Public License V3
 
 
@@ -11,19 +11,10 @@ import os
 import time
 from PIL import Image
 
-
-folders = ["01488_03476_01500","01488_03988_01500","01488_04500_01500",
-                                                   "02000_04500_01500",
-           "02512_03476_01500","02512_03988_01500","02512_04500_01500",
+folders = ["02512_02966_02011","02512_02966_02522"]
 		   
-		   "01488_03476_02012",
-                                                   "02000_04500_02012",
-           "02512_03476_02012","02512_03988_02012","02512_04500_02012"]
-
-folders = ["02512_04500_01500","02512_04500_02011"]
-		   
-dirPrefix="../construct/s"
-dirSuffix="/nonint/output/"
+dirPrefix="d:/scroll1_construct/s"
+dirSuffix="/nonint_sj/output_jigsaw3/"
 
 SIZE=512
 POINTS_LIMIT=131072
@@ -64,11 +55,13 @@ def NeighboursInFolders(f1,x1,y1,z1,f2,x2,y2,z2):
       # Only look for neighbours if numPoints is higher than some threshhold
       if numPointsMapList[0][file1]>=POINTS_LIMIT and numPointsMapList[1][file2]>=POINTS_LIMIT:
 #        print("Considering "+file1 + " " + file2)
-        edgeMatch = 0
-        for (ex1,ey1,ez1) in edgePointsMapList[0][file1]:
-          for (ex2,ey2,ez2) in edgePointsMapList[1][file2]:
-            if ex1==ex2 and ey1==ey2 and ez1==ez2:
-              edgeMatch += 1
+        edgeMatch = len(set(edgePointsMapList[0][file1]).intersection(set(edgePointsMapList[1][file2])))
+		
+#		edgeMatch = 0
+#        for (ex1,ey1,ez1) in edgePointsMapList[0][file1]:
+#          for (ex2,ey2,ez2) in edgePointsMapList[1][file2]:
+#            if ex1==ex2 and ey1==ey2 and ez1==ez2:
+#              edgeMatch += 1
         smallestEdge = len(edgePointsMapList[0][file1]) if len(edgePointsMapList[0][file1])<len(edgePointsMapList[1][file2]) else len(edgePointsMapList[1][file2])
     
         if smallestEdge < edgeMatch*20:

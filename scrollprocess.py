@@ -53,10 +53,10 @@ output_folder = "." # Location where rendering output will be placed
 
 #plugFileNames = [("../debug2/v5_2592.csv","red")]
 
-plugFileNames = [("../flatten_interp_test/s02512_03988_01500/refining/v5_1193_interp.csv","red"),
-                 ("../flatten_interp_test/s02512_03988_01500/refining/v5_1101_interp.csv","green"),
-]
-#plugFileNames = []
+#plugFileNames = [("../flatten_interp_test/s02512_03988_01500/refining/v5_1193_interp.csv","red"),
+#                 ("../flatten_interp_test/s02512_03988_01500/refining/v5_1101_interp.csv","green"),
+#]
+plugFileNames = [("D:/scroll1_construct/s02512_03988_01500/nonint_sj/output_jigsaw3/v-259235897_67.csv","red")]
 
 """
 for file in os.listdir("../testout_h/"):

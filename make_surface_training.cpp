@@ -23,7 +23,7 @@
 #include <utility>
 
 #define SIZE 512
-#define RENDER_SIZE 33
+#define RENDER_SIZE 65
 
 #define FILENAME_LENGTH 300
 #define FOLDERNAME_LENGTH 256
