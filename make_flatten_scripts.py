@@ -2,13 +2,13 @@
 
 ToFlatten = ["s02512_02966_01500/nonint_sj/output_jigsaw3/v1500601_19.csv",
              "s02512_02966_02011/nonint_sj/output_jigsaw3/v2011601_79.csv",
-#             "s02512_02966_02522/nonint_sj/output_jigsaw3/v2522601_557.csv",
+             "s02512_02966_02522/nonint_sj/output_jigsaw3/v2522601_557.csv",
 			 
-#			 "s02512_03477_01500/nonint_sj/output_jigsaw3/v1500601_23.csv",
+			 "s02512_03477_01500/nonint_sj/output_jigsaw3/v1500601_23.csv",
              "s02512_03477_02011/nonint_sj/output_jigsaw3/v2011601_7.csv",
              "s02512_03477_02522/nonint_sj/output_jigsaw3/v2522601_1024.csv",
 			 
-#			 "s02512_03988_01500/nonint_sj/output_jigsaw3/v-259235897_61.csv",
+			 "s02512_03988_01500/nonint_sj/output_jigsaw3/v-259235897_61.csv",
              "s02512_03988_02011/nonint_sj/output_jigsaw3/v2011601_32.csv",
              "s02512_03988_02522/nonint_sj/output_jigsaw3/v2522601_1815.csv",
             ]

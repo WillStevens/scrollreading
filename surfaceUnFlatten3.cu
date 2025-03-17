@@ -41,11 +41,12 @@
 #define ATTRACT_FORCE_CONSTANT          0.4f
 #define FRICTION_FORCE_CONSTANT         0.9f
 #define GRAVITY_FORCE_CONSTANT 			0.0f
-#define RESTORE_FORCE_CONSTANT 			0.001f
+#define RESTORE_FORCE_CONSTANT 			0.01f
 
 #define PI 3.14159265358979323846264f
 
-#define RESTORE_TIME 20000 // Number of iterations after which target particles will be back to their original positions 
+#define RESTORE_TIME 10000 // Number of iterations after which target particles will be back to their original positions 
+#define RELAX_TIME 20000 // Time allowed for hole particles to relax
 
 #define DEBUG_OUT
 
@@ -180,6 +181,9 @@ __global__ void ParticleMove(float4 *pPos, float4 *pVel, float4 *pAcc, float4 *p
 	float a = RESTORE_TIME-iters;
 	float b = iters;
 	
+	if (a<0) a=0;
+	if (b>RESTORE_TIME) b=RESTORE_TIME;
+	
 /*
 	if (zIdx==0)
 	{
@@ -218,6 +222,26 @@ __global__ void ParticleMove(float4 *pPos, float4 *pVel, float4 *pAcc, float4 *p
 		
 		if (ti < nTargetParticles)
 		{
+		  if (0)
+		  {
+		    // Fix particles at a location that gradually moves towards the target
+			
+			pPos[zIdx] = make_float4(
+	        	(pTargetPos[ti].x*b + pOriginalPos[zIdx].x*a)/RESTORE_TIME,
+			    (pTargetPos[ti].y*b + pOriginalPos[zIdx].y*a)/RESTORE_TIME,
+				(pTargetPos[ti].z*b + pOriginalPos[zIdx].z*a)/RESTORE_TIME,
+				0);
+
+		  }
+		  
+		  if (0 && ti<10)
+		  {
+		      printf("Tracking particle %d: xyz=%f,%f,%f target=%f,%f,%f\n",
+			    ti,pPos[zIdx].x,pPos[zIdx].y,pPos[zIdx].z,pTargetPos[ti].x,pTargetPos[ti].y,pTargetPos[ti].z);
+		  }
+		  
+		  if (1)
+		  {
 			// Apply a constant-magnitude force directed towards where the particle should end up...
 			float3 diff = make_float3(
 	        	pTargetPos[ti].x - pPos[zIdx].x,
@@ -234,7 +258,7 @@ __global__ void ParticleMove(float4 *pPos, float4 *pVel, float4 *pAcc, float4 *p
 				pAcc[zIdx].y += f*diff.y;
 				pAcc[zIdx].z += f*diff.z;
 			}
-			
+		  }
 		}
 
 		
@@ -642,7 +666,7 @@ int AllocateNeighbourMemory(void)
 //		printf("neighbourCount[%d]=%d\n",i,numNeighbourPairs);
 	}
 
-	printf("numNeighbourParis:%d\n",numNeighbourPairs);
+//	printf("numNeighbourParis:%d\n",numNeighbourPairs);
 	
 	cudaMemcpy(d_neighbourCount,h_neighbourCount,sizeof(int)*nParticles,cudaMemcpyHostToDevice);
 
@@ -729,7 +753,7 @@ float inverseProjectN(float x, float y, float z, int n)
 
 void InitialiseInverse(void)
 {
-  printf("Initialising inverse\n");
+//  printf("Initialising inverse\n");
   
   // computes the inverse of a matrix m
   double det = planeVectors[0][0] * (planeVectors[1][1] * planeVectors[2][2] - planeVectors[2][1] * planeVectors[1][2]) -
@@ -748,7 +772,7 @@ void InitialiseInverse(void)
   inverseRotate[2][ 1] = (planeVectors[2][ 0] * planeVectors[0][ 1] - planeVectors[0][ 0] * planeVectors[2][ 1]) * invdet;
   inverseRotate[2][ 2] = (planeVectors[0][ 0] * planeVectors[1][ 1] - planeVectors[1][ 0] * planeVectors[0][ 1]) * invdet;	   
 
-  printf("Done initialising inverse\n");
+//  printf("Done initialising inverse\n");
   
 }
 
@@ -789,7 +813,7 @@ void Initialise(char *target, char *flat, char *holes)
 		   h_pTargetPos[i].z = h_pTargetPos[i].z - minz + XZ_OFFSET;
 		}
 		
-		printf("Loaded %d target particles\n",i);
+//		printf("Loaded %d target particles\n",i);
 		
 		fclose(f);
 	}
@@ -815,7 +839,7 @@ void Initialise(char *target, char *flat, char *holes)
 			i++;
 	    }
 		
-		printf("Loaded %d flat particles\n",i);
+//		printf("Loaded %d flat particles\n",i);
 		
 		fclose(f);
 	}
@@ -842,7 +866,7 @@ void Initialise(char *target, char *flat, char *holes)
 			i++;
 	    }
 		
-		printf("Loaded %d hole particles\n",i);
+//		printf("Loaded %d hole particles\n",i);
 		
 		fclose(f);
 	}
@@ -860,7 +884,7 @@ void Display(void)
 	  if (h_pPos[i].y>maxy) maxy = h_pPos[i].y;
     }
 	
-	printf("maxy=%f\n",maxy);
+//	printf("maxy=%f\n",maxy);
 	
 	
 	for(int i = 0; i<nParticles; i++)
@@ -870,16 +894,28 @@ void Display(void)
 		// Output in the same order as the input particles
 		
 		int currentIndex = h_reverseTrackIndex[i];
+
+		x = h_pPos[currentIndex].x;
+		y = h_pPos[currentIndex].y;
+		z = h_pPos[currentIndex].z;
+
+
+		if (0 && i==0)
+		  printf("0-pos: %.2f,%.2f,%.2f\n",x,y,z);
 		
-		x = h_pPos[currentIndex].x + inverseTranslate[0];
-		y = h_pPos[currentIndex].y + inverseTranslate[1];
-		z = h_pPos[currentIndex].z + inverseTranslate[2];
+		x += inverseTranslate[0];
+		y += inverseTranslate[1];
+		z += inverseTranslate[2];
+
+		if (0 && i==0)
+		  printf("0-translated: %.2f,%.2f,%.2f\n",x,y,z);
+
 		
-		x = inverseProjectN(x,z,y,0);
-		y = inverseProjectN(x,z,y,1);
-		z = inverseProjectN(x,z,y,2);
+		float xf = inverseProjectN(x,z,y,0);
+		float yf = inverseProjectN(x,z,y,1);
+		float zf = inverseProjectN(x,z,y,2);
 		
-		printf("%.2f,%.2f,%.2f\n",x,y,z);
+		printf("%.2f,%.2f,%.2f\n",xf,yf,zf);
 	}
 	
 }
@@ -896,10 +932,10 @@ int main(int argc, char *argv[])
 	  for(int j = 0; j<3; j++)
 	  {
 	    planeVectors[i][j] = atof(argv[j+i*3+argc-6]);
-		printf("%f\n",planeVectors[i][j]);
+//		printf("%f\n",planeVectors[i][j]);
 	  }
 	  
-    printf("Projection plane and normal vectors normalised to length 1000:\n");
+//    printf("Projection plane and normal vectors normalised to length 1000:\n");
     for(int i = 0; i<3; i++)
     {
 	  if (i==2)
@@ -916,20 +952,20 @@ int main(int argc, char *argv[])
 	  {
 		planeVectors[i][j] /= (magnitude/1000.0f);
 		
-		  printf("%f ",planeVectors[i][j]);
+//		  printf("%f ",planeVectors[i][j]);
 	  }
 		
-	  printf("\n");
+//	  printf("\n");
     }
 
 	InitialiseInverse();
-
+/*
 	for(int i = 0; i<3; i++)
 	  for(int j = 0; j<3; j++)
 	  {
 		printf("%f\n",inverseRotate[i][j]);
 	  }
-	
+*/	
 	nTargetParticles = GetNumParticles(argv[1]);
 	nHoleParticles = GetNumParticles(argv[3]);
 	nParticles = GetNumParticles(argv[2])+ nHoleParticles;
@@ -955,10 +991,17 @@ int main(int argc, char *argv[])
 	cudaEventCreate(&start);
 	cudaEventCreate(&stop);
 
-	printf("About to allocate memory\n");
+//	printf("About to allocate memory\n");
 	AllocateMemory();
 	Initialise(argv[1],argv[2],argv[3]);
-
+	
+/*
+	printf("Inverse translation:\n");
+	for(int i = 0; i<3; i++)
+	{
+      printf("%f\n",inverseTranslate[i]);
+	}
+*/	
 	CopyToDevice();
 
 	InitialiseDevice<<< nblks, nthds >>>(d_pPos[activeArray],d_pAcc,d_cellHash,d_pIndex,d_trackIndex[activeArray],d_reverseTrackIndex,nParticles,nloops);
@@ -977,7 +1020,7 @@ int main(int argc, char *argv[])
  
     CountNeighbours<<< nblks, nthds >>>(d_pPos[activeArray],d_cellHash,d_cellStart,d_neighbourCount, d_pIndex,nParticles, nloops);
 
-	printf("About to allocate neighbour memory\n");
+//	printf("About to allocate neighbour memory\n");
 	nParticlePairs = AllocateNeighbourMemory();
 
 	int nPPloops = 1+(nParticlePairs-1)/(nthds*nblks);
@@ -997,7 +1040,7 @@ int main(int argc, char *argv[])
 
 	cudaEventRecord(start,0);
 
-	int iters = 80000;
+	int iters = RESTORE_TIME+RELAX_TIME;
 
 	for(int i = 0; i<iters;i++)
 	{

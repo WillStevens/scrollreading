@@ -12,14 +12,14 @@
 #include <thrust/sort.h>
 #include <thrust/device_ptr.h>
 
-#define NUM_BLOCKS 4096
-#define THREADS_PER_BLOCK 1024
+#define NUM_BLOCKS 512
+#define THREADS_PER_BLOCK 512
 
 #define CELL_DIMX 3.0f
 #define CELL_DIMY 3.0f
 #define CELL_DIMZ 3.0f
 
-#define MAX_NEIGHBOUR_DISTANCE_SQUARED (2.1f)
+#define MAX_NEIGHBOUR_DISTANCE_SQUARED (1.5f)
 
 #define CELL_NUMX 256
 #define CELL_NUMY 256
@@ -38,11 +38,21 @@
 #define MAXZE (MAXZ-EPSILON)
 
 #define REPEL_FORCE_CONSTANT            0.2f
-#define ATTRACT_FORCE_CONSTANT          0.04f
+#define ATTRACT_FORCE_CONSTANT          0.4f 
 #define FRICTION_FORCE_CONSTANT         0.9f
-#define GRAVITY_FORCE_CONSTANT 			0.008f
+#define GRAVITY_FORCE_CONSTANT 			0.002f
 
 #define INITIAL_VELOCITY				0.08f
+
+#define DENSITY_MULTIPLIER				0.4f
+
+#define H_CONSTANT 1.5f
+#define H_CONSTANT_TIMES_2 (2.0f*H_CONSTANT)
+#define H_CONSTANT_TIMES_2_SQUARED (4.0f*H_CONSTANT*H_CONSTANT)
+#define W_CONSTANT 15.0f/(16.0f*PI*H_CONSTANT*H_CONSTANT*H_CONSTANT)
+
+#define RHO_0 1.0f
+#define P_0 1.0f					// This is RHO_0 times c squared
 
 #define PI 3.14159265358979323846264f
 
@@ -62,6 +72,62 @@ __device__ float3 MultiplyVector(float3 a, float f)
 {
 	return make_float3(a.x*f,a.y*f,a.z*f);
 }
+
+__device__ float WCalcGivenS(float s)
+{
+	if (s>=2.0f)
+	{
+		return 0.0f;
+	}
+	else
+	{
+		return W_CONSTANT * (0.25f*s*s-s+1.0f);
+	}
+}
+
+__device__ float WCalc(float3 rij,float dist)
+{
+	float s = dist/H_CONSTANT;
+
+	if (s>=2.0f)
+	{
+		return 0.0f;
+	}
+	else
+	{
+		return W_CONSTANT * (0.25f*s*s-s+1.0f);
+	}
+}
+
+__device__ float3 DeltaWCalc(float3 rij,float dist)
+{
+	float s = dist/H_CONSTANT;
+
+	if (s>=2.0f)
+	{
+		return make_float3(0.0f,0.0f,0.0f);
+	}
+	else
+	{
+		return MultiplyVector(rij,W_CONSTANT*(0.5f*s-1.0f)/(H_CONSTANT*dist));
+	}
+}
+
+// This is the part of DeltaWCalc that multiplies the vector
+__device__ float FabCalc(float dist)
+{
+	float s = dist/H_CONSTANT;
+
+	if (s>=2.0f)
+	{
+		return 0.0f;
+	}
+	else
+	{
+		return W_CONSTANT*(0.5f*s-1.0f)/(H_CONSTANT*dist);
+	}
+}
+
 
 __device__ float DotProduct(float3 a, float3 b)
 {
@@ -185,13 +251,17 @@ __global__ void ParticleMove(float4 *pPos, float4 *pVel, float4 *pAcc, unsigned 
         printf("force on %d is: %f,%f,%f\n",i,pAcc[i].x,pAcc[i].y,pAcc[i].z);			    
 	  }
 	}
-*/	
+*/
+
+	//if (zIdx==0) printf("Density %f\n",pVel[zIdx].w);
+	
 	for(int i = 0; i<nloops && zIdx < nParticles; i++)
 	{
 
 		pVel[zIdx].x += pAcc[zIdx].x;
 		pVel[zIdx].y += pAcc[zIdx].y;
 		pVel[zIdx].z += pAcc[zIdx].z;
+		pVel[zIdx].w += pAcc[zIdx].w*DENSITY_MULTIPLIER;
 		
     	pVel[zIdx].x *= FRICTION_FORCE_CONSTANT;
 		pVel[zIdx].y *= FRICTION_FORCE_CONSTANT;
@@ -225,6 +295,82 @@ __global__ void ParticleMove(float4 *pPos, float4 *pVel, float4 *pAcc, unsigned 
 
 #define CELLNUMAUX(x,y,z) ((x)*CELL_NUMX+(y))*CELL_NUMY+(z)
 #define CELLNUM(x,y,z) ((x)<0 || (y)<0 || (z)<0 || (x)>=CELL_NUMX || (y)>=CELL_NUMY || (z)>=CELL_NUMZ)?-1:CELLNUMAUX(x,y,z)
+
+#define CELLNUMAUX(x,y,z) ((x)*CELL_NUMX+(y))*CELL_NUMY+(z)
+#define CELLNUM(x,y,z) ((x)<0 || (y)<0 || (z)<0 || (x)>=CELL_NUMX || (y)>=CELL_NUMY || (z)>=CELL_NUMZ)?-1:CELLNUMAUX(x,y,z)
+
+__global__ void ShepardFilter(float4 *pPos, float4 *pVel, float *pNewDensity, unsigned *cellHash, int *cellStart, int nParticles, int nloops)
+{
+	int thdsPerBlk = blockDim.x;	// Number of threads per block
+	int blkIdx = blockIdx.x;		// Index of block
+	int thdIdx = threadIdx.x;		// Index of thread within a block
+	int zIdx = blkIdx*thdsPerBlk*nloops + thdIdx;
+
+	int neighbourCell,ps;
+	int cellx,celly,cellz;
+
+	float numerator;
+	float denominator;
+
+	for(int i = 0; i<nloops && zIdx < nParticles; i++)
+	{
+		cellx = (int)(pPos[zIdx].x/CELL_DIMX); 
+		celly = (int)(pPos[zIdx].y/CELL_DIMY);
+		cellz = (int)(pPos[zIdx].z/CELL_DIMZ);
+
+		numerator = W_CONSTANT;
+		denominator = W_CONSTANT/pVel[zIdx].w;
+
+		for(int xo=-1;xo<=1;xo++) for(int yo=-1;yo<=1;yo++) for(int zo=-1;zo<=1;zo++)
+		{	
+			if ((neighbourCell = CELLNUM(cellx+xo,celly+yo,cellz+zo)) != -1 &&
+			    (ps = cellStart[neighbourCell]) != -1)
+			{
+				while(ps < nParticles && cellHash[ps] == neighbourCell)
+				{
+					if (ps != zIdx)
+					{
+						float3 diff = make_float3(
+					        	pPos[ps].x - pPos[zIdx].x,
+							pPos[ps].y - pPos[zIdx].y,
+							pPos[ps].z - pPos[zIdx].z);
+
+						float dist2 = diff.x*diff.x+diff.y*diff.y+diff.z*diff.z;
+						if (dist2 < H_CONSTANT_TIMES_2_SQUARED)
+						{
+							float dist = sqrtf(dist2);
+							float w = WCalc(diff,dist);
+
+							numerator += w;
+							denominator += w/pVel[ps].w;
+						}
+					}
+					ps++;
+				}
+			}
+		}
+
+		pNewDensity[zIdx] = numerator/denominator;
+
+		zIdx += thdsPerBlk;
+	}
+}
+
+__global__ void UpdateDensity(float4 *pVel, float *pNewDensity, int nParticles, int nloops)
+{
+	int thdsPerBlk = blockDim.x;	// Number of threads per block
+	int blkIdx = blockIdx.x;		// Index of block
+	int thdIdx = threadIdx.x;		// Index of thread within a block
+	int zIdx = blkIdx*thdsPerBlk*nloops + thdIdx;
+
+	for(int i = 0; i<nloops && zIdx < nParticles; i++)
+	{
+		pVel[zIdx].w = pNewDensity[zIdx];
+
+		zIdx += thdsPerBlk;
+	}
+}
+
 
 /* Called once to count how many neighbours each particle has */
 __global__ void CountNeighbours(float4 *pPos, unsigned *cellHash, int *cellStart, int *neighbourCount, unsigned *pIndex, int nParticles, int nloops)
@@ -388,14 +534,17 @@ __global__ void ParticleForces(float4 *pPos, float4 *pVel, float4 *pAcc, unsigne
 	int neighbourCell,ps;
 	int cellx,celly,cellz;
 	
+	float4 vThis;
 	float4 thisAcc;
 
+	//printf("In particle forces\n");
 	for(int i = 0; i<nloops && zIdx < nParticles; i++)
 	{
 		cellx = (int)(pPos[zIdx].x/CELL_DIMX); 
 		celly = (int)(pPos[zIdx].y/CELL_DIMY);
 		cellz = (int)(pPos[zIdx].z/CELL_DIMZ);
 
+		vThis = pVel[zIdx];
 		thisAcc = make_float4(0.0f,0.0f,0.0f,0.0f);
 
 		for(int xo=-1;xo<=1;xo++) for(int yo=-1;yo<=1;yo++) for(int zo=-1;zo<=1;zo++)
@@ -403,6 +552,8 @@ __global__ void ParticleForces(float4 *pPos, float4 *pVel, float4 *pAcc, unsigne
 			if ((neighbourCell = CELLNUM(cellx+xo,celly+yo,cellz+zo)) != -1 &&
 			    (ps = cellStart[neighbourCell]) != -1)
 			{
+				//printf("Got neighbour in particle forces\n");
+
 				while(ps < nParticles && cellHash[ps] == neighbourCell)
 				{
 					if (ps != zIdx)
@@ -413,6 +564,8 @@ __global__ void ParticleForces(float4 *pPos, float4 *pVel, float4 *pAcc, unsigne
 							pPos[ps].z - pPos[zIdx].z);
 
 						float dist = sqrtf(diff.x*diff.x + diff.y*diff.y + diff.z*diff.z);
+						//printf("Dist %f\n",dist);
+
 						if (dist < 1.0f)
 						{
 							
@@ -430,6 +583,35 @@ __global__ void ParticleForces(float4 *pPos, float4 *pVel, float4 *pAcc, unsigne
 							}
 
 						}
+
+						if (dist < H_CONSTANT_TIMES_2)
+						{
+						    float dOther = pVel[ps].w;
+						    float3 dw = DeltaWCalc(diff,dist);
+						    float3 vdiff = make_float3(
+						    	vThis.x - pVel[ps].x,
+						    	vThis.y - pVel[ps].y,
+						    	vThis.z - pVel[ps].z);
+
+							// Pressure forces
+						    if (1)
+						    {
+								float pterm = P_0 *
+								(1.0f/(RHO_0*vThis.w)-1.0f/(vThis.w*vThis.w)
+								+ 1.0f/(RHO_0*dOther)-1.0f/(dOther*dOther));
+								//printf("Pressure force %f\n",pterm);
+								thisAcc.x -= dw.x*pterm;
+								thisAcc.y -= dw.y*pterm;
+								thisAcc.z -= dw.z*pterm;
+						    }
+							
+						    // Density change
+						    if (1)
+						    {
+							    thisAcc.w += DotProduct(vdiff,dw);
+						    }
+
+						}
 					}
 					ps++;
 				}
@@ -439,6 +621,7 @@ __global__ void ParticleForces(float4 *pPos, float4 *pVel, float4 *pAcc, unsigne
 		atomicAdd(&pAcc[zIdx].x,thisAcc.x);
 		atomicAdd(&pAcc[zIdx].y,thisAcc.y);
 		atomicAdd(&pAcc[zIdx].z,thisAcc.z);
+		atomicAdd(&pAcc[zIdx].w,thisAcc.w);
 
 		zIdx += stepSize;
 	}
@@ -507,6 +690,7 @@ __global__ void ConnectForces(float4 *pPos, float4 *pVel, float4 *pAcc, unsigned
 int nParticles;
 int nParticlePairs;
 float4 *d_pVel[2];
+float *d_pNewDensity;
 float4 *d_pPos[2];
 float4 *d_pAcc;
 unsigned *d_cellHash;
@@ -565,6 +749,7 @@ void AllocateMemory(void)
 		Check( cudaMalloc((void**)&d_pPos[i],sizeof(float4)*nParticles) );
 		Check( cudaMalloc((void**)&d_trackIndex[i],sizeof(unsigned)*nParticles) );
 	}
+	Check( cudaMalloc((void**)&d_pNewDensity,sizeof(float)*nParticles) );	
 	Check( cudaMalloc((void**)&d_pAcc,sizeof(float4)*nParticles) );
 	Check( cudaMalloc((void**)&d_reverseTrackIndex,sizeof(unsigned)*nParticles) );
 	Check( cudaMalloc((void**)&d_cellHash,sizeof(unsigned)*nParticles) );
@@ -616,6 +801,7 @@ void FreeMemory(void)
 		cudaFree(d_pPos[i]);
 		cudaFree(d_trackIndex[i]);
 	}
+	cudaFree(d_pNewDensity);
 	cudaFree(d_pAcc);
 	cudaFree(d_reverseTrackIndex);
 	cudaFree(d_cellHash);
@@ -682,6 +868,8 @@ void Initialise(char *fname)
 				h_pVel[i].x = 0.0f;
 				h_pVel[i].y = -INITIAL_VELOCITY;
 				h_pVel[i].z = 0.0f;
+				h_pVel[i].w = RHO_0;
+				
 				h_pPos[i].x = projectN(x,y,z,0);
 				h_pPos[i].y = projectN(x,y,z,2);
 				h_pPos[i].z = projectN(x,y,z,1);
@@ -814,6 +1002,8 @@ int main(int argc, char *argv[])
 
 	nParticlePairs = AllocateNeighbourMemory();
 
+	printf("nParticleParis=%d\n",nParticlePairs);
+
 	int nPPloops = 1+(nParticlePairs-1)/(nthds*nblks);
 
     InitialiseNeighbours<<< nblks, nthds >>>(d_pPos[activeArray],d_cellHash,d_cellStart,d_neighbourCount, d_neighbourList, d_neighbourDistance, d_pIndex,nParticles, nloops);
@@ -832,13 +1022,29 @@ int main(int argc, char *argv[])
 
 	cudaEventRecord(start,0);
 
-	int iters = 3000;
+	int iters = 12000;
 
 	for(int i = 0; i<iters;i++)
 	{
 //	        printf("Iteration %d\n",i);
 
+			if (0 && i && i%60 == 0)
+			{
+				ShepardFilter<<< nblks, nthds >>>(d_pPos[activeArray],d_pVel[activeArray],d_pNewDensity,d_cellHash,d_cellStart,nParticles,nloops);
+				UpdateDensity<<< nblks, nthds >>>(d_pVel[activeArray],d_pNewDensity,nParticles,nloops);
+			}
+
+			//printf("About to call particle forces\n");
 			ParticleForces<<< nblks, nthds >>>(d_pPos[activeArray],d_pVel[activeArray],d_pAcc,d_cellHash,d_cellStart,nParticles,nloops,d_trackIndex[activeArray]);
+			
+			cudaError_t err = cudaGetLastError();
+			if (err != cudaSuccess)
+			{
+				printf("%s\n",cudaGetErrorString(err));
+				exit(-1);
+			}
+			
+			//printf("Called particle forces\n");
 
 			ConnectForces<<< nblks, nthds >>>(d_pPos[activeArray],d_pVel[activeArray],d_pAcc,d_cellHash,d_cellStart,d_neighbourList,d_neighbourDistance,nParticlePairs,nPPloops,d_reverseTrackIndex,i);
 
@@ -850,7 +1056,15 @@ int main(int argc, char *argv[])
 			ArrayCopy<<< nblks, nthds >>>(d_pPos[activeArray],d_pPos[1-activeArray],d_pVel[activeArray],d_pVel[1-activeArray],d_cellHash,d_cellStart,d_pIndex,nParticles,nloops);
 			UpdateTrackIndex<<< nblks, nthds >>>(d_pIndex,d_trackIndex[activeArray],d_trackIndex[1-activeArray],d_reverseTrackIndex,nParticles,nloops);
 
-			activeArray = 1-activeArray;	
+			activeArray = 1-activeArray;
+
+            if (1 && i%100==0)
+            {
+			  char fname[100];
+			  sprintf(fname,"anim_test_%06d.csv",i);
+	          CopyFromDevice();
+	          Output(fname);
+            }			
 	}
 		
 

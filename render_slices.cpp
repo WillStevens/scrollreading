@@ -142,6 +142,7 @@ void Render(pointSet flat, pointSet deformed, const char *outputFile)
 		//yd = (156.0-7.5)-yd;
 		//zd += 0.239-1.11;
 
+	    yd=yd+12; if (yd<0) yd=0;
 		
 		if (xf>=0 && zf>=0 && xf<RENDER_SIZE && zf<RENDER_SIZE && zd>=0 && yd>=0 && xd>=0 && zd<SIZE && yd<SIZE && xd<SIZE)
 			rendered[(int)zf][(int)xf] = volume[(int)zd][(int)yd][(int)xd];

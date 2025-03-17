@@ -73,33 +73,45 @@ bool GoodSpan(weightedPointSet &wp)
 
 // returns an unnormalised weighted point set for the target point
 // could do this much more efficiently is flat is sorted.
-weightedPointSet FindNearestPoints(float x, float y, float z, pointSet &flat, pointSet &target)
+weightedPointSet FindNearestPoints(float x, float y, float z, pointSet &flat, pointSet &target, std::vector<int> &sortedIndex)
 {
 	weightedPointSet r;
-    float neighbourDistance = 1.1f*1.1f*1.1f;
+	float neighbourDistance = 1.2f;
+    float neighbourDistanceSquared = neighbourDistance*neighbourDistance;
 	
-	int i = 0;
-	for(const std::tuple<float,float,float> &p : flat)
+	// sortedIndex is sorted by x-coord of flat, and indices of flat and target are in correspondance
+
+	// make sure we only test about 1/500th of the points
+	int step = sortedIndex.size()/500;
+	int starti = 0;
+	int endi = sortedIndex.size();
+	for(int i = 1; i<sortedIndex.size(); i+= step)
 	{
-		float xp = std::get<0>(p);
+		if (std::get<0>(flat[sortedIndex[i]]) < x-neighbourDistance)
+			starti = i;
+		if (std::get<0>(flat[sortedIndex[sortedIndex.size()-i]]) > x+neighbourDistance)
+			endi = flat.size()-i;
+	}
+	
+	for(int i = starti; i<endi; i++)
+	{
+		float xp = std::get<0>(flat[sortedIndex[i]]);
 		
-		if ((x-xp)*(x-xp) > neighbourDistance)
+		if ((x-xp)*(x-xp) > neighbourDistanceSquared)
 			continue;
 		
-		float yp = std::get<1>(p);
-		float zp = std::get<2>(p);
+		float yp = std::get<1>(flat[sortedIndex[i]]);
+		float zp = std::get<2>(flat[sortedIndex[i]]);
 				
 		float dist2 = (x-xp)*(x-xp)+(y-yp)*(y-yp)+(z-zp)*(z-zp);
 		
-		if (dist2 <= neighbourDistance)
+		if (dist2 <= neighbourDistanceSquared)
 		{	
-			float xt = std::get<0>(target[i]);
-			float yt = std::get<1>(target[i]);
-			float zt = std::get<2>(target[i]);
+			float xt = std::get<0>(target[sortedIndex[i]]);
+			float yt = std::get<1>(target[sortedIndex[i]]);
+			float zt = std::get<2>(target[sortedIndex[i]]);
 			r.push_back(std::tuple<float,float,float,float>(xt,yt,zt,exp(-dist2)));
 		}
-		
-		i++;
 	}
 	
 	if (GoodSpan(r))
@@ -152,9 +164,22 @@ int main(int argc, char *argv[])
 	// There is a 1:1 correspondance between points in the target and flat volume
 	pointSet targetVolume = LoadVolume(argv[1],xmin,xmax,zmin,zmax);
 	pointSet flatVolume = LoadVolume(argv[2],xmin,xmax,zmin,zmax);
-	
+    
 	printf("Loaded %d flattened points\n",(int)targetVolume.size());
-	
+
+	// Make an index array to use for sorting
+	std::vector<int> sortedIndex(flatVolume.size(),0);
+	for(int i = 0; i!=sortedIndex.size(); i++)
+		sortedIndex[i]=i;
+
+    std::sort(sortedIndex.begin(), sortedIndex.end(), 
+	  [&] (const int& a, const int& b)
+      {
+         return std::get<0>(flatVolume[a]) < std::get<0>(flatVolume[b]);
+      }
+	);
+    
+		
 	float xstep = (xmax-xmin)/(float)(int)(xmax-xmin);
 	float zstep = (zmax-zmin)/(float)(int)(zmax-zmin);
 	
@@ -175,7 +200,7 @@ int main(int argc, char *argv[])
 		
 		for(float z=zmin; z<=zmax; z+=zstep)
 		{
-			weightedPointSet p = FindNearestPoints(x,0,z,flatVolume,targetVolume);
+			weightedPointSet p = FindNearestPoints(x,0,z,flatVolume,targetVolume,sortedIndex);
 						
 			if (Interpolate(p,xi,yi,zi))
 			{
