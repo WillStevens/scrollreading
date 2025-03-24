@@ -70,88 +70,105 @@ def Project(points,normal):
   
   
 # Given a pointSet, return a flat pointSet in 1:1 correspondance with the original pointSet
-# Also return the parentShortaxis w.r.t. the same plane - used for alignment
-# Also return the plane that both are flattened to  
-def Flatten(points,extraPoint,parentShortaxis,depth=0):
+# Also return the extraPoints flattened in the same way - used for alignment
+# Also return the plane that both are flattened to
+  
+def Flatten(points,extraPoints,depth=0):
   print(" " * depth + "Call to Flatten")
   # subtract out the centroid
   centroid = np.mean(points, axis=1, keepdims=True)
   print(" " * depth + "Centroid")
   print(" " * depth + str(centroid))
   cpoints = points - centroid
-  cextraPoint = extraPoint - centroid
+  cextraPoints = [x - centroid for x in extraPoints]
   
   (normal,shortaxis,longaxis) = FitPlane(cpoints)
   shortaxis = np.reshape(shortaxis,(3,1))
 
   if GoodFit(FitMetric(cpoints,normal)) or depth==2:
-    print(" " * depth + "return parent centroid")
+    print(" " * depth + "returned parent centroid")
     print(" " * depth + str(Project(-centroid,normal)))
-    return (Project(cpoints,normal),Project(cextraPoint,normal),Project(-centroid,normal),Project(parentShortaxis-centroid,normal),normal)
+    return (Project(cpoints,normal),[Project(x,normal) for x in cextraPoints],normal)
   else:
     (points0,points1) = Split(cpoints,longaxis)
+     
+    # Split extrapoints into two separate pointsets depending on which half they lie in
+    epCondition = [np.matmul(longaxis,x)<0 for x in cextraPoints]
+    
+    (extraPoints0,extraPoints1) = ([x for x in cextraPoints if np.matmul(longaxis,x)<0],
+                                   [x for x in cextraPoints if np.matmul(longaxis,x)>=0])
+ 
+    print("Extrapoints")
+    print(len(cextraPoints))
+    print(len(extraPoints0))
+    print(len(extraPoints1))
+    
+    # Centroid and shortaxis will be used for alignment of the two planes, so add them to both
+    # sets of extrapoints
+    extraPoints0 += [-centroid,shortaxis]
+    extraPoints1 += [-centroid,shortaxis]
+ 
+    (flat0,flatExtraPoints0,normal0) = Flatten(points0,extraPoints0,depth+1)
+    (flat1,flatExtraPoints1,normal1) = Flatten(points1,extraPoints1,depth+1)
 
-    parentCentroidIn0 = np.matmul(longaxis,-centroid)<0
-    
-    (flat0,parentCentroid0,centroid0,shortaxis0,normal0) = Flatten(points0,-centroid,shortaxis,depth+1)
-    (flat1,parentCentroid1,centroid1,shortaxis1,normal1) = Flatten(points1,-centroid,shortaxis,depth+1)
+    print("flatExtrapoints")
+    print(len(flatExtraPoints0))
+    print(len(flatExtraPoints1))
 
-    # Work out which plane parentShortAxis should be projected to
-    cparentShortaxis = parentShortaxis - centroid
-    parentShortaxisIn0 = np.matmul(longaxis,parentShortaxis)<0
-    
-    pparentShortaxis = Project(cparentShortaxis,normal0 if parentShortaxisIn0 else normal1)
-    pcentroid = parentCentroid0 if parentCentroidIn0 else parentCentroid1
-    
-    print(" " * depth + "Projected parent centroid")
-    print(" " * depth + str(pcentroid))
     # If the dot product is negative then flip normal1
     if normal0.dot(normal1)<0:
       normal1 = -normal1
 
-      
     # Transformation to rotate normal1 to normal0
     rotation = rotation_matrix_from_vectors(normal1,normal0)
 
     # Rotate all points1, and also normal1
     flat1 = np.matmul(rotation,flat1)
     normal1 = np.matmul(rotation,normal1)
-    centroid1 = np.matmul(rotation,centroid1)
-    shortaxis1 = np.matmul(rotation,shortaxis1)
-    if not parentShortaxisIn0:
-      pparentShortaxis = np.matmul(rotation,pparentShortaxis)
-    if not parentCentroidIn0:
-      pcentroid = np.matmul(rotation,pcentroid)
+    print("flatExtraPoints1")
+    print(len(flatExtraPoints1))
+    print(flatExtraPoints1)
+    flatExtraPoints1 = [np.matmul(rotation,x) for x in flatExtraPoints1]
     
-    flat1 -= (centroid1 - centroid0)
-#    shortaxis1 -= (centroid1 - centroid0)
-#    if not parentShortaxisIn0:
-#      pparentShortaxis -= (centroid1 - centroid0)
-    if not parentCentroidIn0:
-      pcentroid -= (centroid1 - centroid0)
+    print("flatExtraPoints0 and 1 [-2]")    
+    print(flatExtraPoints0[-2])
+    print(flatExtraPoints1[-2])
+    
+    flat1 -= (flatExtraPoints1[-2] - flatExtraPoints0[-2])
+    flatExtraPoints1 = [x - (flatExtraPoints1[-2] - flatExtraPoints0[-2]) for x in flatExtraPoints1]
     
     # Transformation to align the short axes from both halves
-    rotation = rotation_matrix_from_vectors(shortaxis1-centroid1,shortaxis0-centroid0)
+    rotation = rotation_matrix_from_vectors(flatExtraPoints1[-1],flatExtraPoints0[-1])
 
     # Rotate all points1, and also normal1
     flat1 = np.matmul(rotation,flat1)
     normal1 = np.matmul(rotation,normal1) # should not change
-    if not parentShortaxisIn0:
-      pparentShortaxis = np.matmul(rotation,pparentShortaxis)
-    if not parentCentroidIn0:
-      pcentroid = np.matmul(rotation,pcentroid)
-
+    flatExtraPoints1 = [np.matmul(rotation,x) for x in flatExtraPoints1]
+ 
+    flatExtraPoints0 = flatExtraPoints0[:-2]
+    flatExtraPoints1 = flatExtraPoints1[:-2]
+ 
+    # Using epCondition, join flatExtraPoints0 and flatExtraPoints1 together
+    re = []
+    i0 = 0
+    i1 = 0
+    for c in epCondition:
+      if c:
+        re += [flatExtraPoints0[i0]]
+        i0 += 1
+      else:
+        re += [flatExtraPoints1[i1]]
+        i1 += 1
+        
     r = np.append(flat0,flat1,1)
     
-    print(" " * depth + "returned parent centroid (after recursive call)")
-    print(" " * depth + str(pcentroid))
-    return (r,pcentroid,pparentShortaxis,normal1)
+    return (r,re,normal1)
 
     
 print("Loading points")
 points = []
-#with open(r"../flatten_interp_test/bulk/v2011601_32_interp.csv", newline='') as csvfile:
-with open(r"flatplane.csv", newline='') as csvfile:
+with open(r"../flatten_interp_test/bulk/v2011601_32_interp.csv", newline='') as csvfile:
+#with open(r"flatplane.csv", newline='') as csvfile:
   pointreader = csv.reader(csvfile)
 
   for row in pointreader:
@@ -159,7 +176,7 @@ with open(r"flatplane.csv", newline='') as csvfile:
 
 points = np.array([[x[0] for x in points],[x[1] for x in points],[x[2] for x in points]])
     
-(flat,a,b,normal)=Flatten(points,np.array([[0],[0],[0]]),np.array([[0],[0],[0]]))
+(flat,a,normal)=Flatten(points,[])
 
 
 print("Saving points")
