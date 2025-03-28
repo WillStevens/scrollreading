@@ -77,21 +77,32 @@ def Flatten(points,extraPoints,depth=0):
   print(" " * depth + "Call to Flatten")
   # subtract out the centroid
   centroid = np.mean(points, axis=1, keepdims=True)
-  print(" " * depth + "Centroid")
+  print(" " * depth + "centroid")
   print(" " * depth + str(centroid))
   cpoints = points - centroid
   cextraPoints = [x - centroid for x in extraPoints]
+
+  print(" " * depth + "cextrapoints")
+  print(" " * depth + str(cextraPoints))
   
   (normal,shortaxis,longaxis) = FitPlane(cpoints)
   shortaxis = np.reshape(shortaxis,(3,1))
 
-  if GoodFit(FitMetric(cpoints,normal)) or depth==2:
-    print(" " * depth + "returned parent centroid")
-    print(" " * depth + str(Project(-centroid,normal)))
-    return (Project(cpoints,normal),[Project(x,normal) for x in cextraPoints],normal)
+  print(" " * depth + "longaxis")
+  print(" " * depth + str(longaxis))
+  print(" " * depth + "shortaxis")
+  print(" " * depth + str(shortaxis))
+
+  
+  if GoodFit(FitMetric(cpoints,normal)) or depth==4:
+    print(" " * depth + "returned cextrapoints at max depth")
+    print(" " * depth + str([Project(x,normal) for x in cextraPoints]))
+    return (Project(cpoints,normal),[Project(x,normal) for x in cextraPoints],Project(-centroid,normal),normal)
   else:
     (points0,points1) = Split(cpoints,longaxis)
      
+    cextraPoints += [-centroid]
+    
     # Split extrapoints into two separate pointsets depending on which half they lie in
     epCondition = [np.matmul(longaxis,x)<0 for x in cextraPoints]
     
@@ -103,13 +114,17 @@ def Flatten(points,extraPoints,depth=0):
     print(len(extraPoints0))
     print(len(extraPoints1))
     
-    # Centroid and shortaxis will be used for alignment of the two planes, so add them to both
+    # shortaxis will be used for alignment of the two planes, so add them to both
     # sets of extrapoints
-    extraPoints0 += [-centroid,shortaxis]
-    extraPoints1 += [-centroid,shortaxis]
+    extraPoints0 += [shortaxis]
+    extraPoints1 += [shortaxis]
  
-    (flat0,flatExtraPoints0,normal0) = Flatten(points0,extraPoints0,depth+1)
-    (flat1,flatExtraPoints1,normal1) = Flatten(points1,extraPoints1,depth+1)
+    # In 1, find all of the points near the dividing plane, and add them as extraPoints for 0
+	# After aligning 1, triangulate 1 using those points, and the farthest point from the dividing plane.
+    # Once we find where those points projet to in 0, distort 1 so that they line up...	
+ 
+    (flat0,flatExtraPoints0,centroid0,normal0) = Flatten(points0,extraPoints0,depth+1)
+    (flat1,flatExtraPoints1,centroid1,normal1) = Flatten(points1,extraPoints1,depth+1)
 
     print("flatExtrapoints")
     print(len(flatExtraPoints0))
@@ -125,17 +140,14 @@ def Flatten(points,extraPoints,depth=0):
     # Rotate all points1, and also normal1
     flat1 = np.matmul(rotation,flat1)
     normal1 = np.matmul(rotation,normal1)
+    centroid1 = np.matmul(rotation,centroid1)
     print("flatExtraPoints1")
     print(len(flatExtraPoints1))
     print(flatExtraPoints1)
     flatExtraPoints1 = [np.matmul(rotation,x) for x in flatExtraPoints1]
-    
-    print("flatExtraPoints0 and 1 [-2]")    
-    print(flatExtraPoints0[-2])
-    print(flatExtraPoints1[-2])
-    
-    flat1 -= (flatExtraPoints1[-2] - flatExtraPoints0[-2])
-    flatExtraPoints1 = [x - (flatExtraPoints1[-2] - flatExtraPoints0[-2]) for x in flatExtraPoints1]
+        
+    flat1 -= (centroid1 - centroid0)
+    flatExtraPoints1 = [x - (centroid1 - centroid0) for x in flatExtraPoints1]
     
     # Transformation to align the short axes from both halves
     rotation = rotation_matrix_from_vectors(flatExtraPoints1[-1],flatExtraPoints0[-1])
@@ -145,8 +157,8 @@ def Flatten(points,extraPoints,depth=0):
     normal1 = np.matmul(rotation,normal1) # should not change
     flatExtraPoints1 = [np.matmul(rotation,x) for x in flatExtraPoints1]
  
-    flatExtraPoints0 = flatExtraPoints0[:-2]
-    flatExtraPoints1 = flatExtraPoints1[:-2]
+    flatExtraPoints0 = flatExtraPoints0[:-1]
+    flatExtraPoints1 = flatExtraPoints1[:-1]
  
     # Using epCondition, join flatExtraPoints0 and flatExtraPoints1 together
     re = []
@@ -161,8 +173,10 @@ def Flatten(points,extraPoints,depth=0):
         i1 += 1
         
     r = np.append(flat0,flat1,1)
-    
-    return (r,re,normal1)
+
+    print(" " * depth + "returned cextrapoints")
+    print(" " * depth + str(re))    
+    return (r,re[:-1],re[-1],normal1)
 
     
 print("Loading points")
@@ -176,7 +190,7 @@ with open(r"../flatten_interp_test/bulk/v2011601_32_interp.csv", newline='') as 
 
 points = np.array([[x[0] for x in points],[x[1] for x in points],[x[2] for x in points]])
     
-(flat,a,normal)=Flatten(points,[])
+(flat,a,c,normal)=Flatten(points,[])
 
 
 print("Saving points")
