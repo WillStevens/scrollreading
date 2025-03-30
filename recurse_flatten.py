@@ -11,6 +11,125 @@
 import numpy as np
 from math import sqrt
 import csv
+import sys
+"""
+def TriangleArea(A,B,C):
+  xAB = A[0]-B[0]
+  yAB = A[1]-B[1]
+  zAB = A[2]-B[2]
+  xAC = A[0]-C[0]
+  yAC = A[1]-C[1]
+  zAC = A[2]-C[2]
+  
+  return 0.5*sqrt((yAB*zAC-zAB*yAC)**2+(zAB*xAC-xAB*zAC)**2+(xAB*yAC-yAB*xAC)**2)
+
+def InTriangle(p,a,b,c):
+  A1 = TriangleArea(p,a,b)
+  A2 = TriangleArea(p,a,c)
+  A3 = TriangleArea(p,b,c)
+  B = TriangleArea(a,b,c)
+  
+  print("Equality test")
+  print((A1,A2,A3))
+  print(B)
+  
+  return (A1+A2+A3)==B
+"""
+# https://gamedev.stackexchange.com/questions/23743/whats-the-most-efficient-way-to-find-barycentric-coordinates
+def Barycentric(p,a,b,c):
+  v0 = b - a
+  v1 = c - a
+  v2 = p - a
+  d00 = (v0[0]*v0[0],v0[1]*v0[1],v0[2]*v0[2])
+  d01 = (v0[0]*v1[0],v0[1]*v1[1],v0[2]*v1[2])
+  d11 = (v1[0]*v1[0],v1[1]*v1[1],v1[2]*v1[2])
+  d20 = (v2[0]*v0[0],v2[1]*v0[1],v2[2]*v0[2])
+  d21 = (v2[0]*v1[0],v2[1]*v1[1],v2[2]*v1[2])
+  denom = d00 * d11 - d01 * d01
+  v = (d11 * d20 - d01 * d21) / denom
+  w = (d00 * d21 - d01 * d20) / denom
+  u = 1.0 - v - w
+    
+  return (u,v,w)
+
+
+# If p is in one of the triangles, return the indices of the triangle and the Barycentric coordinates  
+def FindTriangle(p,vertices,triangulation):
+ 
+  for (a,b,c) in triangulation:
+    (u,v,w) = Barycentric(p,vertices[a],vertices[b],vertices[c])
+    if u>0.0 and v>0.0 and w>0.0:
+      return ((a,b,c),(u,v,w))
+     
+  return None    
+
+# https://stackoverflow.com/questions/2827393/angles-between-two-n-dimensional-vectors-in-python/13849249#13849249
+def unit_vector(vector):
+    """ Returns the unit vector of the vector.  """
+    return vector / np.linalg.norm(vector)
+
+def angle_between(v1, v2):
+    """ Returns the angle in radians between vectors 'v1' and 'v2'::
+
+            >>> angle_between((1, 0, 0), (0, 1, 0))
+            1.5707963267948966
+            >>> angle_between((1, 0, 0), (1, 0, 0))
+            0.0
+            >>> angle_between((1, 0, 0), (-1, 0, 0))
+            3.141592653589793
+    """
+    print(v1)
+    print(v2)
+    v1_u = np.reshape(unit_vector(v1),3)
+    v2_u = np.reshape(unit_vector(v2),3)
+    print(v1_u)
+    print(v2_u)
+    return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))
+
+# Assuming that vertices[-1] is a point that all trangles have in common, triangulate by sweeping along other vertices in angle order
+def Triangulate(vertices):  
+  farthestPoint = vertices[-1]
+  
+  angles = np.zeros(len(vertices)-1)
+  for i in range(0,len(vertices)-1):
+    angles[i] += [angle_between(vertices[i]-farthestPoint,vertices[0]-farthestPoint)]
+
+  # sort indices in order of angles
+  sortedIndices = np.argsort(angles)
+  
+  triangulation = []
+  for i in range(0,len(vertices)-2):
+    triangulation += [(len(vertices)-1,sortedIndices[i],sortedIndices[i+1])]
+    
+  return triangulation
+  
+# Distort points in flat1
+def CageTransform(originalClosePoints,farthestPoint,deformedClosePoints,flat1):
+  vertices = originalClosePoints + farthestPoint
+
+  triangulation = []
+
+  deformedFlat1 = np.empty_like(flat1)
+  
+  for i in range(0,len(flat1[0])):
+    (x,y,z) = (flat1[0,i],flat1[1,i],flat1[2,i])
+
+    t = FindTriangle((x,y,z),vertices,triangulation)
+    
+    if t is not None:
+      ((ai,bi,ci),(u,v,w))=t
+      
+      # Now make the deformed point
+      (a,b,c) = (deformedVertices[ai],deformedVertices[bi],deformedVertices[ci])
+    
+      deformedFlat1[0,i] = a[0]*u+b[0]*v+c[0]*w
+      deformedFlat1[1,i] = a[1]*u+b[1]*v+c[1]*w
+      deformedFlat1[2,i] = a[2]*u+b[2]*v+c[2]*w
+    else:
+      print((x,y))
+      print("Not in triangle")
+
+  return deformedFlat1    
 
 # From here: https://stackoverflow.com/questions/45142959/calculate-rotation-matrix-to-align-two-vectors-in-3d-space
 def rotation_matrix_from_vectors(vec1, vec2):
@@ -94,7 +213,7 @@ def Flatten(points,extraPoints,depth=0):
   print(" " * depth + str(shortaxis))
 
   
-  if GoodFit(FitMetric(cpoints,normal)) or depth==4:
+  if GoodFit(FitMetric(cpoints,normal)) or depth==1:
     print(" " * depth + "returned cextrapoints at max depth")
     print(" " * depth + str([Project(x,normal) for x in cextraPoints]))
     return (Project(cpoints,normal),[Project(x,normal) for x in cextraPoints],Project(-centroid,normal),normal)
@@ -119,13 +238,44 @@ def Flatten(points,extraPoints,depth=0):
     extraPoints0 += [shortaxis]
     extraPoints1 += [shortaxis]
  
-    # In 1, find all of the points near the dividing plane, and add them as extraPoints for 0
-	# After aligning 1, triangulate 1 using those points, and the farthest point from the dividing plane.
-    # Once we find where those points projet to in 0, distort 1 so that they line up...	
- 
+    # Find the farthest point from the dividing plane
+    distance = np.matmul(longaxis,points1)
+    maxDistance = distance[0]
+    maxDistanceIndex = 0
+    for i in range(0,len(distance)):
+      if distance[i]>maxDistance:
+        maxDistance = distance[i]
+        maxDistanceIndex = i
+
+    # Add the farthest point to extraPoints1
+    extraPoints1 += [np.reshape(points1[:,maxDistanceIndex],(3,1))]
+        
+    # In 1, find all of the points near the dividing plane
+    closePoints1 = points1[:,np.matmul(longaxis,points1)<1.0]
+    numClosePoints1 = len(closePoints1[0])
+    print("Number of close points")
+    print(closePoints1.shape)
+    # Add them to extraPoints0 and extraPoints1
+    for i in range(0,numClosePoints1):
+      extraPoints0 += [np.reshape(closePoints1[:,i],(3,1))]
+      extraPoints1 += [np.reshape(closePoints1[:,i],(3,1))]
+  
     (flat0,flatExtraPoints0,centroid0,normal0) = Flatten(points0,extraPoints0,depth+1)
     (flat1,flatExtraPoints1,centroid1,normal1) = Flatten(points1,extraPoints1,depth+1)
 
+    flatClosePoints1In0 = flatExtraPoints0[-numClosePoints1:]
+    flatExtraPoints0 = flatExtraPoints0[:-numClosePoints1]
+
+    flatClosePoints1In1 = flatExtraPoints1[-numClosePoints1:]
+    farthestPoint1 = flatExtraPoints1[-numClosePoints1-1]
+    flatExtraPoints1 = flatExtraPoints1[:-numClosePoints1-1]
+
+    flat1 = CageTransform(flatClosePoints1In1,farthestPoint1,flatClosePoints1In0,flat1)
+    
+    print("Close points")
+    for p in flatClosePoints1In0:
+      print("%f,%f,%f" %(p[0,0],p[1,0],p[2,0]))
+    
     print("flatExtrapoints")
     print(len(flatExtraPoints0))
     print(len(flatExtraPoints1))
@@ -178,6 +328,13 @@ def Flatten(points,extraPoints,depth=0):
     print(" " * depth + str(re))    
     return (r,re[:-1],re[-1],normal1)
 
+v = [(0,0,0),(1,0,0),(2,0,0),(3,0,0),(0,10,0)]
+v = [np.reshape(np.array(x),(3,1)) for x in v]
+
+print(v)    
+print(Triangulate(v))
+
+sys.exit(0)
     
 print("Loading points")
 points = []
