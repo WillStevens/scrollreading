@@ -9,7 +9,7 @@
 # Because SVD is expensive for a large pointset, pick random points from the pointset and do SVD on those.
 
 import numpy as np
-from math import sqrt
+from math import sqrt,pi
 import csv
 import sys
 """
@@ -40,11 +40,13 @@ def Barycentric(p,a,b,c):
   v0 = b - a
   v1 = c - a
   v2 = p - a
-  d00 = (v0[0]*v0[0],v0[1]*v0[1],v0[2]*v0[2])
-  d01 = (v0[0]*v1[0],v0[1]*v1[1],v0[2]*v1[2])
-  d11 = (v1[0]*v1[0],v1[1]*v1[1],v1[2]*v1[2])
-  d20 = (v2[0]*v0[0],v2[1]*v0[1],v2[2]*v0[2])
-  d21 = (v2[0]*v1[0],v2[1]*v1[1],v2[2]*v1[2])
+  
+  d00 = v0[0,0]*v0[0,0]+v0[1,0]*v0[1,0]+v0[2,0]*v0[2,0]
+  d01 = v0[0,0]*v1[0,0]+v0[1,0]*v1[1,0]+v0[2,0]*v1[2,0]
+  d11 = v1[0,0]*v1[0,0]+v1[1,0]*v1[1,0]+v1[2,0]*v1[2,0]
+  d20 = v2[0,0]*v0[0,0]+v2[1,0]*v0[1,0]+v2[2,0]*v0[2,0]
+  d21 = v2[0,0]*v1[0,0]+v2[1,0]*v1[1,0]+v2[2,0]*v1[2,0]
+
   denom = d00 * d11 - d01 * d01
   v = (d11 * d20 - d01 * d21) / denom
   w = (d00 * d21 - d01 * d20) / denom
@@ -54,13 +56,24 @@ def Barycentric(p,a,b,c):
 
 
 # If p is in one of the triangles, return the indices of the triangle and the Barycentric coordinates  
-def FindTriangle(p,vertices,triangulation):
- 
-  for (a,b,c) in triangulation:
+def FindTriangle(p,vertices,triangulation,last):
+  count = 0
+  for (a,b,c) in triangulation if last is None else [last]+triangulation:
     (u,v,w) = Barycentric(p,vertices[a],vertices[b],vertices[c])
-    if u>0.0 and v>0.0 and w>0.0:
+    if u>=0.0 and v>=0.0 and w>=0.0 or (a,b,c)==last:
+      """
+      if last:
+        print("Last:")
+      else:
+        print("Found in %d" % count)
+      print(p)
+      print((vertices[a],vertices[b],vertices[c]))
+      print((u,v,w))
+      """
+    if u>=0.0 and v>=0.0 and w>=0.0:
       return ((a,b,c),(u,v,w))
-     
+    count += 1     
+  #print("Not found in %d" % count)
   return None    
 
 # https://stackoverflow.com/questions/2827393/angles-between-two-n-dimensional-vectors-in-python/13849249#13849249
@@ -78,21 +91,26 @@ def angle_between(v1, v2):
             >>> angle_between((1, 0, 0), (-1, 0, 0))
             3.141592653589793
     """
-    print(v1)
-    print(v2)
     v1_u = np.reshape(unit_vector(v1),3)
     v2_u = np.reshape(unit_vector(v2),3)
-    print(v1_u)
-    print(v2_u)
     return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))
 
+def Angle(a,b,c): 
+  return angle_between(a-b,c-b)
+  
+def normalize(v):
+  norm = np.linalg.norm(v)
+  if norm == 0:
+    return v
+  return v/norm
+  
 # Assuming that vertices[-1] is a point that all trangles have in common, triangulate by sweeping along other vertices in angle order
-def Triangulate(vertices):  
+def Triangulate(vertices,flatPoints):  
   farthestPoint = vertices[-1]
   
   angles = np.zeros(len(vertices)-1)
   for i in range(0,len(vertices)-1):
-    angles[i] += [angle_between(vertices[i]-farthestPoint,vertices[0]-farthestPoint)]
+    angles[i] = angle_between(vertices[i]-farthestPoint,vertices[0]-farthestPoint)
 
   # sort indices in order of angles
   sortedIndices = np.argsort(angles)
@@ -100,23 +118,90 @@ def Triangulate(vertices):
   triangulation = []
   for i in range(0,len(vertices)-2):
     triangulation += [(len(vertices)-1,sortedIndices[i],sortedIndices[i+1])]
-    
-  return triangulation
+
+  # Now add a final triangle (if necessary) by finding the farthest point from the line that joins farthestPoint and the last sorted index, lying on the opposite side of that line to the other points handled so far
+  """
+  a = farthestPoint
+  n = vertices[sortedIndices[-1]]
+  op = vertices[0]
+  maxd = 0.0
+  i = 0
+  maxIndex = None
+  for j in range(0,len(flatPoints[0])):
+    p = np.reshape(flatPoints[:,j],(3,1))
+    # p is on the correct side of the line from a to n, if the angles a:p:op + n:p:op sum to less than 180 degrees 
+    if Angle(a,p,op)+Angle(n,p,op) < pi:
+      norm = np.linalg.norm( (a-p)-np.dot(np.reshape(a-p,3),np.reshape(n,3))*n )
+      if norm>maxd:
+        maxd = norm
+        maxIndex = i
+    i += 1
+  """
+  a = farthestPoint
+  n = normalize(vertices[sortedIndices[-1]]-a)
+  op = vertices[0]
+  
+  # vector perpendicular to the line a:n
+  perp = (a-op)-np.dot(np.reshape(a-op,3),np.reshape(n,3))*n 
+
+  maxd = 0.0
+  maxIndex = None
+  for j in range(0,len(flatPoints[0])):
+    p = np.reshape(flatPoints[:,j],(3,1))
+    # p is on the correct side of the line from a to n, if the dot product of p-a is negative 
+    if np.dot(np.reshape(perp,3),np.reshape(p-a,3))<0:
+      norm = np.linalg.norm( (a-p)-np.dot(np.reshape(a-p,3),np.reshape(n,3))*n )
+      if norm>maxd:
+        maxd = norm
+        maxIndex = j
+        print("Farthest point from line is")
+        print(maxd)
+        print(p)
+
+  
+  return (triangulation,sortedIndices[-1],maxIndex)
   
 # Distort points in flat1
 def CageTransform(originalClosePoints,farthestPoint,deformedClosePoints,flat1):
-  vertices = originalClosePoints + farthestPoint
+  vertices = originalClosePoints + [farthestPoint]
+  deformedVertices = deformedClosePoints + [farthestPoint]
+  
+  (triangulation,finalTri1,finalTri2) = Triangulate(vertices,flat1)
 
-  triangulation = []
+  if finalTri2 is not None:
+    z = np.reshape(flat1[:,finalTri2],(3,1))
+    vertices += [z]
+    triangulation += [(len(vertices)-2,finalTri1,len(vertices)-1)]  
+    deformedVertices += [z]
+ 
+  
+  print("Triangulation")
+  print(triangulation)
+  for i in range(0,5):
+    (a,b,c) = triangulation[i]
+    print((a,b,c))
+    print(vertices[a])
+    print(vertices[b])
+    print(vertices[c])
+
+  for i in range(0,5):
+    (a,b,c) = triangulation[-(i+1)]
+    print((a,b,c))
+    print(vertices[a])
+    print(vertices[b])
+    print(vertices[c])
 
   deformedFlat1 = np.empty_like(flat1)
+  
+  lastTriangle = None
   
   for i in range(0,len(flat1[0])):
     (x,y,z) = (flat1[0,i],flat1[1,i],flat1[2,i])
 
-    t = FindTriangle((x,y,z),vertices,triangulation)
+    t = FindTriangle(np.array([[x],[y],[z]]),vertices,triangulation,lastTriangle)
     
     if t is not None:
+      lastTriangle = t[0]
       ((ai,bi,ci),(u,v,w))=t
       
       # Now make the deformed point
@@ -125,9 +210,11 @@ def CageTransform(originalClosePoints,farthestPoint,deformedClosePoints,flat1):
       deformedFlat1[0,i] = a[0]*u+b[0]*v+c[0]*w
       deformedFlat1[1,i] = a[1]*u+b[1]*v+c[1]*w
       deformedFlat1[2,i] = a[2]*u+b[2]*v+c[2]*w
+#      print("Y%f,%f,%f" % (x,y,z))
+#      print("D%f,%f,%f" % (deformedFlat1[0,i],deformedFlat1[1,i],deformedFlat1[2,i]))
     else:
-      print((x,y))
-      print("Not in triangle")
+      lastTriangle = None
+ #     print("N%f,%f,%f" % (x,y,z))
 
   return deformedFlat1    
 
@@ -213,7 +300,7 @@ def Flatten(points,extraPoints,depth=0):
   print(" " * depth + str(shortaxis))
 
   
-  if GoodFit(FitMetric(cpoints,normal)) or depth==1:
+  if GoodFit(FitMetric(cpoints,normal)) or depth==2:
     print(" " * depth + "returned cextrapoints at max depth")
     print(" " * depth + str([Project(x,normal) for x in cextraPoints]))
     return (Project(cpoints,normal),[Project(x,normal) for x in cextraPoints],Project(-centroid,normal),normal)
@@ -238,7 +325,7 @@ def Flatten(points,extraPoints,depth=0):
     extraPoints0 += [shortaxis]
     extraPoints1 += [shortaxis]
  
-    # Find the farthest point from the dividing plane
+    # Find the farthest point from the dividing plane in points1
     distance = np.matmul(longaxis,points1)
     maxDistance = distance[0]
     maxDistanceIndex = 0
@@ -269,9 +356,8 @@ def Flatten(points,extraPoints,depth=0):
     flatClosePoints1In1 = flatExtraPoints1[-numClosePoints1:]
     farthestPoint1 = flatExtraPoints1[-numClosePoints1-1]
     flatExtraPoints1 = flatExtraPoints1[:-numClosePoints1-1]
-
-    flat1 = CageTransform(flatClosePoints1In1,farthestPoint1,flatClosePoints1In0,flat1)
     
+    """
     print("Close points")
     for p in flatClosePoints1In0:
       print("%f,%f,%f" %(p[0,0],p[1,0],p[2,0]))
@@ -279,7 +365,8 @@ def Flatten(points,extraPoints,depth=0):
     print("flatExtrapoints")
     print(len(flatExtraPoints0))
     print(len(flatExtraPoints1))
-
+    """
+    
     # If the dot product is negative then flip normal1
     if normal0.dot(normal1)<0:
       normal1 = -normal1
@@ -295,9 +382,13 @@ def Flatten(points,extraPoints,depth=0):
     print(len(flatExtraPoints1))
     print(flatExtraPoints1)
     flatExtraPoints1 = [np.matmul(rotation,x) for x in flatExtraPoints1]
-        
+    flatClosePoints1In1 = [np.matmul(rotation,x) for x in flatClosePoints1In1]
+    farthestPoint1 = np.matmul(rotation,farthestPoint1)
+    
     flat1 -= (centroid1 - centroid0)
     flatExtraPoints1 = [x - (centroid1 - centroid0) for x in flatExtraPoints1]
+    flatClosePoints1In1 = [x - (centroid1 - centroid0) for x in flatClosePoints1In1]
+    farthestPoint1 -= (centroid1 - centroid0)
     
     # Transformation to align the short axes from both halves
     rotation = rotation_matrix_from_vectors(flatExtraPoints1[-1],flatExtraPoints0[-1])
@@ -306,7 +397,11 @@ def Flatten(points,extraPoints,depth=0):
     flat1 = np.matmul(rotation,flat1)
     normal1 = np.matmul(rotation,normal1) # should not change
     flatExtraPoints1 = [np.matmul(rotation,x) for x in flatExtraPoints1]
- 
+    flatClosePoints1In1 = [np.matmul(rotation,x) for x in flatClosePoints1In1]
+    farthestPoint1 = np.matmul(rotation,farthestPoint1)
+
+    flat1 = CageTransform(flatClosePoints1In1,farthestPoint1,flatClosePoints1In0,flat1)
+    
     flatExtraPoints0 = flatExtraPoints0[:-1]
     flatExtraPoints1 = flatExtraPoints1[:-1]
  
@@ -328,13 +423,28 @@ def Flatten(points,extraPoints,depth=0):
     print(" " * depth + str(re))    
     return (r,re[:-1],re[-1],normal1)
 
-v = [(0,0,0),(1,0,0),(2,0,0),(3,0,0),(0,10,0)]
+
+"""
+# A simple test
+v = [(0,0,0),(1,0,0),(2,0,0),(3,0,0),(0,10,10)]
 v = [np.reshape(np.array(x),(3,1)) for x in v]
+
+d = [(0,0,0),(1.5,0,0),(3,0,0),(4.5,1.0,0)]
+d = [np.reshape(np.array(x),(3,1)) for x in d]
+
+p = [[0.1,0.1,0.1],[1.5,0.5,0.5],[2.7,1.0,1.0]]
+p = np.array([[x[0] for x in p],[x[1] for x in p],[x[2] for x in p]])
 
 print(v)    
 print(Triangulate(v))
 
+print("v before CageTransform")
+print(v)    
+
+print(CageTransform(v[:-1],v[-1],d,p))
+
 sys.exit(0)
+"""
     
 print("Loading points")
 points = []
