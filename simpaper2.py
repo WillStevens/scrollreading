@@ -3,9 +3,11 @@ from math import sqrt
 import matplotlib.pyplot as plt
 from matplotlib import cm
 from mpl_toolkits.mplot3d import Axes3D
+from PIL import Image
 
-vectorField = np.load("vectorfield_test.npy")
+vectorField = np.load("vectorfield_test_smooth.npy")
 
+"""
 # For testing overwrite vectorField with vectors that point towards a diagonal plane
 for z in range(0,50):
   for y in range(0,50):
@@ -32,13 +34,13 @@ for z in range(0,50):
           vectorField[z,y,x,0] = 0.0
           vectorField[z,y,x,1] = -1.0
           vectorField[z,y,x,2] = 0.0
-		
+"""     
 paperSize = (51,51)
 
-SPRING_FORCE_CONSTANT = 0.1
+SPRING_FORCE_CONSTANT = 0.025
 FRICTION_CONSTANT = 0.9
 GRAVITY_FORCE = 0.01
-VECTORFIELD_CONSTANT = 0.002
+VECTORFIELD_CONSTANT = 0.05
 
 dirVectorLookup = [(1,0),(0,1),(-1,0),(0,-1)]
 
@@ -51,21 +53,37 @@ paperAcc = np.zeros_like(paperPos)
 
 # Initialize the coordinates of the first active point
 
-"""
-paperPos[25,25,0] = 37.98
-paperPos[25,25,1] = 27.17
-paperPos[25,25,2] = 27.75
+paperPos[25,25,0] = 25
+paperPos[25,25,1] = 25
+paperPos[25,25,2] = 25
+
+paperPos[25,26,0] = 25.7
+paperPos[25,26,1] = 24.3
+paperPos[25,26,2] = 25
+
+paperPos[26,25,0] = 25
+paperPos[26,25,1] = 25
+paperPos[26,25,2] = 26
+
+paperPos[26,26,0] = 25.7
+paperPos[26,26,1] = 24.3
+paperPos[26,26,2] = 26
+
 """
 
 paperPos[25,25,0] = 25
 paperPos[25,25,1] = 25
 paperPos[25,25,2] = 25
-
+"""
 active[25,25] = True
-mobile[25,25,0] = 0.0
-mobile[25,25,1] = 0.0
-mobile[25,25,2] = 0.0
+active[25,26] = True
+active[26,25] = True
+active[26,26] = True
+#mobile[25,25,0] = 0.0
+#mobile[25,25,1] = 0.0
+#mobile[25,25,2] = 0.0
 
+"""
 for xo in range(-1,2):
   for yo in range(-1,2):
     if not (xo==0 and yo==0):
@@ -73,7 +91,7 @@ for xo in range(-1,2):
       paperPos[25+xo,25+yo,1] = paperPos[25,25,1]
       paperPos[25+xo,25+yo,2] = paperPos[25,25,2]+yo
       active[25+xo,25+yo] = True
-      
+"""      
 # Trilinear interpolation to get vector field value
 def VectorFieldAtCoord(x,y,z):
   return vectorField[int(z),int(y),int(x)]
@@ -97,14 +115,17 @@ def VectorFieldAtCoord(x,y,z):
   c1 = c01*(1-yd)+c11*yd
   
   return c0*(1-zd)+c1*zd
-  
+
+expectedDistanceLookup = np.empty((3,3))
+for x in range(0,3):
+  for y in range(0,3):
+    expectedDistanceLookup[x,y] = sqrt((x-1)*(x-1)+(y-1)*(y-1))
+    
 def Forces():
   global  paperAcc, paperVel
   
   paperAcc = np.zeros_like(paperPos)
   largestForce = 0.0
-  largestSpringForce = 0.0
-  largestVForce = 0.0 
   for x in range(0,paperSize[0]):
     for y in range(0,paperSize[1]):
       if active[x,y]:
@@ -112,38 +133,53 @@ def Forces():
         (px,py,pz) = (paperPos[x,y,0],paperPos[x,y,1],paperPos[x,y,2])
         if px>=0 and px<50 and py>=0 and py<50 and pz>=0 and pz<50:
           vForce = VectorFieldAtCoord(px,py,pz)*VECTORFIELD_CONSTANT
-          vForceSize = np.linalg.norm(vForce)
-          if vForceSize > largestVForce:
-            largestVForce = vForceSize
           paperAcc[x,y] += vForce
-        springForce = np.zeros_like(paperPos[0,0,:])
-        for xo in range(x-1,x+2):
-          for yo in range(y-1,y+2):
-            if xo>=0 and xo<paperSize[0]:
-              if yo>=0 and yo<paperSize[1]:
-                if active[xo,yo] and not (xo == x and yo == y):
-                  expectedDistance = sqrt( (x-xo)*(x-xo)+(y-yo)*(y-yo) )
-                  direction = paperPos[x,y,:]-paperPos[xo,yo,:]
-                  actualDistance = np.linalg.norm(direction)
-                  direction /= actualDistance
+        for xo in range(max(0,x-1),min(x+2,paperSize[0])):
+          for yo in range(max(0,y-1),min(y+2,paperSize[1])):
+            if active[xo,yo] and not (xo == x and yo == y):
+              expectedDistance = expectedDistanceLookup[x-xo+1,y-yo+1]
+              direction = paperPos[x,y,:]-paperPos[xo,yo,:]
+              actualDistance = np.linalg.norm(direction)
+              direction /= actualDistance
                 
-                  force = (expectedDistance - actualDistance)*SPRING_FORCE_CONSTANT
+              force = (expectedDistance - actualDistance)*SPRING_FORCE_CONSTANT
 
-                  forceVector = direction * force
+              forceVector = direction * force
                 
-                  springForce += forceVector
+              paperAcc[x,y,:] += forceVector
         
-        paperAcc[x,y,:]+=springForce
-        springForceMag = np.linalg.norm(springForce)
-        if springForceMag > largestSpringForce:
-          largestSpringForce = springForceMag
         forceMag = np.linalg.norm(paperAcc[x,y,:])
         if forceMag > largestForce and (x!=25 or y!=25):
           largestForce = forceMag
           largestForceCoords = (x,y)          
   paperVel *= FRICTION_CONSTANT
-  print("Largest force = %g at %d,%d. largestVForce = %g, largestSpringForce = %g" % (largestForce,largestForceCoords[0],largestForceCoords[1],largestVForce,largestSpringForce))
+#  print("Largest force = %g at %d,%d. largestVForce = %g, largestSpringForce = %g" % (largestForce,largestForceCoords[0],largestForceCoords[1],largestVForce,largestSpringForce))
   return largestForce
+
+def DrawIt(i):
+  # Output the points
+  pointsOut = np.zeros((50,50,50))
+
+  for x in range(0,50):
+    for y in range(0,50):
+      pointsOut[25,y,x] = np.linalg.norm(vectorField[25,y,x])/5.0
+      pointsOut[10,y,x] = np.linalg.norm(vectorField[10,y,x])/5.0
+      pointsOut[40,y,x] = np.linalg.norm(vectorField[40,y,x])/5.0
+
+  for x in range(0,paperSize[0]):
+    for y in range(0,paperSize[1]):
+      (px,py,pz) = (paperPos[x,y,0],paperPos[x,y,1],paperPos[x,y,2])
+      (px,py,pz) = (int(px),int(py),int(pz))
+      if pz>=0 and pz<50 and py>=0 and py<50 and px>=0 and px<50:
+        pointsOut[pz,py,px] = 1.0
+    
+
+  j = Image.fromarray(pointsOut[25,:,:])
+  j.save("simpaper_out\\progress_25_%03d.tif"%i)
+  j = Image.fromarray(pointsOut[10,:,:])
+  j.save("simpaper_out\\progress_10_%03d.tif"%i)
+  j = Image.fromarray(pointsOut[40,:,:])
+  j.save("simpaper_out\\progress_40_%03d.tif"%i)
   
 def PlotIt(i):
         
@@ -191,7 +227,7 @@ def PlotIt(i):
   # turn off/on axis
   plt.axis('on')
 
-  plt.savefig("simpaper_test_%05i.png" % i,bbox_inches='tight')
+  plt.savefig("simpaper_out//simpaper_test_%05i.png" % i,bbox_inches='tight')
 
   plt.close()
   # show the graph
@@ -207,14 +243,14 @@ def TryToFill(xp,yp):
       if xo2>=0 and xo2<paperSize[0] and yo2>=0 and yo2<paperSize[1]:
         if active[xo1,yo1] and active[xo2,yo2]:
           result = 2*paperPos[xo1,yo1] - paperPos[xo2,yo2]
-          print("Growing straight: %.2f,%.2f%.2f and %.2f,%.2f,%.2f to %.2f,%.2f,%.2f" % (paperPos[xo2,yo2,0],paperPos[xo2,yo2,1],paperPos[xo2,yo2,2],paperPos[xo1,yo1,0],paperPos[xo1,yo1,1],paperPos[xo1,yo1,2],result[0],result[1],result[2]))
+          #print("Growing straight: %.2f,%.2f%.2f and %.2f,%.2f,%.2f to %.2f,%.2f,%.2f" % (paperPos[xo2,yo2,0],paperPos[xo2,yo2,1],paperPos[xo2,yo2,2],paperPos[xo1,yo1,0],paperPos[xo1,yo1,1],paperPos[xo1,yo1,2],result[0],result[1],result[2]))
           return result
       (xa1,ya1) = (xp+yd,yp+xd)
       (xc1,yc1) = (xp+xd+yd,yp+xd+yd)
       # If xc1,yc1 in bounds then no need to check xa1,ya1 or xo1,yo1
       if xc1>=0 and xc1<paperSize[0] and yc1>=0 and yc1<paperSize[1]:
         if active[xo1,yo1] and active[xa1,ya1] and active[xc1,yc1]:
-          print("Growing cornder")
+          #print("Growing cornder")
           # Get midpoint of xo1,yo1,xa1,ya1
           m = (paperPos[xo1,yo1]+paperPos[xa1,ya1])/2
           # Extend from the corner through the midpoint
@@ -225,7 +261,7 @@ newPts = []
 for i in range(0,50):
   print("---")
   j = 0
-  while j<10 or Forces()>0.001 and j<100:
+  while j<10 or Forces()>0.005 and j<50:
     j+=1
   #  if i<20:
   #    paperAcc[5,5,2] = 0.01
@@ -252,6 +288,7 @@ for i in range(0,50):
     active[x,y]=True
 
   PlotIt(i)
+  DrawIt(i)
 
 """
 for i in range(1,100):
@@ -265,3 +302,21 @@ for i in range(1,100):
     paperPos += np.multiply(paperVel,mobile)
   PlotIt(i)
 """
+
+# Output the points
+pointsOut = np.zeros((50,50,50))
+
+f = open("simpaper_points.csv","w")
+for x in range(0,paperSize[0]):
+  for y in range(0,paperSize[1]):
+    (px,py,pz) = (paperPos[x,y,0],paperPos[x,y,1],paperPos[x,y,2])
+    f.write("%f,%f,%f\n" % (px,py,pz))
+    (px,py,pz) = (int(px),int(py),int(pz))
+    if pz>=0 and pz<50 and py>=0 and py<50 and px>=0 and px<50:
+      pointsOut[pz,py,px] = 1.0
+    
+print("Outputting...")
+for i in range(0,50):
+  j = Image.fromarray(pointsOut[i,:,:])
+  j.save("simpaper_out\\pointsout_%03d.tif"%i)
+
