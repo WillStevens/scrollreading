@@ -3,10 +3,10 @@ from PIL import ImageGrab,ImageTk,Image
 import numpy as np
 from math import sqrt
 
-vectorField = np.load("vectorfield_test.npy")
+vectorField = np.load("vectorfield_test_100.npy")
 vf = np.empty_like(vectorField)
 
-vfSize = 50
+vfSize = 100
 window = 1
 
 print("Calculating vector field...")
@@ -23,4 +23,4 @@ for z in range(0,vfSize):
             tot += 1
       vf[z,y,x]=vSum/tot
 
-np.save("vectorfield_test_smooth.npy",vf)
+np.save("vectorfield_test_smooth_100.npy",vf)

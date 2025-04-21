@@ -11,11 +11,11 @@ za = zarr.open(r'D:\1213_aug_erode_threshold-ome.zarr\0',mode='r')
 
 # e.g. s02512_03988_01500 : y,x,z
 
-yp = 2323
-xp = 4206
-zp = 2522
+yp = 2323-25
+xp = 4206-25
+zp = 2522-25
 
-vfSize = 50
+vfSize = 100
 vfRad=2
 
 size = vfSize + 2*vfRad + 1
@@ -93,4 +93,4 @@ for i in range(0,vfSize):
   j = Image.fromarray(vf[i,:,:,2]/10.0+0.5)
   j.save("tmp\\papervectorfield_test_z_%03d.tif"%i)
 
-np.save("vectorfield_test.npy",vf)
+np.save("vectorfield_test_100.npy",vf)
