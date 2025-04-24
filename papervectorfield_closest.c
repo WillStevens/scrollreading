@@ -47,7 +47,7 @@ int main() {
 
 		char fname[100];
 		
-		sprintf(fname,"papervectorfield_test_surface_%05d.bmp",z);
+		sprintf(fname,"tmp\\papervectorfield_test_surface_%05d.bmp",z);
         // Write slice image to file
         vs_bmp_write(fname,myslice);
     }
@@ -59,7 +59,8 @@ int main() {
 
     static float vf[SIZE_Z-2*VF_RAD][SIZE_Y-2*VF_RAD][SIZE_X-2*VF_RAD][3];
     static float vf_smooth[SIZE_Z-2*VF_RAD][SIZE_Y-2*VF_RAD][SIZE_X-2*VF_RAD][3];
-		
+	static float distance[SIZE_Z-2*VF_RAD][SIZE_Y-2*VF_RAD][SIZE_X-2*VF_RAD];
+	
     // Precompute nearest voxels and associated distance and direction vector
     float sortedDistances[SORTED_DIST_SIZE][7];
 	int i = 0;
@@ -115,6 +116,7 @@ int main() {
 			vf[z][y][x][0]=0.0;
 			vf[z][y][x][1]=0.0;
 			vf[z][y][x][2]=0.0;
+			distance[z][y][x]=0.0;
 			
             if (vs_chunk_get(scroll_chunk,z+VF_RAD,y+VF_RAD,x+VF_RAD) != 255)
 			{
@@ -131,6 +133,8 @@ int main() {
                                 vf[z][y][x][0] /= minCount;
                                 vf[z][y][x][1] /= minCount;
                                 vf[z][y][x][2] /= minCount;
+								distance[z][y][x]=lastDist;
+
                                 break;
 							}
                             lastDist = sortedDistances[i][0];
@@ -180,7 +184,7 @@ int main() {
     for(int y = 0; y<vf_dims[1]; y++)
     for(int x = 0; x<vf_dims[2]; x++)
     {
-	    fprintf(f,"%f,%f,%f\n",vf_smooth[z][y][x][0],vf_smooth[z][y][x][1],vf_smooth[z][y][x][2]);
+	    fprintf(f,"%f,%f,%f,%f\n",vf_smooth[z][y][x][0],vf_smooth[z][y][x][1],vf_smooth[z][y][x][2],distance[z][y][x]);
 	//    fprintf(f,"%f,%f,%f\n",0.0f,0.0f,0.0f);
 	}
 	
