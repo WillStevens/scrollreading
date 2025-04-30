@@ -41,3 +41,6 @@ The main files in this repository are:
 - makevtk.py - turn an x,y,z CSV file into a VTK file that can be loaded into Slicer 3D
 
 - fill3d.cpp - Experimental Hashlife 3D flood fill. Not currently used in the pipeline because it didn't outperform conventional breadth-first flood-fill, but may be useful later.
+
+The subfolder simpaper contains programs related to in-palce growing of flat sheets on a surface.
+  
