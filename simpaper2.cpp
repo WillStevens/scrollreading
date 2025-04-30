@@ -12,8 +12,8 @@
 
 using namespace std;
 
-#define VF_SIZE 252
-#define SHEET_SIZE 253
+#define VF_SIZE 508
+#define SHEET_SIZE 509
 
 #define SPRING_FORCE_CONSTANT 0.025f
 #define BEND_FORCE_CONSTANT 0.025f
@@ -29,7 +29,7 @@ typedef vector<point> pointSet;
 map< pointInt, pointSet > pointLookup;
 
 #define NEIGHBOUR_RADIUS 2
-#define NEIGHBOUR_RADIUS_FLOAT 1.5
+#define NEIGHBOUR_RADIUS_FLOAT 2.0
 
 int dirVectorLookup[4][2] = { {1,0},{0,1},{-1,0},{0,-1}};
 
@@ -97,21 +97,21 @@ bool HasCloseNeighbour(const point &p)
 // Initialize the coordinates of the first active point
 void InitialiseSeed(void)
 {
-  paperPos[SHEET_SIZE/2][SHEET_SIZE/2][0] = 128;
-  paperPos[SHEET_SIZE/2][SHEET_SIZE/2][1] = 148;
-  paperPos[SHEET_SIZE/2][SHEET_SIZE/2][2] = 128;
+  paperPos[SHEET_SIZE/2][SHEET_SIZE/2][0] = 256;
+  paperPos[SHEET_SIZE/2][SHEET_SIZE/2][1] = 328;
+  paperPos[SHEET_SIZE/2][SHEET_SIZE/2][2] = 256;
 
-  paperPos[SHEET_SIZE/2][SHEET_SIZE/2+1][0] = 128+STEP_SIZE;
-  paperPos[SHEET_SIZE/2][SHEET_SIZE/2+1][1] = 148;
-  paperPos[SHEET_SIZE/2][SHEET_SIZE/2+1][2] = 128;
+  paperPos[SHEET_SIZE/2][SHEET_SIZE/2+1][0] = 256+STEP_SIZE;
+  paperPos[SHEET_SIZE/2][SHEET_SIZE/2+1][1] = 328;
+  paperPos[SHEET_SIZE/2][SHEET_SIZE/2+1][2] = 256;
 
-  paperPos[SHEET_SIZE/2+1][SHEET_SIZE/2][0] = 128;
-  paperPos[SHEET_SIZE/2+1][SHEET_SIZE/2][1] = 148;
-  paperPos[SHEET_SIZE/2+1][SHEET_SIZE/2][2] = 128+STEP_SIZE;
+  paperPos[SHEET_SIZE/2+1][SHEET_SIZE/2][0] = 256;
+  paperPos[SHEET_SIZE/2+1][SHEET_SIZE/2][1] = 328;
+  paperPos[SHEET_SIZE/2+1][SHEET_SIZE/2][2] = 256+STEP_SIZE;
 
-  paperPos[SHEET_SIZE/2+1][SHEET_SIZE/2+1][0] = 128+STEP_SIZE;
-  paperPos[SHEET_SIZE/2+1][SHEET_SIZE/2+1][1] = 148;
-  paperPos[SHEET_SIZE/2+1][SHEET_SIZE/2+1][2] = 128+STEP_SIZE;
+  paperPos[SHEET_SIZE/2+1][SHEET_SIZE/2+1][0] = 256+STEP_SIZE;
+  paperPos[SHEET_SIZE/2+1][SHEET_SIZE/2+1][1] = 328;
+  paperPos[SHEET_SIZE/2+1][SHEET_SIZE/2+1][2] = 256+STEP_SIZE;
 
   active[SHEET_SIZE/2][SHEET_SIZE/2] = true;
   active[SHEET_SIZE/2][SHEET_SIZE/2+1] = true;
@@ -371,7 +371,40 @@ void Output(const char *filename)
   for(int y = 0; y<SHEET_SIZE; y++)
 	if (active[x][y])
       fprintf(f,"%f,%f,%f\n",paperPos[x][y][0],paperPos[x][y][1],paperPos[x][y][2]);
-	
+    else
+      fprintf(f,"0,0,0\n");		
+  fclose(f);
+}
+
+void StressOutput(const char *filename)
+{
+  FILE *f = fopen(filename,"w");
+  
+  for(int x = 0; x<SHEET_SIZE; x++)
+  for(int y = 0; y<SHEET_SIZE; y++)
+	if (active[x][y])
+	{
+	  float stressTot = 0;
+	  int stressNum = 0;
+      for(int xo=(x-1>0?x-1:0); xo<(x+2<SHEET_SIZE?x+2:SHEET_SIZE); xo++)
+      for(int yo=(y-1>0?y-1:0); yo<(y+2<SHEET_SIZE?y+2:SHEET_SIZE); yo++)
+        if (active[xo][yo] && ! (xo == x && yo == y))
+		{
+            float expectedDistance = expectedDistanceLookup[x-xo+1][y-yo+1];
+            float direction0 = paperPos[x][y][0]-paperPos[xo][yo][0];
+            float direction1 = paperPos[x][y][1]-paperPos[xo][yo][1];
+            float direction2 = paperPos[x][y][2]-paperPos[xo][yo][2];
+            float actualDistance = sqrt(direction0*direction0+direction1*direction1+direction2*direction2);
+                
+            float force = (expectedDistance - actualDistance)*SPRING_FORCE_CONSTANT;
+            stressTot += fabs(force);
+			stressNum += 1;
+		}
+		
+		fprintf(f,"%f\n",stressTot/stressNum);
+	}
+    else
+      fprintf(f,"0\n");		
   fclose(f);
 }
 
@@ -381,15 +414,15 @@ int main(void)
   pointSet newPtsPaper;
   pointSet newPts;
 
-  LoadVectorField("vectorfield_test_smooth_252.csv");
+  LoadVectorField("vectorfield_test_smooth_508.csv");
   InitExpectedDistanceLookup();
   InitialiseSeed();
   
-  for(int i = 0; i<260; i++)
+  for(int i = 0; i<100; i++)
   {
     printf("---\n");
     int j = 0;
-    while (j<10 || (Forces()>0.005 && j<50))
+    while (j<10 || (Forces()>0.001 && j<100))
 	{
       j++;
 
@@ -450,7 +483,8 @@ int main(void)
     }
   }
   
-  Output("simpaper_out_cpp\\testout_252.csv");
+  Output("testout_508c.csv");
+  StressOutput("testout_508c_stress.csv");
   
   return 0;
 }

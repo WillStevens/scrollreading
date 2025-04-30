@@ -1,12 +1,13 @@
-#define VESUVIUS_IMPL
-#include "../vesuvius-c/vesuvius-c.h"
+#include <stdio.h>
+#include <math.h>
+#include <stdlib.h>
 
 #define VF_RAD 2
 #define SORTED_DIST_SIZE ((VF_RAD*2+1)*(VF_RAD*2+1)*(VF_RAD*2+1)-1)
 
-#define SIZE_X 256
-#define SIZE_Y 256
-#define SIZE_Z 256
+#define SIZE_X 512
+#define SIZE_Y 512
+#define SIZE_Z 512
 
 #define SURFACE_VALUE 255
 
@@ -55,77 +56,49 @@ float ***MakeFloatArray(int x, int y, int z)
 }
 
 
+unsigned char ***MakeU8Array(int x, int y, int z)
+{
+	unsigned char ***zarray = malloc(z*sizeof(unsigned char**));
+	
+	for(int zi=0; zi<z; zi++)
+	{
+	  zarray[zi] = malloc(y*sizeof(unsigned char*));
+	  for(int yi=0; yi<y; yi++)
+	  {
+		  zarray[zi][yi] = malloc(x*sizeof(unsigned char));
+		  for(int xi=0; xi<x; xi++)
+		  {
+			  zarray[zi][yi][xi] = 0;
+		  }
+	  }
+	}
+	
+	return zarray;
+}
 
 int main() {
-/*
-    //pick a region in the scoll to visualize
-    int vol_start[3] = {3072,3072,3072};
-    int chunk_dims[3] = {128,512,512};
-    
-    //initialize the volume
-    volume* scroll_vol = vs_vol_new(
-        "./54keV_7.91um_Scroll1A.zarr/0/",
-        "https://dl.ash2txt.org/full-scrolls/Scroll1/PHercParis4.volpkg/volumes_zarr_standardized/54keV_7.91um_Scroll1A.zarr/0/");
-    
-    // get the scroll data by reading it from the cache and downloading it if necessary
-    chunk* scroll_chunk = vs_vol_get_chunk(scroll_vol, vol_start,chunk_dims);
 
-    // Fetch a slice  from the volume
-    slice* myslice = vs_slice_extract(scroll_chunk, 0);
-
-    // Write slice image to file
-    vs_bmp_write("xy_slice.bmp",myslice);
-*/
-
-    //pick a region in the scoll to visualize
-//    int vol_start[3] = {2432,2304,4096};
-    int vol_start[3] = {2432,2304,4096};
-    int chunk_dims[3] = {SIZE_Z,SIZE_Y,SIZE_X};
-    
-    //initialize the volume
-    /*
-	volume* scroll_vol = vs_vol_new(
-        "d:/zarrs/1213_aug_erode_threshold-ome.zarr/0/",
-        "http://0.0.0.0:8080/1213_aug_erode_threshold-ome.zarr/0/");
-    */
-
-    	
-	volume* scroll_vol = vs_vol_new(
-        "d:/zarrs/s1-surface-regular.zarr",
-        "https://dl.ash2txt.org/community-uploads/bruniss/scrolls/s1/surfaces/full_scroll/s1-surface-erode.zarr/");
-    
-
-	/*
-	volume* scroll_vol = vs_vol_new(
-        "d:/zarrs/s1a-rectoverso-06032025-ome.zarr/0/",
-        "https://dl.ash2txt.org/other/dev/meshes/s1a-rectoverso-06032025-ome.zarr/0/");
-	*/
+	unsigned char ***surface = MakeU8Array(SIZE_Z,SIZE_Y,SIZE_X);
 	
-    // get the scroll data by reading it from the cache and downloading it if necessary
-    chunk* scroll_chunk = vs_vol_get_chunk(scroll_vol, vol_start,chunk_dims);
-
+	FILE *f = fopen("d:/zarr_tmp_extract.csv","r");
 	
-	for(int z=0; z<SIZE_Z; z++)
+	int v;
+	
+    for(int z = 0; z<SIZE_Z; z++)
 	{
-		slice* myslice = vs_slice_extract(scroll_chunk, z);
-
-		char fname[100];
-		
-		sprintf(fname,"tmp\\papervectorfield_test_surface_%05d.bmp",z);
-        // Write slice image to file
-        vs_bmp_write(fname,myslice);
-    }
+        printf("%d\n",z);
+        for(int y = 0; y<SIZE_Y; y++)
+        for(int x = 0; x<SIZE_X; x++)
+		{
+			fscanf(f,"%d\n",&v);
+			surface[z][y][x] = v;
+		}
+	}
 	
-	int vf_dims[3];
+	fclose(f);
 	
-	for(int i = 0; i<3; i++)
-	  vf_dims[i] = chunk_dims[i]-2*VF_RAD;
-
-    /*
-    static float vf[SIZE_Z-2*VF_RAD][SIZE_Y-2*VF_RAD][SIZE_X-2*VF_RAD][3];
-    static float vf_smooth[SIZE_Z-2*VF_RAD][SIZE_Y-2*VF_RAD][SIZE_X-2*VF_RAD][3];
-	static float distance[SIZE_Z-2*VF_RAD][SIZE_Y-2*VF_RAD][SIZE_X-2*VF_RAD];
-	*/
+	int vf_dims[3] = {SIZE_Z-2*VF_RAD,SIZE_Y-2*VF_RAD,SIZE_X-2*VF_RAD};
+	
 	printf("Allocating vf\n");
 	float ****vf = MakeFloatVectorArray(SIZE_Z-2*VF_RAD,SIZE_Y-2*VF_RAD,SIZE_X-2*VF_RAD);
 	printf("Allocating distance\n");
@@ -186,15 +159,15 @@ int main() {
 			vf[z][y][x][0]=0.0;
 			vf[z][y][x][1]=0.0;
 			vf[z][y][x][2]=0.0;
-			distance[z][y][x]=0.0;
+			distance[z][y][x]=100.0; // This just means 'large'
 			
-            if (vs_chunk_get(scroll_chunk,z+VF_RAD,y+VF_RAD,x+VF_RAD) != SURFACE_VALUE)
+            if (surface[z+VF_RAD][y+VF_RAD][x+VF_RAD] != SURFACE_VALUE)
 			{
                 int minCount = 0;
                 float lastDist = 0;
                 for(int i = 0; i<SORTED_DIST_SIZE; i++)
 				{
-                    if (vs_chunk_get(scroll_chunk,z+VF_RAD+sortedDistances[i][3],y+VF_RAD+sortedDistances[i][2],x+VF_RAD+sortedDistances[i][1]) == SURFACE_VALUE)
+                    if (surface[z+VF_RAD+(int)sortedDistances[i][3]][y+VF_RAD+(int)sortedDistances[i][2]][x+VF_RAD+(int)sortedDistances[i][1]] == SURFACE_VALUE)
 					{
                         if (sortedDistances[i][0] != lastDist)
 						{
@@ -216,6 +189,10 @@ int main() {
 					}
 				}
 			}
+			else
+			{
+			    distance[z][y][x]=0.0;
+			}
 		}
 	}
 
@@ -223,7 +200,7 @@ int main() {
 
 	float vf_smooth[3];
 	
-	FILE *f = fopen("vectorfield_test_smooth_508.csv","w");
+	f = fopen("d:/vectorfield_test_smooth_508.csv","w");
 
 	int window = 1;
     for(int z = 0; z<vf_dims[0]; z++)
