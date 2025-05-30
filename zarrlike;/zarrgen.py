@@ -1,7 +1,19 @@
 # A ZARR reader/writer generater
 
 def DtypeToCtype(dtype):
-  if dtype=="|u1":
+  if type(dtype) is list:
+    r = "struct {"
+    for element in dtype:
+      fieldName = element[0]
+      fieldType = DtypeToCtype(element[1])
+      r += fieldType + " " + fieldName 
+      if len(element)==3:
+        for dimension in element[2]:
+          r += "[" + str(dimension) + "]"
+      r+=";"
+    r += "}"
+    return r
+  elif dtype=="|u1":
     return "uint8_t"
   elif dtype=="<f4":
     return "float"
@@ -11,8 +23,8 @@ def DtypeToCtype(dtype):
 def ChunkSize(metadata,i):
   return metadata["chunks"][i]
 
-def ChunkBytes(metadata):  
-  r = "sizeof(" + DtypeToCtype(metadata["dtype"]) + ")*"
+def ChunkBytes(metadata,suffix):  
+  r = "sizeof(ZARRType" + suffix + ")*"
   t = 1
   for v in metadata["chunks"]:
     t *= v
@@ -31,14 +43,16 @@ def CodeGen(metadata,buffers,suffix):
 #include <sys/types.h>
 #include <blosc2.h>""")
 
+  print("""typedef """ + DtypeToCtype(metadata["dtype"]) + """ ZARRType"""+suffix+""";""")
+  
   print("""
 typedef struct {
     int locationRootLength;
     char *location;
   
-    unsigned char compressedData[""" + ChunkBytes(metadata) + """+BLOSC2_MAX_OVERHEAD];""")
+    unsigned char compressedData[""" + ChunkBytes(metadata,suffix) + """+BLOSC2_MAX_OVERHEAD];""")
   print("    ",end="")
-  print(DtypeToCtype(metadata["dtype"]),end="")
+  print("""ZARRType"""+suffix,end="")
   print(""" buffers[""" + str(buffers) + """]""",end="")
   for v in metadata["chunks"]:
     print("[%d]" % v,end="")
@@ -47,7 +61,7 @@ typedef struct {
     unsigned char written[""" + str(buffers) + """];
     uint64_t bufferUsed[""" + str(buffers) + """];""")  
   print("    ",end="")
-  print(DtypeToCtype(metadata["dtype"]),end="")
+  print("""ZARRType"""+suffix,end="")
   print(" (*buffer)",end="");
   for v in metadata["chunks"]:
     print("[%d]" % v,end="")
@@ -102,7 +116,7 @@ int ZARRFlushOne"""+suffix+"""(ZARR"""+suffix+""" *z, int i)
 
   print("""
 	  blosc1_set_compressor("zstd");
-	  int compressed_len = blosc2_compress(3,1,sizeof("""+DtypeToCtype(metadata["dtype"])+"""),z->buffers[i],"""+ChunkBytes(metadata)+""",z->compressedData,"""+ChunkBytes(metadata)+"""+BLOSC2_MAX_OVERHEAD);
+	  int compressed_len = blosc2_compress(3,1,sizeof(ZARRType"""+suffix+"""),z->buffers[i],"""+ChunkBytes(metadata,suffix)+""",z->compressedData,"""+ChunkBytes(metadata,suffix)+"""+BLOSC2_MAX_OVERHEAD);
 
       if (compressed_len <= 0) {
         return -1;
@@ -215,7 +229,7 @@ int ZARRCheckChunk"""+suffix+"""(ZARR"""+suffix+""" *z, int c[""" + str(len(meta
 	{
 		printf("Did not find file\\n");
 
-		memset(z->buffer,0,"""+ChunkBytes(metadata)+""");
+		memset(z->buffer,0,"""+ChunkBytes(metadata,suffix)+""");
 
 		//No need to count it as written to yet - if it remains empty then just leave the file as non-existent
 	    //z->written[z->index] = 1;
@@ -232,7 +246,7 @@ int ZARRCheckChunk"""+suffix+"""(ZARR"""+suffix+""" *z, int c[""" + str(len(meta
 		fclose(f);
 		
 		blosc1_set_compressor("zstd");
-        int decompressed_size = blosc2_decompress(z->compressedData, fsize, z->buffer, """+ChunkBytes(metadata)+""");
+        int decompressed_size = blosc2_decompress(z->compressedData, fsize, z->buffer, """+ChunkBytes(metadata,suffix)+""");
         if (decompressed_size < 0) {
             return 0;
         }
@@ -241,7 +255,7 @@ int ZARRCheckChunk"""+suffix+"""(ZARR"""+suffix+""" *z, int c[""" + str(len(meta
 	
 	return 0;
 }""")
-  print(DtypeToCtype(metadata["dtype"]),end="")
+  print("""ZARRType"""+suffix,end="")
   print(""" ZARRRead"""+suffix+"""(ZARR"""+suffix+""" *za""",end="")
   for i in range(0,len(metadata["chunks"])):
     print(",int x%d" % i,end="")
@@ -267,7 +281,7 @@ int ZARRCheckChunk"""+suffix+"""(ZARR"""+suffix+""" *z, int c[""" + str(len(meta
 void ZARRReadN"""+suffix+"""(ZARR"""+suffix+""" *za""",end="")
   for i in range(0,len(metadata["chunks"])):
     print(",int x%d" % i,end="")
-  print(""",int n, """ + DtypeToCtype(metadata["dtype"]) + """ *v)
+  print(""",int n,ZARRType"""+suffix + """ *v)
 {
 	int c[""" + str(len(metadata["chunks"])) + """],m[""" + str(len(metadata["chunks"])) + """];""")
 
@@ -288,7 +302,7 @@ void ZARRReadN"""+suffix+"""(ZARR"""+suffix+""" *za""",end="")
 int ZARRWrite"""+suffix+"""(ZARR"""+suffix+""" *za""",end="")
   for i in range(0,len(metadata["chunks"])):
     print(",int x%d" % i,end="")
-  print(""",""" + DtypeToCtype(metadata["dtype"]) + """ value)
+  print(""",ZARRType"""+suffix + """ value)
 {
 	int c[""" + str(len(metadata["chunks"])) + """],m[""" + str(len(metadata["chunks"])) + """];""")
 
@@ -314,7 +328,7 @@ int ZARRWrite"""+suffix+"""(ZARR"""+suffix+""" *za""",end="")
 void ZARRWriteN"""+suffix+"""(ZARR"""+suffix+""" *za""",end="")
   for i in range(0,len(metadata["chunks"])):
     print(",int x%d" % i,end="")
-  print(""",int n, """ + DtypeToCtype(metadata["dtype"]) + """ *v)
+  print(""",int n, ZARRType"""+suffix + """ *v)
 {
 	int c[""" + str(len(metadata["chunks"])) + """],m[""" + str(len(metadata["chunks"])) + """];""")
 
@@ -338,7 +352,7 @@ void ZARRWriteN"""+suffix+"""(ZARR"""+suffix+""" *za""",end="")
 void ZARRNoCheckWriteN"""+suffix+"""(ZARR"""+suffix+""" *za""",end="")
   for i in range(0,len(metadata["chunks"])):
     print(",int x%d" % i,end="")
-  print(""",int n, """ + DtypeToCtype(metadata["dtype"]) + """ *v)
+  print(""",int n, ZARRType"""+suffix + """ *v)
 {
 	int c[""" + str(len(metadata["chunks"])) + """],m[""" + str(len(metadata["chunks"])) + """];""")
 
@@ -359,8 +373,11 @@ void ZARRNoCheckWriteN"""+suffix+"""(ZARR"""+suffix+""" *za""",end="")
 #metadata = {"chunks":[128,128,128],"dtype":"|u1", "dimension_separator": "/"}
 #CodeGen(metadata,27,"_1")
 
+metadata = {"chunks":[128,128,128],"dtype":[["a","|u1"],["b","<f4",[2,2]]], "dimension_separator": "/"}
+CodeGen(metadata,1,"_4")
+
 #metadata = {"chunks":[128,128,128,4],"dtype":"<f4", "dimension_separator": "."}
 #CodeGen(metadata,1,"_2")
 
-metadata = {"chunks":[128,128,128,4],"dtype":"<f4", "dimension_separator": "."}
-CodeGen(metadata,27,"_3")
+#metadata = {"chunks":[128,128,128,4],"dtype":"<f4", "dimension_separator": "."}
+#CodeGen(metadata,27,"_3")
