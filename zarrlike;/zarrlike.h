@@ -62,20 +62,29 @@ ZARR *ZarrOpen(const char *location)
 
 int ZarrFlushOne(ZARR *z, int i)
 {
-	sprintf(z->location+z->locationRootLength,"/%d.%d.%d.%d/data.bin",z->bufferIndex[i][0],z->bufferIndex[i][1],z->bufferIndex[i][2],z->bufferIndex[i][3]);
+	printf("flushing\n");
+	if (z->written[i])
+	{
+		sprintf(z->location+z->locationRootLength,"/%d.%d.%d.%d/data.bin",z->bufferIndex[i][0],z->bufferIndex[i][1],z->bufferIndex[i][2],z->bufferIndex[i][3]);
 
-	int compressed_len = blosc2_compress(9,1,sizeof(float),z->buffers[i],CHUNK_BYTES,z->compressedData,CHUNK_BYTES+BLOSC2_MAX_OVERHEAD);
+		printf("compressing\n");
+	    blosc1_set_compressor("lz4");
+		int compressed_len = blosc2_compress(9,1,sizeof(float),z->buffers[i],CHUNK_BYTES,z->compressedData,CHUNK_BYTES+BLOSC2_MAX_OVERHEAD);
 
-    if (compressed_len <= 0) {
-      //LOG_ERROR("Blosc2 compression failed: %d\n", compressed_len);
-      return -1;
-    }
+		if (compressed_len <= 0) {
+		//LOG_ERROR("Blosc2 compression failed: %d\n", compressed_len);
+		return -1;
+		}
 
-	FILE *f = fopen(z->location,"wb");
-	fwrite(z->compressedData,1,compressed_len,f);
-	fclose(f);
+		printf("saving\n");
+
+		FILE *f = fopen(z->location,"wb");
+		fwrite(z->compressedData,1,compressed_len,f);
+		fclose(f);
 	
-	z->written[i] = 0;
+		z->written[i] = 0;
+	}
+	printf("done\n");
 	
 	return 0;
 }
@@ -84,6 +93,7 @@ int ZarrFlush(ZARR *z)
 {
 	for(int i = 0; i<NUM_BUFFERS; i++)
 	{
+		printf("Flushing %d\n",i);
 		if (z->bufferIndex[i][0] != -1)
 		{
 			ZarrFlushOne(z,i);
@@ -177,7 +187,8 @@ int ZarrCheckChunk(ZARR *z, int c[4])
 		fseek(f,0,SEEK_SET);
         fread(z->compressedData,1,fsize,f);
 		fclose(f);
-		
+
+	    blosc1_set_compressor("lz4");		
         int decompressed_size = blosc2_decompress(z->compressedData, fsize, z->buffer, CHUNK_BYTES);
         if (decompressed_size < 0) {
             // LOG_ERROR("Blosc2 decompression failed: %d\n", decompressed_size);

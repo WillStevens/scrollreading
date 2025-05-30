@@ -1,14 +1,25 @@
-# A Zarr reader/writer generater
+# A ZARR reader/writer generater
 
 def DtypeToCtype(dtype):
   if dtype=="|u1":
     return "uint8_t"
-  elif dtype=="<f8":
+  elif dtype=="<f4":
     return "float"
   else:
     exit(0)
-	
-def CodeGen(metadata,buffers):
+
+def ChunkSize(metadata,i):
+  return metadata["chunks"][i]
+
+def ChunkBytes(metadata):  
+  r = "sizeof(" + DtypeToCtype(metadata["dtype"]) + ")*"
+  t = 1
+  for v in metadata["chunks"]:
+    t *= v
+  r += str(t)
+  return r
+  
+def CodeGen(metadata,buffers,suffix):
   print("""
 #include <stdio.h>
 #include <string.h>
@@ -20,48 +31,36 @@ def CodeGen(metadata,buffers):
 #include <sys/types.h>
 #include <blosc2.h>""")
 
-  i = 0
-  for chunkDim in metadata["chunks"]:
-    print("#define CHUNK_SIZE_%d %d" % (i,chunkDim))
-    i += 1
-
-  print("#define CHUNK_BYTES (1",end="")
-  for i in range(0,len(metadata["chunks"])):
-    print("*CHUNK_SIZE_%d" % i,end="")
-  print("*sizeof(%s))" % DtypeToCtype(metadata["dtype"]))
-
-  print("#define NUM_BUFFERS %d" % buffers)
-  
   print("""
 typedef struct {
     int locationRootLength;
     char *location;
   
-    unsigned char compressedData[CHUNK_BYTES+BLOSC2_MAX_OVERHEAD];""")
+    unsigned char compressedData[""" + ChunkBytes(metadata) + """+BLOSC2_MAX_OVERHEAD];""")
   print("    ",end="")
   print(DtypeToCtype(metadata["dtype"]),end="")
-  print(""" buffers[NUM_BUFFERS]""",end="")
-  for i in range(0,len(metadata["chunks"])):
-    print("[CHUNK_SIZE_%d]" % i,end="")
+  print(""" buffers[""" + str(buffers) + """]""",end="")
+  for v in metadata["chunks"]:
+    print("[%d]" % v,end="")
   print(""";
-    int bufferIndex[NUM_BUFFERS][""" + str(len(metadata["chunks"])) + """];
-    unsigned char written[NUM_BUFFERS];
-    uint64_t bufferUsed[NUM_BUFFERS];""")  
+    int bufferIndex[""" + str(buffers) + """][""" + str(len(metadata["chunks"])) + """];
+    unsigned char written[""" + str(buffers) + """];
+    uint64_t bufferUsed[""" + str(buffers) + """];""")  
   print("    ",end="")
   print(DtypeToCtype(metadata["dtype"]),end="")
   print(" (*buffer)",end="");
-  for i in range(0,len(metadata["chunks"])):
-    print("[CHUNK_SIZE_%d]" % i,end="")
+  for v in metadata["chunks"]:
+    print("[%d]" % v,end="")
   print(";")
   print("""
     int index;
   
     uint64_t counter;
-} ZARR;
+} ZARR"""+suffix+""";
 
-ZARR *ZarrOpen(const char *location)
+ZARR"""+suffix+""" *ZARROpen"""+suffix+"""(const char *location)
 {
-	ZARR *z = (ZARR *)malloc(sizeof(ZARR));
+	ZARR"""+suffix+""" *z = (ZARR"""+suffix+""" *)malloc(sizeof(ZARR"""+suffix+"""));
 	
 	z->locationRootLength = strlen(location);
 	
@@ -70,7 +69,7 @@ ZARR *ZarrOpen(const char *location)
 	z->buffer = NULL;
 	z->index = -1;
 
-    for(int i = 0; i<NUM_BUFFERS; i++)
+    for(int i = 0; i<""" + str(buffers) + """; i++)
 	{
 	  z->written[i] = 0;
       for(int j = 0; j<""" + str(len(metadata["chunks"])) + """; j++)
@@ -81,15 +80,17 @@ ZARR *ZarrOpen(const char *location)
 	
 	z->counter = 1;
 
-    for(int i = 0; i<NUM_BUFFERS; i++)
+    for(int i = 0; i<""" + str(buffers) + """; i++)
       z->bufferUsed[i] = 0;
   
 	return z;
 }
 
-int ZarrFlushOne(ZARR *z, int i)
+int ZARRFlushOne"""+suffix+"""(ZARR"""+suffix+""" *z, int i)
 {
-    sprintf(z->location+z->locationRootLength,"/""",end="")
+    if (z->written[i])
+	{
+      sprintf(z->location+z->locationRootLength,"/""",end="")
   for i in range(0,len(metadata["chunks"])):
     if i!=0:
       print(metadata["dimension_separator"],end="")
@@ -100,38 +101,39 @@ int ZarrFlushOne(ZARR *z, int i)
   print(");")
 
   print("""
-	blosc1_set_compressor("lz4");
-	int compressed_len = blosc2_compress(5,1,sizeof("""+DtypeToCtype(metadata["dtype"])+"""),z->buffers[i],CHUNK_BYTES,z->compressedData,CHUNK_BYTES+BLOSC2_MAX_OVERHEAD);
+	  blosc1_set_compressor("zstd");
+	  int compressed_len = blosc2_compress(3,1,sizeof("""+DtypeToCtype(metadata["dtype"])+"""),z->buffers[i],"""+ChunkBytes(metadata)+""",z->compressedData,"""+ChunkBytes(metadata)+"""+BLOSC2_MAX_OVERHEAD);
 
-    if (compressed_len <= 0) {
-      return -1;
-    }
+      if (compressed_len <= 0) {
+        return -1;
+      }
 
-	FILE *f = fopen(z->location,"wb");
-	fwrite(z->compressedData,1,compressed_len,f);
-	fclose(f);
+	  FILE *f = fopen(z->location,"wb");
+	  fwrite(z->compressedData,1,compressed_len,f);
+	  fclose(f);
 	
-	z->written[i] = 0;
+	  z->written[i] = 0;
+	}
 	
 	return 0;
 }
 
-int ZarrFlush(ZARR *z)
+int ZARRFlush"""+suffix+"""(ZARR"""+suffix+""" *z)
 {
-	for(int i = 0; i<NUM_BUFFERS; i++)
+	for(int i = 0; i<"""+str(buffers)+"""; i++)
 	{
 		if (z->bufferIndex[i][0] != -1)
 		{
-			ZarrFlushOne(z,i);
+			ZARRFlushOne"""+suffix+"""(z,i);
 		}
 	}
 	
 	return 0;
 }
 
-int ZarrClose(ZARR *z)
+int ZARRClose"""+suffix+"""(ZARR"""+suffix+""" *z)
 {
-    ZarrFlush(z);
+    ZARRFlush"""+suffix+"""(z);
     free(z->location);
     free(z);
 	
@@ -139,7 +141,7 @@ int ZarrClose(ZARR *z)
 }
 
 /* Make buffer point to the chunk and index contain the index*/
-int ZarrCheckChunk(ZARR *z, int c[""" + str(len(metadata["chunks"])) + """])
+int ZARRCheckChunk"""+suffix+"""(ZARR"""+suffix+""" *z, int c[""" + str(len(metadata["chunks"])) + """])
 {	
 	if (z->buffer""",end="")
   for i in range(0,len(metadata["chunks"])):	
@@ -148,7 +150,7 @@ int ZarrCheckChunk(ZARR *z, int c[""" + str(len(metadata["chunks"])) + """])
   print(""")
 		return 0;
 
-	for(z->index = 0; z->index < NUM_BUFFERS; z->index++)
+	for(z->index = 0; z->index < """+str(buffers)+"""; z->index++)
 	{
 		if (1 """,end="")
   for i in range(0,len(metadata["chunks"])):	
@@ -162,19 +164,19 @@ int ZarrCheckChunk(ZARR *z, int c[""" + str(len(metadata["chunks"])) + """])
 		}
 	}
 		
-	for(z->index = 0; z->index < NUM_BUFFERS; z->index++)
+	for(z->index = 0; z->index < """ + str(buffers) + """; z->index++)
 	{
 		if (z->bufferIndex[z->index][0]==-1)
 			break;
 	}
   	
-	if (z->index == NUM_BUFFERS)
+	if (z->index == """+str(buffers)+""")
 	{
 		/* Find the buffer that was least recently used and free it up */
 		printf("Ran out of buffers - flushing oldest\\n");
 		int oldestIndex = 0;
-		int oldestAge = z->bufferUsed[0];
-		for(int i = 1; i<NUM_BUFFERS; i++)
+		uint64_t oldestAge = z->bufferUsed[0];
+		for(int i = 1; i<"""+str(buffers)+"""; i++)
 		{
 			if (z->bufferUsed[i]<oldestAge)
 			{
@@ -183,7 +185,7 @@ int ZarrCheckChunk(ZARR *z, int c[""" + str(len(metadata["chunks"])) + """])
 			}
 		}
 		
-		ZarrFlushOne(z,oldestIndex);
+		ZARRFlushOne"""+suffix+"""(z,oldestIndex);
 		z->index = oldestIndex;
 	}""")
 
@@ -213,7 +215,7 @@ int ZarrCheckChunk(ZARR *z, int c[""" + str(len(metadata["chunks"])) + """])
 	{
 		printf("Did not find file\\n");
 
-		memset(z->buffer,0,CHUNK_BYTES);
+		memset(z->buffer,0,"""+ChunkBytes(metadata)+""");
 
 		//No need to count it as written to yet - if it remains empty then just leave the file as non-existent
 	    //z->written[z->index] = 1;
@@ -229,8 +231,8 @@ int ZarrCheckChunk(ZARR *z, int c[""" + str(len(metadata["chunks"])) + """])
         fread(z->compressedData,1,fsize,f);
 		fclose(f);
 		
-		blosc1_set_compressor("lz4");
-        int decompressed_size = blosc2_decompress(z->compressedData, fsize, z->buffer, CHUNK_BYTES);
+		blosc1_set_compressor("zstd");
+        int decompressed_size = blosc2_decompress(z->compressedData, fsize, z->buffer, """+ChunkBytes(metadata)+""");
         if (decompressed_size < 0) {
             return 0;
         }
@@ -240,7 +242,7 @@ int ZarrCheckChunk(ZARR *z, int c[""" + str(len(metadata["chunks"])) + """])
 	return 0;
 }""")
   print(DtypeToCtype(metadata["dtype"]),end="")
-  print(""" ZarrRead(ZARR *za""",end="")
+  print(""" ZARRRead"""+suffix+"""(ZARR"""+suffix+""" *za""",end="")
   for i in range(0,len(metadata["chunks"])):
     print(",int x%d" % i,end="")
   print(""")
@@ -248,11 +250,11 @@ int ZarrCheckChunk(ZARR *z, int c[""" + str(len(metadata["chunks"])) + """])
 	int c[""" + str(len(metadata["chunks"])) + """],m[""" + str(len(metadata["chunks"])) + """];""")
 
   for i in range(0,len(metadata["chunks"])):
-    print("    c[%d] = x%d/CHUNK_SIZE_%d;" % (i,i,i))
-    print("    m[%d] = x%d%%CHUNK_SIZE_%d;" % (i,i,i))
+    print("    c[%d] = x%d/%d;" % (i,i,ChunkSize(metadata,i)))
+    print("    m[%d] = x%d%%%d;" % (i,i,ChunkSize(metadata,i)))
 
   print("""	
-	ZarrCheckChunk(za,c);
+	ZARRCheckChunk"""+suffix+"""(za,c);
 	
     return (*za->buffer)""",end="")
   for i in range(0,len(metadata["chunks"])):
@@ -262,7 +264,7 @@ int ZarrCheckChunk(ZARR *z, int c[""" + str(len(metadata["chunks"])) + """])
 
 
 // Read several values from the last dimensions
-void ZarrReadN(ZARR *za""",end="")
+void ZARRReadN"""+suffix+"""(ZARR"""+suffix+""" *za""",end="")
   for i in range(0,len(metadata["chunks"])):
     print(",int x%d" % i,end="")
   print(""",int n, """ + DtypeToCtype(metadata["dtype"]) + """ *v)
@@ -270,11 +272,11 @@ void ZarrReadN(ZARR *za""",end="")
 	int c[""" + str(len(metadata["chunks"])) + """],m[""" + str(len(metadata["chunks"])) + """];""")
 
   for i in range(0,len(metadata["chunks"])):
-    print("    c[%d] = x%d/CHUNK_SIZE_%d;" % (i,i,i))
-    print("    m[%d] = x%d%%CHUNK_SIZE_%d;" % (i,i,i))
+    print("    c[%d] = x%d/%d;" % (i,i,ChunkSize(metadata,i)))
+    print("    m[%d] = x%d%%%d;" % (i,i,ChunkSize(metadata,i)))
 
   print("""	
-	ZarrCheckChunk(za,c);
+	ZARRCheckChunk"""+suffix+"""(za,c);
 			  
 	memcpy(v,&(*za->buffer)""",end="")
   for i in range(0,len(metadata["chunks"])):
@@ -283,7 +285,7 @@ void ZarrReadN(ZARR *za""",end="")
   print(""",n*sizeof(float));
 }
 
-int ZarrWrite(ZARR *za""",end="")
+int ZARRWrite"""+suffix+"""(ZARR"""+suffix+""" *za""",end="")
   for i in range(0,len(metadata["chunks"])):
     print(",int x%d" % i,end="")
   print(""",""" + DtypeToCtype(metadata["dtype"]) + """ value)
@@ -291,11 +293,11 @@ int ZarrWrite(ZARR *za""",end="")
 	int c[""" + str(len(metadata["chunks"])) + """],m[""" + str(len(metadata["chunks"])) + """];""")
 
   for i in range(0,len(metadata["chunks"])):
-    print("    c[%d] = x%d/CHUNK_SIZE_%d;" % (i,i,i))
-    print("    m[%d] = x%d%%CHUNK_SIZE_%d;" % (i,i,i))
+    print("    c[%d] = x%d/%d;" % (i,i,ChunkSize(metadata,i)))
+    print("    m[%d] = x%d%%%d;" % (i,i,ChunkSize(metadata,i)))
 
   print("""	
-	ZarrCheckChunk(za,c);
+	ZARRCheckChunk"""+suffix+"""(za,c);
 			  
 	(*za->buffer)""",end="")
   for i in range(0,len(metadata["chunks"])):
@@ -309,7 +311,7 @@ int ZarrWrite(ZARR *za""",end="")
 }
 
 
-void ZarrWriteN(ZARR *za""",end="")
+void ZARRWriteN"""+suffix+"""(ZARR"""+suffix+""" *za""",end="")
   for i in range(0,len(metadata["chunks"])):
     print(",int x%d" % i,end="")
   print(""",int n, """ + DtypeToCtype(metadata["dtype"]) + """ *v)
@@ -317,11 +319,11 @@ void ZarrWriteN(ZARR *za""",end="")
 	int c[""" + str(len(metadata["chunks"])) + """],m[""" + str(len(metadata["chunks"])) + """];""")
 
   for i in range(0,len(metadata["chunks"])):
-    print("    c[%d] = x%d/CHUNK_SIZE_%d;" % (i,i,i))
-    print("    m[%d] = x%d%%CHUNK_SIZE_%d;" % (i,i,i))
+    print("    c[%d] = x%d/%d;" % (i,i,ChunkSize(metadata,i)))
+    print("    m[%d] = x%d%%%d;" % (i,i,ChunkSize(metadata,i)))
 
   print("""	
-	ZarrCheckChunk(za,c);
+	ZARRCheckChunk"""+suffix+"""(za,c);
 			  
 	memcpy(&(*za->buffer)""",end="")
   for i in range(0,len(metadata["chunks"])):
@@ -333,7 +335,7 @@ void ZarrWriteN(ZARR *za""",end="")
 }
 
 // Assumes that we have already written at least once to this chunk
-void ZarrNoCheckWriteN(ZARR *za""",end="")
+void ZARRNoCheckWriteN"""+suffix+"""(ZARR"""+suffix+""" *za""",end="")
   for i in range(0,len(metadata["chunks"])):
     print(",int x%d" % i,end="")
   print(""",int n, """ + DtypeToCtype(metadata["dtype"]) + """ *v)
@@ -341,11 +343,11 @@ void ZarrNoCheckWriteN(ZARR *za""",end="")
 	int c[""" + str(len(metadata["chunks"])) + """],m[""" + str(len(metadata["chunks"])) + """];""")
 
   for i in range(0,len(metadata["chunks"])):
-    print("    c[%d] = x%d/CHUNK_SIZE_%d;" % (i,i,i))
-    print("    m[%d] = x%d%%CHUNK_SIZE_%d;" % (i,i,i))
+    print("    c[%d] = x%d/%d;" % (i,i,ChunkSize(metadata,i)))
+    print("    m[%d] = x%d%%%d;" % (i,i,ChunkSize(metadata,i)))
 
   print("""	
-	memcpy(&za->buffer""",end="")
+	memcpy(&(*za->buffer)""",end="")
   for i in range(0,len(metadata["chunks"])):
     print("[m[%d]]" % i,end="")
 	
@@ -354,6 +356,11 @@ void ZarrNoCheckWriteN(ZARR *za""",end="")
 	za->written[za->index] = 1;  
 }""")
 
-metadata = {"chunks":[128,128,128],"dtype":"|u1", "dimension_separator": "/"}
+#metadata = {"chunks":[128,128,128],"dtype":"|u1", "dimension_separator": "/"}
+#CodeGen(metadata,27,"_1")
 
-CodeGen(metadata,8)
+#metadata = {"chunks":[128,128,128,4],"dtype":"<f4", "dimension_separator": "."}
+#CodeGen(metadata,1,"_2")
+
+metadata = {"chunks":[128,128,128,4],"dtype":"<f4", "dimension_separator": "."}
+CodeGen(metadata,27,"_3")
