@@ -30,6 +30,27 @@ def ChunkBytes(metadata,suffix):
     t *= v
   r += str(t)
   return r
+
+def DecompressCode(metadata,suffix):
+  if metadata["compressor"]["id"] == "blosc":
+    print("""
+        blosc1_set_compressor(\""""+metadata["compressor"]["cname"]+"""\");
+        int decompressed_size = blosc2_decompress(z->compressedData, fsize, z->buffer, """+ChunkBytes(metadata,suffix)+""");
+        if (decompressed_size < 0) {
+            return 0;
+        }""")
+
+def CompressCode(metadata,suffix):
+  if metadata["compressor"]["id"] == "blosc":
+    # TODO - the blocksize metadata value is unused
+    print("""
+      blosc1_set_compressor(\""""+metadata["compressor"]["cname"]+"""\");
+	  int compressed_len = blosc2_compress(""" +str(metadata["compressor"]["clevel"])+ """,""" +str(metadata["compressor"]["shuffle"])+ """,sizeof(ZARRType"""+suffix+"""),z->buffers[i],"""+ChunkBytes(metadata,suffix)+""",z->compressedData,"""+ChunkBytes(metadata,suffix)+"""+BLOSC2_MAX_OVERHEAD);
+
+      if (compressed_len <= 0) {
+        return -1;
+      }""")
+
   
 def CodeGen(metadata,buffers,suffix):
   print("""
@@ -114,14 +135,9 @@ int ZARRFlushOne"""+suffix+"""(ZARR"""+suffix+""" *z, int i)
     print(",z->bufferIndex[i][%d]" % i,end="")
   print(");")
 
+  CompressCode(metadata,suffix)
+  
   print("""
-	  blosc1_set_compressor("zstd");
-	  int compressed_len = blosc2_compress(3,1,sizeof(ZARRType"""+suffix+"""),z->buffers[i],"""+ChunkBytes(metadata,suffix)+""",z->compressedData,"""+ChunkBytes(metadata,suffix)+"""+BLOSC2_MAX_OVERHEAD);
-
-      if (compressed_len <= 0) {
-        return -1;
-      }
-
 	  FILE *f = fopen(z->location,"wb");
 	  fwrite(z->compressedData,1,compressed_len,f);
 	  fclose(f);
@@ -244,13 +260,9 @@ int ZARRCheckChunk"""+suffix+"""(ZARR"""+suffix+""" *z, int c[""" + str(len(meta
 		fseek(f,0,SEEK_SET);
         fread(z->compressedData,1,fsize,f);
 		fclose(f);
-		
-		blosc1_set_compressor("zstd");
-        int decompressed_size = blosc2_decompress(z->compressedData, fsize, z->buffer, """+ChunkBytes(metadata,suffix)+""");
-        if (decompressed_size < 0) {
-            return 0;
-        }
-
+		""")
+  DecompressCode(metadata,suffix)
+  print("""
 	}	
 	
 	return 0;
@@ -373,11 +385,59 @@ void ZARRNoCheckWriteN"""+suffix+"""(ZARR"""+suffix+""" *za""",end="")
 #metadata = {"chunks":[128,128,128],"dtype":"|u1", "dimension_separator": "/"}
 #CodeGen(metadata,27,"_1")
 
-metadata = {"chunks":[128,128,128],"dtype":[["a","|u1"],["b","<f4",[2,2]]], "dimension_separator": "/"}
+"""
+metadata = {
+  "chunks":[128,128,128],
+  "dtype":[["a","|u1"],["b","<f4",[2,2]]], 
+  "dimension_separator": ".",
+  "compressor": {
+        "blocksize": 0,
+        "clevel": 3,
+        "cname": "zstd",
+        "id": "blosc",
+        "shuffle": 1
+   },
+   
+  "fill_value": 0,
+  "filters": null,
+  "order": "C",
+  "shape": [
+        14376,
+        8096,
+        7888
+    ],
+  "zarr_format": 2
+}
+  
 CodeGen(metadata,1,"_4")
-
+"""
 #metadata = {"chunks":[128,128,128,4],"dtype":"<f4", "dimension_separator": "."}
 #CodeGen(metadata,1,"_2")
 
 #metadata = {"chunks":[128,128,128,4],"dtype":"<f4", "dimension_separator": "."}
 #CodeGen(metadata,27,"_3")
+
+
+# A single buffer zarr with small chunk size
+metadata = {
+  "chunks":[32,32,32,4],
+  "dtype":"<f4", 
+  "dimension_separator": ".",
+  "compressor": {
+        "blocksize": 0,
+        "clevel": 3,
+        "cname": "zstd",
+        "id": "blosc",
+        "shuffle": 1
+   },
+   
+  "fill_value": 0,
+  "filters": None,
+  "order": "C",
+  "zarr_format": 2
+}
+  
+#CodeGen(metadata,1,"_5")
+# lots of buffers for this
+CodeGen(metadata,5000,"_6")
+
