@@ -490,6 +490,8 @@ bool MarkHighStress(void)
 			highStress[zo][yo][xo] = true;
 			r = true;
 		}
+		
+		printf("High stress at x,y,z=%f,%f,%f\n",paperPos[x][y][0],paperPos[x][y][1],paperPos[x][y][2]);
 	  }
 	}
 	
@@ -639,7 +641,7 @@ int main(int argc, char *argv[])
   
   InitialiseSeed();
     
-  for(int i = 0; i<100; i++)
+  for(int i = 0; i<150; i++)
   {
     printf("--- %d ---\n",i);
     int j = 0;
