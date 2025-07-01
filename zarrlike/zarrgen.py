@@ -1,4 +1,4 @@
-# A ZARR reader/writer generater
+# A ZARR reader/writer generator
 
 def DtypeToCtype(dtype):
   if type(dtype) is list:
@@ -411,14 +411,9 @@ metadata = {
   
 CodeGen(metadata,1,"_4")
 """
-#metadata = {"chunks":[128,128,128,4],"dtype":"<f4", "dimension_separator": "."}
-#CodeGen(metadata,1,"_2")
-
-#metadata = {"chunks":[128,128,128,4],"dtype":"<f4", "dimension_separator": "."}
-#CodeGen(metadata,27,"_3")
 
 
-# A single buffer zarr with small chunk size
+# A zarr with small chunk size
 metadata = {
   "chunks":[32,32,32,4],
   "dtype":"<f4", 
@@ -437,7 +432,6 @@ metadata = {
   "zarr_format": 2
 }
   
-#CodeGen(metadata,1,"_5")
-# lots of buffers for this
+# Use 5000 buffers
 CodeGen(metadata,5000,"_6")
 
