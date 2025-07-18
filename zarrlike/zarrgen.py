@@ -15,6 +15,8 @@ def DtypeToCtype(dtype):
     return r
   elif dtype=="|u1":
     return "uint8_t"
+  elif dtype=="|i1":
+    return "int8_t"
   elif dtype=="<f4":
     return "float"
   else:
@@ -308,7 +310,7 @@ void ZARRReadN"""+suffix+"""(ZARR"""+suffix+""" *za""",end="")
   for i in range(0,len(metadata["chunks"])):
     print("[m[%d]]" % i,end="")
 	
-  print(""",n*sizeof(float));
+  print(""",n*sizeof(ZARRType""" + suffix + """));
 }
 
 int ZARRWrite"""+suffix+"""(ZARR"""+suffix+""" *za""",end="")
@@ -355,7 +357,7 @@ void ZARRWriteN"""+suffix+"""(ZARR"""+suffix+""" *za""",end="")
   for i in range(0,len(metadata["chunks"])):
     print("[m[%d]]" % i,end="")
 	
-  print(""",v,n*sizeof(float));
+  print(""",v,n*sizeof(ZARRType""" + suffix + """));
 
 	za->written[za->index] = 1;  
 }
@@ -366,10 +368,9 @@ void ZARRNoCheckWriteN"""+suffix+"""(ZARR"""+suffix+""" *za""",end="")
     print(",int x%d" % i,end="")
   print(""",int n, ZARRType"""+suffix + """ *v)
 {
-	int c[""" + str(len(metadata["chunks"])) + """],m[""" + str(len(metadata["chunks"])) + """];""")
+	int m[""" + str(len(metadata["chunks"])) + """];""")
 
   for i in range(0,len(metadata["chunks"])):
-    print("    c[%d] = x%d/%d;" % (i,i,ChunkSize(metadata,i)))
     print("    m[%d] = x%d%%%d;" % (i,i,ChunkSize(metadata,i)))
 
   print("""	
@@ -377,7 +378,7 @@ void ZARRNoCheckWriteN"""+suffix+"""(ZARR"""+suffix+""" *za""",end="")
   for i in range(0,len(metadata["chunks"])):
     print("[m[%d]]" % i,end="")
 	
-  print(""",v,n*sizeof(float));
+  print(""",v,n*sizeof(ZARRType""" + suffix + """));
 
 	za->written[za->index] = 1;  
 }""")
@@ -414,7 +415,7 @@ CodeGen(metadata,1,"_4")
 
 
 # A zarr with small chunk size
-metadata = {
+metadata_c32f4 = {
   "chunks":[32,32,32,4],
   "dtype":"<f4", 
   "dimension_separator": ".",
@@ -431,7 +432,42 @@ metadata = {
   "order": "C",
   "zarr_format": 2
 }
+
+metadata_c128i1 = {
+  "chunks":[128,128,128,4],
+  "dtype":"|i1", 
+  "dimension_separator": ".",
+  "compressor": {
+        "blocksize": 0,
+        "clevel": 3,
+        "cname": "zstd",
+        "id": "blosc",
+        "shuffle": 1
+   },
+   
+  "fill_value": 0,
+  "filters": None,
+  "order": "C",
+  "zarr_format": 2
+}
+
+metadata_c32i1 = {
+  "chunks":[32,32,32,4],
+  "dtype":"|i1", 
+  "dimension_separator": ".",
+  "compressor": {
+        "blocksize": 0,
+        "clevel": 3,
+        "cname": "zstd",
+        "id": "blosc",
+        "shuffle": 1
+   },
+   
+  "fill_value": 0,
+  "filters": None,
+  "order": "C",
+  "zarr_format": 2
+}
   
-# Use 5000 buffers
-CodeGen(metadata,5000,"_6")
+CodeGen(metadata_c32i1,1024,"_c32i1b1024")
 
