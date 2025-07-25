@@ -27,12 +27,19 @@ def Call(arguments,output=None,append=False):
   process = Popen(arguments, stdout=output)
   (output, err) = process.communicate()
   return process.wait()
-  
+
+
+# Run an external program, and return the output
+def CallOutput(arguments):
+  process = Popen(arguments, stdout=PIPE)
+  (output, err) = process.communicate()
+  exit_code = process.wait()
+  return output.decode("ascii")  
 
 # Return boolean and transformation if the two patches can be aligned
 # Also return the variance in the transforms found, which is used to determine if the patch is flipped over or not
 def CallAlign(p1,p2):
-  process = Popen(["./align_patches2.exe", p1,p2], stdout=PIPE)
+  process = Popen(["./align_patches4.exe", p1,p2], stdout=PIPE)
   (output, err) = process.communicate()
   exit_code = process.wait()
   
@@ -47,8 +54,8 @@ def CallAlign(p1,p2):
 outputDir = "d:/pipelineOutput"
 
 currentStress = outputDir+"/stress.csv"
-currentSurface = outputDir+"/surface.csv"
-currentSurfaceTmp = outputDir+"/surface_tmp.csv"
+currentSurface = outputDir+"/surface.bp"
+temporaryFile = outputDir+"/transformed.csv" # used for transformed patch
 
 VOL_OFFSET_X = 2688
 VOL_OFFSET_Y = 1536
@@ -57,11 +64,13 @@ VOL_OFFSET_Z = 4608
 # A seed consists of x,y,z coords + coords of two vectors that give its orientation
 seed = (3700,2408,5632,1,0,0,0,0,1)
 
+currentRenderOffset = (0,0)
 patchNum = 0
 restart = False
 
-# Restarting partway through
-#patchNum = 74
+#Restarting partway through
+#currentRenderOffset = (563,366)
+#patchNum = 43
 #restart = True
 
 while patchNum < 500:
@@ -86,11 +95,11 @@ while patchNum < 500:
 
   if patchNum==0:
     # Initialise current surface and current stress map
-    Call(["cp",patchi,currentSurface])
+    Call(["./addtobigpatch",currentSurface,patchi,str(patchNum)])
     needToRender = True
   else:
     # Merge this patch into the current surface
-    Step("align_patches2")
+    Step("align_patches")
     (aligned,transform,variance) = CallAlign(currentSurface,outputDir+"/patch_"+str(patchNum)+"_i.csv")
   
     if (aligned):
@@ -101,50 +110,58 @@ while patchNum < 500:
         Call(["./flip_patch",patchi],patchif)
         Step("extent_patch")
         Call(["./extent_patch",patchif],outputDir+"/patch_"+str(patchNum)+"_if.ext")
-        Step("align_patches2")
+        Step("align_patches")
         (aligned,transform,variance) = CallAlign(currentSurface,outputDir+"/patch_"+str(patchNum)+"_if.csv")
         print("Variance after flipping is: " + str(variance))
         if variance[2]<=10000 and variance[5]<=10000:
           Step("transform_patch")
-          Call(["./transform_patch",outputDir+"/patch_"+str(patchNum)+"_if.csv"] + [str(x) for x in transform],currentSurface,True)
+          Call(["./transform_patch",outputDir+"/patch_"+str(patchNum)+"_if.csv"] + [str(x) for x in transform],temporaryFile)
           needToRender = True
+          Call(["./addtobigpatch",currentSurface,temporaryFile,str(patchNum)])          
         else:
           print("Unable to align, even after flipping")
       else:
         Step("transform_patch")
-        Call(["./transform_patch",outputDir+"/patch_"+str(patchNum)+"_i.csv"] + [str(x) for x in transform],currentSurface,True)
+        Call(["./transform_patch",outputDir+"/patch_"+str(patchNum)+"_i.csv"] + [str(x) for x in transform],temporaryFile)
         needToRender = True
+        Call(["./addtobigpatch",currentSurface,temporaryFile,str(patchNum)])        
     else:
       print("No alignment of patch could be done")
     # Merge the stress output into the current stress map
 
 
-  if needToRender:
-    # Normalise the currentSurface and apply the same to the stress map
-    Step("normalise_patch")
-    Call(["./normalise_patch",currentSurface],currentSurfaceTmp)    
-    Call(["cp",currentSurfaceTmp,currentSurface])
-
-    # Render the surface
-    #Step("render_from_zarr2 (surface)")
-    #Call(["./render_from_zarr2",currentSurface])
-    #Call(["cp",currentSurface[:-4]+".tif",outputDir+"/surface_after_"+str(patchNum)+".tif"])
-  
+  if needToRender:  
+    Step("render_from_zarr4 (patch mask)")
+    patchRenderOffset = CallOutput(["./render_from_zarr4",temporaryFile,"1"])
+    print("Offset when rendering patch:" + str(patchRenderOffset))
     # Make a surface mask
-    Step("render_from_zarr3 (mask)")
-    Call(["./render_from_zarr3",currentSurface,"1"])
+    Step("render_from_zarr4 (mask)")
+    renderOffset = CallOutput(["./render_from_zarr4",currentSurface,"1"])
+    renderOffset = renderOffset.split(" ")
+    print("Offset when rendering:" + str(renderOffset))
+    currentRenderOffset = (int(renderOffset[0]),int(renderOffset[1]))
     
   # Find all boundary points on the surface mask
   Step("boundary")
-  boundary = Image.open(currentSurface[:-4]+".tif")
+  boundary = Image.open(currentSurface[:-3]+".tif")
   boundary = boundary.filter(ImageFilter.FIND_EDGES)
-  boundary.save(currentSurface[:-4]+"_boundary.tif")
+  boundary.save(currentSurface[:-3]+"_boundary.tif")
   
   boundary = np.array(boundary)
   
   yb, xb = (boundary > 0).nonzero()
 
+  xb += currentRenderOffset[0]
+  yb += currentRenderOffset[1]
+  
   print("%d boundary points " % xb.shape[0])
+  
+  # We want to find a point on the bounary that, when a patch is grown, is likely to result in the smallest
+  # increase in boundary size - this is most likely to lead to a blob shaped surface rather than a forking surface.
+  
+  # One proxy for this is to look for the boundary point which has as large as possible number of points within a typical patch sized
+  # radius
+  
   
   #mode = randint(0,10)
   # WS 2025-06-28 - don't bother with the modes that seek to extent the range
@@ -174,7 +191,7 @@ while patchNum < 500:
   
     # Open current surface and find the grid points within a radius of 5 of x,y (the first returned will be the nearest)
     Step("find_nearest")
-    Call(["./find_nearest",currentSurface,str(x),str(y),"5"],outputDir + "/nearest_tmp.csv")
+    Call(["./find_nearest3",currentSurface,str(x),str(y),"5"],outputDir + "/nearest_tmp.csv")
 
     points = []
 
@@ -215,4 +232,4 @@ while patchNum < 500:
   patchNum+=1
   restart = False
   
-Call(["./render_from_zarr3",currentSurface])
+Call(["./render_from_zarr4",currentSurface])

@@ -655,7 +655,7 @@ int main(int argc, char *argv[])
   
   InitialiseSeed();
     
-  for(int i = 0; i<150; i++)
+  for(int i = 0; i<300; i++)
   {
     printf("--- %d ---\n",i);
     int j = 0;

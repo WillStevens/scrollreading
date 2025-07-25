@@ -10,7 +10,7 @@
 
 #include "bigpatch.cpp"
 
-typedef std::tuple<int,int,int,int,float> match;
+typedef std::tuple<float,float,float,float> match;
 
 #define CELL_SIZE 10
 typedef std::tuple<int,int,int> gridCell;
@@ -128,6 +128,8 @@ void FillCellMap(void)
 
 void FindMatches(std::vector<match> &matchList)
 {
+	std::set<int> patches;
+
 #ifdef DEBUG
 	printf("Iterating over points\n");
 #endif
@@ -145,10 +147,14 @@ void FindMatches(std::vector<match> &matchList)
 			gridCell g(nx,ny,nz);
 			if (cellMap1.count(g) != 0)
 			{
+				// There is an overlapping cell, so add to the list of patches that could be involved
 				foundAny = true;
+			    for(const gridPoint &gp : cellMap1[g])
+			      patches.insert(std::get<5>(gp));
 			}
 		}
 		
+				
 		if (foundAny)
 		{
 		    for(const gridPoint &gp0 : cellMap0[i->first])
@@ -159,86 +165,110 @@ void FindMatches(std::vector<match> &matchList)
 		        float yp0 = std::get<3>(gp0);
 		        float zp0 = std::get<4>(gp0);
 
+				float minimums[4][6];
 				float minDist = 10000;
-	            int minx1=-1,miny1=-1;
+				int minCount = 0;
 
-				for(int nx = g0x-1; nx<=g0x+1; nx++)
-				for(int ny = g0y-1; ny<=g0y+1; ny++)
-				for(int nz = g0z-1; nz<=g0z+1; nz++)
-		        {
-					gridCell g(nx,ny,nz);
-			        if (cellMap1.count(g) != 0)
-			        {		
-					    for(const gridPoint &gp1 : cellMap1[g])
-			            {		  
-		                    float xp1 = std::get<2>(gp1);
-		                    float yp1 = std::get<3>(gp1);
-		                    float zp1 = std::get<4>(gp1);
-		  
-   		                    float d = Distance(xp0,yp0,zp0,xp1,yp1,zp1);
-		                    if (d<minDist)
-		                    {
-			                    minDist = d;
-			                    minx1 = std::get<0>(gp1); miny1 = std::get<1>(gp1);
-		                    }
-			            }
-			        }
-		        }
-				
- 			    if (minDist<5.0)
-	            {
-		            matchList.push_back(match(x0,y0,minx1,miny1,minDist));		  
-	            }
-			}
-		}
-	}
-	
-    // Now we want to prune the list so that each x1 y1 appears only once, with minimum d
-	std::vector< std::vector<match>::iterator > toDelete;
-	
-	// Sort matchlist by elements 2 and 3 then 4
-    auto sortMatchlistLambda = [] (match const& m1, match const& m2) -> bool
-    {
-       return std::get<2>(m1) < std::get<2>(m2) || 
-	          (std::get<2>(m1) == std::get<2>(m2) && std::get<3>(m1) < std::get<3>(m2)) ||
-			  (std::get<2>(m1) == std::get<2>(m2) && std::get<3>(m1) == std::get<3>(m2) && std::get<4>(m1) < std::get<4>(m2));
-    };
+				// Look for matches one patch at a time
+				for(auto patch : patches)
+				{
+						
+					for(int nx = g0x-1; nx<=g0x+1; nx++)
+					for(int ny = g0y-1; ny<=g0y+1; ny++)
+					for(int nz = g0z-1; nz<=g0z+1; nz++)
+					{
+						gridCell g(nx,ny,nz);
+						if (cellMap1.count(g) != 0)
+						{		
+							for(const gridPoint &gp1 : cellMap1[g])
+							{
+                                if (std::get<5>(gp1) != patch)
+                                    continue;
+								
+								float xp1 = std::get<2>(gp1);
+								float yp1 = std::get<3>(gp1);
+								float zp1 = std::get<4>(gp1);
+			  
+								float d = Distance(xp0,yp0,zp0,xp1,yp1,zp1);
+								if (d<minDist)
+								{
+									minCount++;
+									minimums[minCount%3][0] = std::get<0>(gp1);
+									minimums[minCount%3][1] = std::get<1>(gp1);
+									minimums[minCount%3][2] = xp1;
+									minimums[minCount%3][3] = yp1;
+									minimums[minCount%3][4] = zp1;
+									minimums[minCount%3][5] = d;
+									minDist = d;
+								}
+							}
+						}
+					}
+					
+					if (minCount>=3 && minDist < 5.0)
+					{
+	#ifdef DEBUG
+						printf("Closest 3 to %f,%f,%f (minCount=%d):\n",xp0,yp0,zp0,minCount%3);
+						printf("%f,%f %f,%f %f,%f\n",minimums[0][0],minimums[0][1],minimums[1][0],minimums[1][1],minimums[2][0],minimums[2][1]);
+						printf("%f,%f,%f %f,%f,%f %f,%f,%f\n",minimums[0][2],minimums[0][3],minimums[0][4],minimums[1][2],minimums[1][3],minimums[1][4],minimums[2][2],minimums[2][3],minimums[2][4]);
+						printf("%f %f %f\n",minimums[0][5],minimums[1][5],minimums[2][5]);
+	#endif
+						// Are all of the closest points on a line
+						if ((minimums[0][0]==minimums[1][0] && minimums[0][0]==minimums[2][0]) ||
+							(minimums[0][1]==minimums[1][1] && minimums[0][1]==minimums[2][1]))
+						{
+	#ifdef DEBUG
+							printf("Colinear\n");
+	#endif
+							//matchList.push_back(match(x0,y0,minimums[minCount][0],minimums[minCount][1]));		  
+						} 
+						// They must form a right angle triangle, with mincount at the corner
+						else if ((minimums[minCount%3][0]==minimums[(minCount+1)%3][0] && minimums[minCount%3][1] == minimums[(minCount+2)%3][1]) ||
+								 (minimums[minCount%3][1]==minimums[(minCount+1)%3][1] || minimums[minCount%3][0] == minimums[(minCount+2)%3][0]))
+						{
+								// If so then work out what plane it is in, then project xp0,yp0,zp0 onto that plane
+								float v0[3],v1[3];
+								v0[0] = minimums[(minCount+1)%3][2]-minimums[minCount%3][2];
+								v0[1] = minimums[(minCount+1)%3][3]-minimums[minCount%3][3];
+								v0[2] = minimums[(minCount+1)%3][4]-minimums[minCount%3][4];
+								v1[0] = minimums[(minCount+2)%3][2]-minimums[minCount%3][2];
+								v1[1] = minimums[(minCount+2)%3][3]-minimums[minCount%3][3];
+								v1[2] = minimums[(minCount+2)%3][4]-minimums[minCount%3][4];
+	#ifdef DEBUG
+								printf("v0: %f,%f,%f\n",v0[0],v0[1],v0[2]);
+								printf("v1: %f,%f,%f\n",v1[0],v1[1],v1[2]);
 
-#ifdef DEBUG
-	printf("Sorting matchlist\n");
-#endif
-    
-    std::sort(matchList.begin(), matchList.end(), sortMatchlistLambda);  
+								printf("point: %f,%f,%f\n",(xp0-minimums[minCount%3][2]),(yp0-minimums[minCount%3][3]),(zp0-minimums[minCount%3][4]));
+	#endif							
+								float proj0,proj1;
 
-#ifdef DEBUG
-	printf("Iterating over matchlist\n");
-#endif
-	
-	// For all x1,y1 in matchlist (elements 2 and 3) remove all except the first occuring (the shortest distance)
-	for(std::vector<match>::iterator ma = matchList.begin(); ma != matchList.end();)
-	{
-		int ax1 = std::get<2>(*ma);
-		int ay1 = std::get<3>(*ma);
-		
-		for(ma = ma+1; ma != matchList.end(); ma++)
-		{
-			int bx1 = std::get<2>(*ma);
-			int by1 = std::get<3>(*ma);
+								proj0 = v0[0]*(xp0-minimums[minCount%3][2]) +
+										v0[1]*(yp0-minimums[minCount%3][3]) +
+										v0[2]*(zp0-minimums[minCount%3][4]);
+								proj1 = v1[0]*(xp0-minimums[minCount%3][2]) +
+										v1[1]*(yp0-minimums[minCount%3][3]) +
+										v1[2]*(zp0-minimums[minCount%3][4]);
+	#ifdef DEBUG
+								printf("Projection is: %f,%f\n",proj0,proj1);
+	#endif									
+								if (proj0>=0.0 && proj0<=1.0 && proj1>=0.0 && proj1 <=1.0)
+								{
+									float gx = minimums[minCount%3][0]+proj0*(minimums[(minCount+1)%3][0]-minimums[minCount%3][0])
+																  +proj1*(minimums[(minCount+2)%3][0]-minimums[minCount%3][0]);		
+									float gy = minimums[minCount%3][1]+proj0*(minimums[(minCount+1)%3][1]-minimums[minCount%3][1])
+																  +proj1*(minimums[(minCount+2)%3][1]-minimums[minCount%3][1]);		
 			
-			if (ax1==bx1 && ay1==by1)
-			{
-				toDelete.push_back(ma);
-			}
-			else
-			{
-				break;
+	#ifdef DEBUG		
+									printf("Match is: %f,%f\n",gx,gy);
+	#endif
+									matchList.push_back(match(x0,y0,gx,gy));
+								}
+						}
+						
+					}
+				}
 			}
 		}
-	}
-	
-	for(const std::vector<match>::iterator &d : toDelete)
-	{
-		matchList.erase(d);
 	}
 	
 #ifdef DEBUG
@@ -263,7 +293,7 @@ void AlignMatches(std::vector<match> &matchList)
 	
 	std::vector<affineTx> transformSamples;
 	
-	for(int i = 0; l>0 && i<100; i++)
+	for(int i = 0; l>0 && i<500; i++)
 	{
 		int pa = rand()%l;
 		int pb = rand()%l;
@@ -283,7 +313,7 @@ void AlignMatches(std::vector<match> &matchList)
 		
 		//printf("distance 0: %f, distance 1: %f\n",d0,d1);
 	
-	    if (d1>100.0 && d0/d1>0.98 && d0/d1<1.02)
+	    if (d1>100.0 && d0/d1>0.99 && d0/d1<1.01)
 		{						
 			// Now work out the angle
 			float dx1 = bx1-ax1, dy1 = by1-ay1;
@@ -319,7 +349,7 @@ void AlignMatches(std::vector<match> &matchList)
 	{
 		//printf("No matches to align\n");
 	}
-	else if (transformSamples.size()<10)
+	else if (transformSamples.size()<50)
 	{
 		// Not enough transforms to get SD
 	}
