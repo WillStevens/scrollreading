@@ -20,7 +20,7 @@ using namespace std;
 
 #define VF_SIZE 2048
 #define MARGIN 8 // Don't try to fill near the edges of the volume
-#define SHEET_SIZE 1000
+#define SHEET_SIZE 400 // Check this against max number of iterations...
 
 #define SPRING_FORCE_CONSTANT 0.025f
 #define BEND_FORCE_CONSTANT 0.025f
@@ -50,6 +50,9 @@ float seeds[1][9];
 int dirVectorLookup[4][2] = { {1,0},{0,1},{-1,0},{0,-1}};
 
 bool active[SHEET_SIZE][SHEET_SIZE];
+
+#define KEEP_STILL_AFTER 1000000 // set to a high number to mage age irrelevant
+int age[SHEET_SIZE][SHEET_SIZE];
 
 // Stored as x=0, y=1, z=2
 float paperPos[SHEET_SIZE][SHEET_SIZE][3];
@@ -222,7 +225,7 @@ float Forces(void)
   for(int x=0; x<SHEET_SIZE; x++)
 	for(int y = 0; y<SHEET_SIZE; y++)
     {
-      if (active[x][y])
+      if (active[x][y] && age[x][y]<KEEP_STILL_AFTER)
 	  {
         int px = (int)paperPos[x][y][0];
 		int py = (int)paperPos[x][y][1];
@@ -298,9 +301,12 @@ float Forces(void)
   for(int x=0; x<SHEET_SIZE; x++)
   for(int y=0; y<SHEET_SIZE; y++)
   {
-	paperVel[x][y][0] *= FRICTION_CONSTANT;
-	paperVel[x][y][1] *= FRICTION_CONSTANT;
-	paperVel[x][y][2] *= FRICTION_CONSTANT;
+    if (active[x][y] && age[x][y]<KEEP_STILL_AFTER)
+	{
+	  paperVel[x][y][0] *= FRICTION_CONSTANT;
+	  paperVel[x][y][1] *= FRICTION_CONSTANT;
+	  paperVel[x][y][2] *= FRICTION_CONSTANT;
+	}
   }
   return largestForce;
 }
@@ -666,7 +672,7 @@ int main(int argc, char *argv[])
       for(int x = 0; x<SHEET_SIZE; x++)
       for(int y = 0; y<SHEET_SIZE; y++)
 	  {
-		if (active[x][y])
+		if (active[x][y] && age[x][y]<KEEP_STILL_AFTER)
 		{
 		  bool moved = false;
 	      for(int j = 0; j<3; j++)
@@ -681,6 +687,10 @@ int main(int argc, char *argv[])
         }		
 	  }
 	}
+
+    for(int x = 0; x<SHEET_SIZE; x++)
+    for(int y = 0; y<SHEET_SIZE; y++)
+	  if (active[x][y]) age[x][y]++;
 	
 	if (MarkHighStress())
 	{

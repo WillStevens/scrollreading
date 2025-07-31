@@ -26,7 +26,6 @@ of all the points in the chunk
 #include <unistd.h>
 #include <stdint.h>
 #include <dirent.h>
-#include <blosc2.h>
 
 #include <tuple>
 #include <vector>
@@ -38,12 +37,6 @@ of all the points in the chunk
 typedef std::tuple<int,int,int> chunkIndex;
 typedef std::tuple<int,int> indexChunkIndex;
 typedef std::tuple<float,float,float,float,float,int> gridPoint;
-
-typedef struct {
-	float qx,qy;
-	float vx,vy,vz;
-	int patch;
-} binaryGridPoint;
 
 #define PATCH_CHUNK_SIZE 64
 #define INDEX_CHUNK_SIZE 32
@@ -151,50 +144,26 @@ std::vector<indexChunkIndex> GetAllIndexChunks(BigPatch *z)
 	return ret;
 }
 
-// TODO - this could be done more efficiently by passing in the binary data as a parameter rather than using a vector
-// This will be done later after the function is confirmed working correctly
 void WritePatchPoints(BigPatch *z, chunkIndex ci, const std::vector<gridPoint> &gridPoints)
-{	
+{
     sprintf(z->location+z->locationRootLength,"/surface/%d.%d.%d",std::get<2>(ci),std::get<1>(ci),std::get<0>(ci));
 	
 	FILE *f = fopen(z->location,"a");
 	
 	if (f)
 	{
-		binaryGridPoint *bGridPoints = (binaryGridPoint *)malloc(sizeof(binaryGridPoint)*gridPoints.size());
-        uint8_t *compressedData = (uint8_t *)malloc(sizeof(binaryGridPoint)*gridPoints.size()+BLOSC2_MAX_OVERHEAD);
-		uint32_t i = 0;
 	    for(const gridPoint &gp : gridPoints)
 	    {
-			bGridPoints[i].qx = std::get<0>(gp);
-			bGridPoints[i].qy = std::get<1>(gp);
-			bGridPoints[i].vx = std::get<2>(gp);
-			bGridPoints[i].vy = std::get<3>(gp);
-			bGridPoints[i].vz = std::get<4>(gp);
-			bGridPoints[i].patch = std::get<5>(gp);
-			i++;
+			fprintf(f,"%f,%f,%f,%f,%f,%d\n",std::get<0>(gp),std::get<1>(gp),std::get<2>(gp),std::get<3>(gp),std::get<4>(gp),std::get<5>(gp));
 	    }
-	    // Now i == gridPoints.size()
-		
-	    blosc1_set_compressor("zstd");
-	    int compressed_len = blosc2_compress(3,1,sizeof(binaryGridPoint),bGridPoints,sizeof(binaryGridPoint)*gridPoints.size(),compressedData,sizeof(binaryGridPoint)*gridPoints.size()+BLOSC2_MAX_OVERHEAD);
-
-        if (compressed_len <= 0) {
-		  fprintf(stderr,"Compression error in " __FILE__);
-          exit(-1);
-        }
-
-		fwrite(&i,1,sizeof(uint32_t),f);
-		fwrite(&compressed_len,1,sizeof(int),f);
-	    fwrite(compressedData,1,compressed_len,f);
-
-		free(compressedData);
-		free(bGridPoints);
 	  
-	    fclose(f);
+	  fclose(f);
+	  
+	  //printf("Loaded %d points\n",l);
 	}
 	else
 	{
+		//printf("Unable to open file %s\n",fname);
 	}
 }
 
@@ -203,45 +172,27 @@ void ReadPatchPoints(BigPatch *z, chunkIndex ci, std::vector<gridPoint> &gridPoi
     sprintf(z->location+z->locationRootLength,"/surface/%d.%d.%d",std::get<2>(ci),std::get<1>(ci),std::get<0>(ci));
 	
 	FILE *f = fopen(z->location,"r");
+
+	float x,y;
+	float xp,yp,zp;
+	int patch;
+	int l = 0;
 	
 	if (f)
 	{
-		uint32_t numPoints;
-		int compressed_len;
-		// Keep going until we fail to read the first item of the record : the number of points
-		while(true)
-		{
-			if (fread(&numPoints,1,sizeof(uint32_t),f)<sizeof(uint32_t))
-				break;
-			fread(&compressed_len,1,sizeof(int),f);
-
-			binaryGridPoint *bGridPoints = (binaryGridPoint *)malloc(sizeof(binaryGridPoint)*numPoints);
-			uint8_t *compressedData = (uint8_t *)malloc(sizeof(binaryGridPoint)*numPoints+BLOSC2_MAX_OVERHEAD);
-		
-		    fread(compressedData,1,compressed_len,f);
-					
-			blosc1_set_compressor("zstd");
-			int decompressed_size = blosc2_decompress(compressedData, compressed_len, bGridPoints, sizeof(binaryGridPoint)*numPoints);
-            if (decompressed_size < 0) {
-			    fprintf(stderr,"Decompression error in " __FILE__);
-                exit(-1);
-            }
-
-			for(unsigned i = 0; i<numPoints; i++)
-			{
-				gridPoints.push_back(gridPoint(bGridPoints[i].qx,
-											   bGridPoints[i].qy,
-											   bGridPoints[i].vx,
-											   bGridPoints[i].vy,
-											   bGridPoints[i].vz,
-											   bGridPoints[i].patch));
-			}
-		}
+	    while (fscanf(f,"%f,%f,%f,%f,%f,%d\n",&x,&y,&xp,&yp,&zp,&patch)==6)
+	    {
+			l++;
+			gridPoints.push_back(gridPoint(x,y,xp,yp,zp,patch));
+	    }
 	  
-	    fclose(f);
+	  fclose(f);
+	  
+	  //printf("Loaded %d points\n",l);
 	}
 	else
 	{
+		//printf("Unable to open file %s\n",fname);
 	}
 }	
 

@@ -7,6 +7,8 @@ from random import randint
 import csv
 import datetime
 
+from mask_add import MaskAdd
+
 def Step(name):
   print(str(datetime.datetime.now()) + " : " + name)
   
@@ -55,6 +57,7 @@ outputDir = "d:/pipelineOutput"
 
 currentStress = outputDir+"/stress.csv"
 currentSurface = outputDir+"/surface.bp"
+currentSurfaceTif = outputDir+"/surface.tif"
 temporaryFile = outputDir+"/transformed.csv" # used for transformed patch
 
 VOL_OFFSET_X = 2688
@@ -69,11 +72,11 @@ patchNum = 0
 restart = False
 
 #Restarting partway through
-#currentRenderOffset = (563,366)
-#patchNum = 43
+#currentRenderOffset = (324,-5887)
+#patchNum = 1138
 #restart = True
 
-while patchNum < 500:
+while patchNum < 1500:
   print("Patch number "+str(patchNum))
   needToRender = False
 
@@ -96,7 +99,12 @@ while patchNum < 500:
   if patchNum==0:
     # Initialise current surface and current stress map
     Call(["./addtobigpatch",currentSurface,patchi,str(patchNum)])
-    needToRender = True
+    Step("render_from_zarr4 (patch mask)")
+    currentRenderOffset = CallOutput(["./render_from_zarr4",currentSurface,"1"])
+    currentRenderOffset = currentRenderOffset.split(" ")
+    currentRenderOffset = (int(currentRenderOffset[0]),int(currentRenderOffset[1]))
+    print("currentRenderOffset:"+str(currentRenderOffset))
+    needToRender = False
   else:
     # Merge this patch into the current surface
     Step("align_patches")
@@ -133,17 +141,24 @@ while patchNum < 500:
   if needToRender:  
     Step("render_from_zarr4 (patch mask)")
     patchRenderOffset = CallOutput(["./render_from_zarr4",temporaryFile,"1"])
+    patchRenderOffset = patchRenderOffset.split(" ")
+    patchRenderOffset = (int(patchRenderOffset[0]),int(patchRenderOffset[1]))
     print("Offset when rendering patch:" + str(patchRenderOffset))
+    currentSurfaceImage = Image.open(currentSurfaceTif)
+    newPatchImage = Image.open(temporaryFile[:-4]+".tif")
+    (currentSurfaceImage,currentRenderOffset) = MaskAdd(currentSurfaceImage,currentRenderOffset,newPatchImage,patchRenderOffset)  
+    currentSurfaceImage.save(currentSurfaceTif)
     # Make a surface mask
-    Step("render_from_zarr4 (mask)")
-    renderOffset = CallOutput(["./render_from_zarr4",currentSurface,"1"])
-    renderOffset = renderOffset.split(" ")
-    print("Offset when rendering:" + str(renderOffset))
-    currentRenderOffset = (int(renderOffset[0]),int(renderOffset[1]))
+    #Step("render_from_zarr4 (mask)")
+    #renderOffset = CallOutput(["./render_from_zarr4",currentSurface,"1"])
+    #renderOffset = renderOffset.split(" ")
+    #print("Offset when rendering:" + str(renderOffset))
+    #currentRenderOffset = (int(renderOffset[0]),int(renderOffset[1]))
     
   # Find all boundary points on the surface mask
   Step("boundary")
   boundary = Image.open(currentSurface[:-3]+".tif")
+  boundary = boundary.convert("L")
   boundary = boundary.filter(ImageFilter.FIND_EDGES)
   boundary.save(currentSurface[:-3]+"_boundary.tif")
   
