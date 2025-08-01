@@ -1,38 +1,30 @@
-from math import pi,sqrt,sin,cos
+from math import pi,sqrt,sin,cos,atan2
 from time import sleep
-
-textPlot = []
-for y in range(0,50):
-  textPlot += [[]]
-  for x in range(0,100):
-    textPlot[y] += [0]
+import tkinter as tk
 
 patches = [(50,50,0),(50,100,0),(100,50,0)]
-patchVel = [(1,1,0),(0,0,0),(0,0,0)]
+patchVel = [(5,0,0),(0,0,0),(0,0,0)]
 patchAcc = [(0,0,0),(0,0,0),(0,0,0)]
 
 connections = [(0,1,50,0.0,pi),
-               (0,2,50,pi/2.0,3.0*pi/2.0)]
+               (0,2,50,pi/2.0,-pi/2.0)]
 
-CONNECT_FORCE_CONSTANT = 0.003
-FRICTION_CONSTANT = 0.95
+CONNECT_FORCE_CONSTANT = 0.01
+ANGLE_FORCE_CONSTANT = 0.0
+FRICTION_CONSTANT = 0.90
+ANGLE_FRICTION_CONSTANT = 0.90
 
-def Cls():
-  for y in range(0,50):
-    for x in range(0,100):
-      textPlot[y][x] = 0
-
-def Plot(x,y):
-  textPlot[int(y)][int(x)] = 1
-  
-def Show():
-  for y in range(0,50):
-    for x in range(0,100):
-      print(' ' if textPlot[y][x]==0 else 'O',end='')
-    print('')	  
 
 def Distance(x1,y1,x2,y2):
   return sqrt((x2-x1)*(x2-x1)+(y2-y1)*(y2-y1))
+
+def AddAngle(a,b):
+  r = a+b
+  if r>pi:
+    return r-2.0*pi
+  if r<=-pi:
+    return r+2.0*pi
+  return r
   
 def ConnectionForces():
   global patches,patchVel,patchAcc,connections
@@ -43,33 +35,48 @@ def ConnectionForces():
     
     (reqx2,reqy2) = (x1+sin(angle1)*dist,y1+cos(angle1)*dist)
     (reqx1,reqy1) = (x2+sin(angle2)*dist,y2+cos(angle2)*dist)
+          
+    # Which direction is p2 from p1?
+    angle12 = atan2(x2-x1,y2-y1)
+    # Angle of p1 + angle that connection is expected to be:
+    requiredAngle12 = AddAngle(patches[p1][2],angle1)	  
     
-    dist1 = Distance(reqx1,reqy1,x1,y1)
-    dist2 = Distance(reqx2,reqy2,x2,y2)
+    adiff1 = AddAngle(requiredAngle12,-angle12) 
     
-	
-    force1 = dist1*CONNECT_FORCE_CONSTANT
-    force2 = dist2*CONNECT_FORCE_CONSTANT
-    
-    patchAcc[p1] = ( (reqx1-x1)*force1,(reqy1-y1)*force1, 0)
-    patchAcc[p2] = ( (reqx2-x2)*force2,(reqy2-y2)*force2, 0)
-    
+    patchAcc[p1] = ( patchAcc[p1][0]+(reqx1-x1)*CONNECT_FORCE_CONSTANT,
+	                 patchAcc[p1][1]+(reqy1-y1)*CONNECT_FORCE_CONSTANT,
+					 patchAcc[p1][2]+adiff1*ANGLE_FORCE_CONSTANT)
+    patchAcc[p2] = ( patchAcc[p2][0]+(reqx2-x2)*CONNECT_FORCE_CONSTANT,
+	                 patchAcc[p2][1]+(reqy2-y2)*CONNECT_FORCE_CONSTANT, 
+					 patchAcc[p2][2]+0)
+  print("angular accel"+ str(patchAcc[0][2]))
+
 def Move():
   global patches,patchVel,patchAcc,connections
 
   for i in range(0,len(patches)):
     patches[i] = (patches[i][0]+patchVel[i][0],patches[i][1]+patchVel[i][1],patches[i][2]+patchVel[i][2])
     patchVel[i] = (patchAcc[i][0]+patchVel[i][0],patchAcc[i][1]+patchVel[i][1],patchAcc[i][2]+patchVel[i][2])
-    patchVel[i] = (patchVel[i][0]*FRICTION_CONSTANT,patchVel[i][1]*FRICTION_CONSTANT,patchVel[i][2]*FRICTION_CONSTANT)
+    patchVel[i] = (patchVel[i][0]*FRICTION_CONSTANT,patchVel[i][1]*FRICTION_CONSTANT,patchVel[i][2]*ANGLE_FRICTION_CONSTANT)
+    patchAcc[i] = (0.0,0.0,0.0)
 
-for i in range(0,100):
+def RunIteration():
   ConnectionForces()
   Move()
-  #print("-----")
-  #print(patches)
-  #print(patchVel)
-  Cls()
+  canvas.delete('all')
   for (x,y,a) in patches:
-    Plot(x/4,y/4)
-  Show()  
-  sleep(0.1)
+    rad = 20
+    canvas.create_oval(x-rad,y-rad,x+rad,y+rad, fill='yellow')
+    canvas.create_line(x,y,x+rad*sin(a),y+rad*cos(a))
+  window.after(100,RunIteration)
+    
+window = tk.Tk()
+window.geometry('800x600')
+window.title('L paint')
+
+# Create a canvas
+canvas = tk.Canvas(window, width=800, height=600, bg='white')
+canvas.pack()
+window.after(100,RunIteration)
+window.mainloop()
+    
