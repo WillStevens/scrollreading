@@ -12,7 +12,7 @@
 
 typedef struct __attribute__((packed)) {float x,y,px,py,pz;} gridPointStruct;
 
-typedef std::tuple<float,float,float,float> match;
+typedef std::tuple<float,float,float,float,int> match;
 
 #define CELL_SIZE 10
 typedef std::tuple<int,int,int> gridCell;
@@ -184,8 +184,7 @@ void FindMatches(std::vector<match> &matchList)
 						if (cellMap1.count(g) != 0)
 						{		
 							for(const gridPoint &gp1 : cellMap1[g])
-							{
-								
+							{								
 								float xp1 = std::get<2>(gp1);
 								float yp1 = std::get<3>(gp1);
 								float zp1 = std::get<4>(gp1);
@@ -262,7 +261,7 @@ void FindMatches(std::vector<match> &matchList)
 	#ifdef DEBUG		
 									printf("Match is: %f,%f\n",gx,gy);
 	#endif
-									matchList.push_back(match(x0,y0,gx,gy));
+									matchList.push_back(match(x0,y0,gx,gy,patch));
 								}
 						}
 						
@@ -292,7 +291,7 @@ void AlignMatches(std::vector<match> &matchList)
 	
 	int l = matchList.size();
 	
-	std::vector<affineTx> transformSamples;
+	std::map<int,std::vector<affineTx>> transformSamples;
 	
 	for(int i = 0; l>0 && i<500; i++)
 	{
@@ -308,13 +307,16 @@ void AlignMatches(std::vector<match> &matchList)
 		float by0 = std::get<1>(matchList[pb]);
 		float bx1 = std::get<2>(matchList[pb]);
 		float by1 = std::get<3>(matchList[pb]);
+
+		int patch0 = std::get<4>(matchList[pa]);
+		int patch1 = std::get<4>(matchList[pb]);
 		
 		float d0 = Distance(ax0,ay0,bx0,by0);
 		float d1 = Distance(ax1,ay1,bx1,by1);
 		
 		//printf("distance 0: %f, distance 1: %f\n",d0,d1);
 	
-	    if (d1>50.0 && d0/d1>0.99 && d0/d1<1.01)
+	    if (d1>50.0 && d0/d1>0.99 && d0/d1<1.01 && patch0==patch1)
 		{						
 			// Now work out the angle
 			float dx1 = bx1-ax1, dy1 = by1-ay1;
@@ -340,7 +342,10 @@ void AlignMatches(std::vector<match> &matchList)
 			
 			//printf("ax1 = %f, ay1 = %f, ax0 = %f, ay0 = %f, theta = %f\n",ax1,ay1,ax0,ay0,theta);
 
-			transformSamples.push_back(affineTxOut);
+			if (transformSamples.count(patch0)==0)
+				transformSamples[patch0] = std::vector<affineTx>();
+			
+			transformSamples[patch0].push_back(affineTxOut);
 			
 			//exit(0);
 		}
@@ -350,85 +355,92 @@ void AlignMatches(std::vector<match> &matchList)
 	{
 		fprintf(stderr,"No matches to align\n");
 	}
-	else if (transformSamples.size()<50)
-	{
-		// Not enough transforms to get SD
-		fprintf(stderr,"Not enough transforms to get SD:%d\n",(int)transformSamples.size());
-	}
 	else
 	{
-		affineTx sampleVariance = affineTx(0,0,0,0,0,0);
-	    affineTx sampleMean = affineTx(0,0,0,0,0,0); 
-		
-		for(const affineTx &tx : transformSamples)
+		for(auto &tsIter : transformSamples)
 		{
-			sampleMean = affineTx(std::get<0>(sampleMean)+std::get<0>(tx),
-			                      std::get<1>(sampleMean)+std::get<1>(tx),
-			                      std::get<2>(sampleMean)+std::get<2>(tx),
-			                      std::get<3>(sampleMean)+std::get<3>(tx),
-			                      std::get<4>(sampleMean)+std::get<4>(tx),
-			                      std::get<5>(sampleMean)+std::get<5>(tx)
-			                      );
-		}
-		sampleMean = affineTx(std::get<0>(sampleMean)/transformSamples.size(),
-			                  std::get<1>(sampleMean)/transformSamples.size(),
-			                  std::get<2>(sampleMean)/transformSamples.size(),
-			                  std::get<3>(sampleMean)/transformSamples.size(),
-			                  std::get<4>(sampleMean)/transformSamples.size(),
-			                  std::get<5>(sampleMean)/transformSamples.size()
-			                  );
-
-		
-		float minDistanceFromMean = 0;
-		int i = 0;
-		int mini = 0;
-		for(const affineTx &tx : transformSamples)
-		{
-			// See how far the transformation part if from the mean
-			float distanceFromMean = pow(std::get<3>(tx)-std::get<3>(sampleMean),2) + pow(std::get<5>(tx)-std::get<5>(sampleMean),2);
-			
-			sampleVariance = affineTx(std::get<0>(sampleVariance)+pow(std::get<0>(tx)-std::get<0>(sampleMean),2),
-			                          std::get<1>(sampleVariance)+pow(std::get<1>(tx)-std::get<1>(sampleMean),2),
-			                          std::get<2>(sampleVariance)+pow(std::get<2>(tx)-std::get<2>(sampleMean),2),
-			                          std::get<3>(sampleVariance)+pow(std::get<3>(tx)-std::get<3>(sampleMean),2),
-			                          std::get<4>(sampleVariance)+pow(std::get<4>(tx)-std::get<4>(sampleMean),2),
-			                          std::get<5>(sampleVariance)+pow(std::get<5>(tx)-std::get<5>(sampleMean),2)
-			                          );
-			if (i==0 || distanceFromMean < minDistanceFromMean)
+ 	        fprintf(stderr,"%d transforms for patch %d\n",(int)tsIter.second.size(),tsIter.first);
+			if (tsIter.second.size()<50)
 			{
-				mini = i;
-				minDistanceFromMean = distanceFromMean;
-			}				
-			
-		}
-		
-		sampleVariance = affineTx(std::get<0>(sampleVariance)/transformSamples.size(),
-			                      std::get<1>(sampleVariance)/transformSamples.size(),
-			                      std::get<2>(sampleVariance)/transformSamples.size(),
-			                      std::get<3>(sampleVariance)/transformSamples.size(),
-			                      std::get<4>(sampleVariance)/transformSamples.size(),
-			                      std::get<5>(sampleVariance)/transformSamples.size()
-			                  );
-		
-		printf("%f %f %f %f %f %f ",
-			  std::get<0>(sampleVariance),
-			  std::get<1>(sampleVariance),
-			  std::get<2>(sampleVariance),
-			  std::get<3>(sampleVariance),
-			  std::get<4>(sampleVariance),
-			  std::get<5>(sampleVariance)
-			  );
+				fprintf(stderr,"(Not enough to get SD)\n");
+			}
+			else
+			{
+				affineTx sampleVariance = affineTx(0,0,0,0,0,0);
+				affineTx sampleMean = affineTx(0,0,0,0,0,0); 
+				
+				for(const affineTx &tx : tsIter.second)
+				{
+					sampleMean = affineTx(std::get<0>(sampleMean)+std::get<0>(tx),
+										  std::get<1>(sampleMean)+std::get<1>(tx),
+										  std::get<2>(sampleMean)+std::get<2>(tx),
+										  std::get<3>(sampleMean)+std::get<3>(tx),
+										  std::get<4>(sampleMean)+std::get<4>(tx),
+										  std::get<5>(sampleMean)+std::get<5>(tx)
+										  );
+				}
+				sampleMean = affineTx(std::get<0>(sampleMean)/tsIter.second.size(),
+									  std::get<1>(sampleMean)/tsIter.second.size(),
+									  std::get<2>(sampleMean)/tsIter.second.size(),
+									  std::get<3>(sampleMean)/tsIter.second.size(),
+									  std::get<4>(sampleMean)/tsIter.second.size(),
+									  std::get<5>(sampleMean)/tsIter.second.size()
+									  );
 
-  		printf("%f %f %f %f %f %f\n",
-			  std::get<0>(transformSamples[mini]),
-			  std::get<1>(transformSamples[mini]),
-			  std::get<2>(transformSamples[mini]),
-			  std::get<3>(transformSamples[mini]),
-			  std::get<4>(transformSamples[mini]),
-			  std::get<5>(transformSamples[mini])
-			  );
-        exit(0);
-		//printf("Matches found\n");
+				
+				float minDistanceFromMean = 0;
+				int i = 0;
+				int mini = 0;
+				for(const affineTx &tx : tsIter.second)
+				{
+					// See how far the transformation part if from the mean
+					float distanceFromMean = pow(std::get<3>(tx)-std::get<3>(sampleMean),2) + pow(std::get<5>(tx)-std::get<5>(sampleMean),2);
+					
+					sampleVariance = affineTx(std::get<0>(sampleVariance)+pow(std::get<0>(tx)-std::get<0>(sampleMean),2),
+											  std::get<1>(sampleVariance)+pow(std::get<1>(tx)-std::get<1>(sampleMean),2),
+											  std::get<2>(sampleVariance)+pow(std::get<2>(tx)-std::get<2>(sampleMean),2),
+											  std::get<3>(sampleVariance)+pow(std::get<3>(tx)-std::get<3>(sampleMean),2),
+											  std::get<4>(sampleVariance)+pow(std::get<4>(tx)-std::get<4>(sampleMean),2),
+											  std::get<5>(sampleVariance)+pow(std::get<5>(tx)-std::get<5>(sampleMean),2)
+											  );
+					if (i==0 || distanceFromMean < minDistanceFromMean)
+					{
+						mini = i;
+						minDistanceFromMean = distanceFromMean;
+					}				
+					
+				}
+				
+				sampleVariance = affineTx(std::get<0>(sampleVariance)/tsIter.second.size(),
+										  std::get<1>(sampleVariance)/tsIter.second.size(),
+										  std::get<2>(sampleVariance)/tsIter.second.size(),
+										  std::get<3>(sampleVariance)/tsIter.second.size(),
+										  std::get<4>(sampleVariance)/tsIter.second.size(),
+										  std::get<5>(sampleVariance)/tsIter.second.size()
+									  );
+				
+				printf("Patch %d\n",tsIter.first);
+				printf("%f %f %f %f %f %f ",
+					  std::get<0>(sampleVariance),
+					  std::get<1>(sampleVariance),
+					  std::get<2>(sampleVariance),
+					  std::get<3>(sampleVariance),
+					  std::get<4>(sampleVariance),
+					  std::get<5>(sampleVariance)
+					  );
+
+				printf("%f %f %f %f %f %f\n",
+					  std::get<0>(tsIter.second[mini]),
+					  std::get<1>(tsIter.second[mini]),
+					  std::get<2>(tsIter.second[mini]),
+					  std::get<3>(tsIter.second[mini]),
+					  std::get<4>(tsIter.second[mini]),
+					  std::get<5>(tsIter.second[mini])
+					  );
+				exit(0);
+
+			}
+		}
 	}
 	
 	exit(1);

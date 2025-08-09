@@ -6,6 +6,7 @@ import numpy as np
 from random import randint
 import csv
 import datetime
+import time
 
 from mask_add import MaskAdd
 
@@ -52,17 +53,22 @@ def CallAlign(p1,p2):
   else:
     return (False,(0,0,0,0,0,0),(0,0,0,0,0,0))
   
+globalStartTime = time.time_ns()
 
 outputDir = "d:/pipelineOutput"
 
 currentStress = outputDir+"/stress.csv"
 currentSurface = outputDir+"/surface.bp"
 currentSurfaceTif = outputDir+"/surface.tif"
-temporaryFile = outputDir+"/transformed.csv" # used for transformed patch
+temporaryFile = outputDir+"/transformed.bin" # used for transformed patch
+areaLogFile = outputDir+"/area.txt"
 
 VOL_OFFSET_X = 2688
 VOL_OFFSET_Y = 1536
 VOL_OFFSET_Z = 4608
+
+# Voxel size in microns
+VOXEL_SIZE = 7.91
 
 # A seed consists of x,y,z coords + coords of two vectors that give its orientation
 seed = (3700,2408,5632,1,0,0,0,0,1)
@@ -76,7 +82,7 @@ restart = False
 #patchNum = 1138
 #restart = True
 
-while patchNum < 1500:
+while True:
   print("Patch number "+str(patchNum))
   needToRender = False
 
@@ -86,15 +92,15 @@ while patchNum < 1500:
 
   if not restart:
 
-    # Call simpaper6 with current seed to produce a patch
-    Step("simpaper6")
-    Call(["./simpaper6"] + [str(x) for x in seed] + ["d:/pvfs_2048_chunk_32_v2.zarr",patch,outputDir+"/stress_"+str(patchNum)+".csv"])
+    # Call simpaper7 with current seed to produce a patch
+    Step("simpaper7")
+    Call(["./simpaper7"] + [str(x) for x in seed] + ["d:/pvfs_2048_chunk_32_v2.zarr",patch,outputDir+"/stress_"+str(patchNum)+".csv"])
     Step("interpolate")
     Call(["./interpolate",patch,patchi])
     #Step("render_from_zarr3")
     #Call(["./render_from_zarr3",patchi])
-    Step("extent_patch")
-    Call(["./extent_patch",patchi],outputDir+"/patch_"+str(patchNum)+"_i.ext")
+    #Step("extent_patch")
+    #Call(["./extent_patch",patchi],outputDir+"/patch_"+str(patchNum)+"_i.ext")
 
   if patchNum==0:
     # Initialise current surface and current stress map
@@ -115,28 +121,32 @@ while patchNum < 1500:
       if variance[2]>10000 or variance[5]>10000:
         print("Flipping patch")
         Step("flip_patch")
-        Call(["./flip_patch",patchi],patchif)
-        Step("extent_patch")
-        Call(["./extent_patch",patchif],outputDir+"/patch_"+str(patchNum)+"_if.ext")
+        Call(["./flip_patch2",patchi,patchif])
+        #Step("extent_patch")
+        #Call(["./extent_patch",patchif],outputDir+"/patch_"+str(patchNum)+"_if.ext")
         Step("align_patches")
         (aligned,transform,variance) = CallAlign(currentSurface,outputDir+"/patch_"+str(patchNum)+"_if.csv")
         print("Variance after flipping is: " + str(variance))
         if variance[2]<=10000 and variance[5]<=10000:
           Step("transform_patch")
-          Call(["./transform_patch",outputDir+"/patch_"+str(patchNum)+"_if.csv"] + [str(x) for x in transform],temporaryFile)
+          Call(["./transform_patch",outputDir+"/patch_"+str(patchNum)+"_if.csv",temporaryFile] + [str(x) for x in transform])
           needToRender = True
-          Call(["./addtobigpatch",currentSurface,temporaryFile,str(patchNum)])          
+          Call(["./addtobigpatch",currentSurface,temporaryFile,str(patchNum)])
+          # Delete the interpolated patch and te flipped patch because they take up a lot of space
         else:
           print("Unable to align, even after flipping")
+        Call(["rm",patchif])
       else:
         Step("transform_patch")
-        Call(["./transform_patch",outputDir+"/patch_"+str(patchNum)+"_i.csv"] + [str(x) for x in transform],temporaryFile)
+        Call(["./transform_patch",outputDir+"/patch_"+str(patchNum)+"_i.csv",temporaryFile] + [str(x) for x in transform])
         needToRender = True
-        Call(["./addtobigpatch",currentSurface,temporaryFile,str(patchNum)])        
+        Call(["./addtobigpatch",currentSurface,temporaryFile,str(patchNum)])
+        # Delete the interpolated patch because it takes up a lot of space
     else:
       print("No alignment of patch could be done")
     # Merge the stress output into the current stress map
 
+  Call(["rm",patchi])        
 
   if needToRender:  
     Step("render_from_zarr4 (patch mask)")
@@ -159,6 +169,16 @@ while patchNum < 1500:
   Step("boundary")
   boundary = Image.open(currentSurface[:-3]+".tif")
   boundary = boundary.convert("L")
+  # Calculate the total surface area so far
+  
+  bwImage = np.array(boundary)  
+  whitePixels = np.sum(bwImage==255)
+  globalTimeNow = time.time_ns()-globalStartTime
+  areaLog = open(areaLogFile,"a")
+  # Output time in seconds and area in cm2
+  areaLog.write("Time=%f, Area=%f\n" % (globalTimeNow/1000000000.0,whitePixels*VOXEL_SIZE*VOXEL_SIZE/100000000.0))
+  areaLog.close()
+	
   boundary = boundary.filter(ImageFilter.FIND_EDGES)
   boundary.save(currentSurface[:-3]+"_boundary.tif")
   

@@ -1,4 +1,3 @@
-// Given 2 patches and an affine transformation, output a merged patch file
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -6,25 +5,22 @@ typedef struct __attribute__((packed)) {float x,y,px,py,pz;} gridPointStruct;
 
 int main(int argc,char *argv[])
 {
-	if (argc != 9)
+	if (argc != 3)
 	{
-		printf("Usage: transform_patch <patch in> <patch our> a b c d e f\n");
-		printf("Apply affine transformation abcdef to patch and output the result\n");
+		fprintf(stderr,"Usage: flip_patch <patch in> <patch out>\n");
+		fprintf(stderr,"Flip a BIN patch.\n");
+		exit(-1);
 	}
 	
-	float a = atof(argv[3]);
-	float b = atof(argv[4]);
-	float c = atof(argv[5]);
-	float d = atof(argv[6]);
-	float e = atof(argv[7]);
-	float f = atof(argv[8]);
-			
+    float xmin,ymin,xmax,ymax;
+	
 	FILE *fi = fopen(argv[1],"r");
 	FILE *fo = fopen(argv[2],"w");
 
 	if(fi && fo)
 	{
-		float x,y;
+		bool first = true;
+
 		gridPointStruct p;
 		fseek(fi,0,SEEK_END);
 		long fsize = ftell(fi);
@@ -34,11 +30,22 @@ int main(int argc,char *argv[])
 		while(ftell(fi)<fsize)
 		{
 			fread(&p,sizeof(p),1,fi);
-			x = p.x; y = p.y;
 			
-			p.x = a*x+b*y+c;
-			p.y = d*x+e*y+f;
-
+			if (p.x<xmin || first) xmin=p.x;
+			if (p.y<ymin || first) ymin=p.y;
+			if (p.x>xmax || first) xmax=p.x;
+			if (p.y>ymax || first) ymax=p.y;
+			
+			first = false;
+		}
+	  		
+		fseek(fi,0,SEEK_SET);
+		while(ftell(fi)<fsize)
+		{
+			fread(&p,sizeof(p),1,fi);
+			p.x = xmax-p.x;
+			p.y = p.y-ymin;
+	
             fwrite(&p,sizeof(p),1,fo);	
 		}
 		
@@ -50,4 +57,6 @@ int main(int argc,char *argv[])
 		if (!fi) printf("Unable to open input file:%s\n",argv[1]);
 		if (!fo) printf("Unable to open input file:%s\n",argv[2]);
 	}
+		
+	return 0;
 }

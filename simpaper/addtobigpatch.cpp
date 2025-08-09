@@ -2,31 +2,33 @@
 
 std::vector<gridPoint> gridPoints;
 
+typedef struct __attribute__((packed)) {float x,y,px,py,pz;} gridPointStruct;
+
 void LoadPointSet(const char *fname,int patch)
 {
 	FILE *f = fopen(fname,"r");
-
-	int l = 0;
-		
-	float x,y;
-	float xp,yp,zp;
 	
 	if (f)
 	{
-	    while (fscanf(f,"%f,%f,%f,%f,%f\n",&x,&y,&xp,&yp,&zp)==5)
-	    {
-		  l++;
-		  
-		  gridPoints.push_back(gridPoint(x,y,xp,yp,zp,patch));
-	    }
+		gridPointStruct p;
+		fseek(f,0,SEEK_END);
+		long fsize = ftell(f);
+		fseek(f,0,SEEK_SET);
+  
+		// input in x,y,z order 
+		while(ftell(f)<fsize)
+		{
+			fread(&p,sizeof(p),1,f);
+			float x,y,px,py,pz;
+			x=p.x;y=p.y;px=p.px;py=p.py;pz=p.pz;
+			gridPoints.push_back(gridPoint(x,y,px,py,pz,patch));
+		}
 	  
-	  fclose(f);
-	  
-	  //printf("Loaded %d points\n",l);
+	    fclose(f);
 	}
 	else
 	{
-		//printf("Unable to open file %s\n",fname);
+		printf("Unable to open file %s\n",fname);
 	}
 }
 
@@ -35,7 +37,7 @@ int main(int argc, char *argv[])
 	if (argc != 4)
 	{
 		printf("Usage: addtobigpatch <patch 1> <patch 2> <patchno>\n");
-		printf("Patch 1 is a bigpatch, patch 2 is a CSV patch\n");
+		printf("Patch 1 is a bigpatch, patch 2 is a BIN patch\n");
 		exit(-1);
 	}
 

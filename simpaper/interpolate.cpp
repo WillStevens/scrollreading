@@ -1,7 +1,7 @@
 #include <stdio.h>
 
 #define SHEET_SIZE 1000
-#define STEP_SIZE 3
+#define STEP_SIZE 6
 
 float paperPos[SHEET_SIZE][SHEET_SIZE][3];
 bool active[SHEET_SIZE][SHEET_SIZE];
@@ -9,42 +9,71 @@ bool active[SHEET_SIZE][SHEET_SIZE];
 float outputPaperPos[SHEET_SIZE*STEP_SIZE][SHEET_SIZE*STEP_SIZE][3];
 bool activeOutput[SHEET_SIZE*STEP_SIZE][SHEET_SIZE*STEP_SIZE];
 
-void LoadSheet(char *filename)
-{
-  FILE *f = fopen(filename,"r");
+typedef struct __attribute__((packed)) {float x,y,px,py,pz;} gridPoint;
 
+bool LoadSheet(char *filename)
+{
   for(int x = 0; x<SHEET_SIZE; x++)
   for(int y = 0; y<SHEET_SIZE; y++)
   {
 	active[x][y] = false; 
   }
-
-  int x,y;
-  float px,py,pz;
   
-  // input in x,y,z order 
-  while(fscanf(f,"%d,%d,%f,%f,%f\n",&x,&y,&px,&py,&pz)==5)
+  gridPoint p;
+  
+  FILE *f = fopen(filename,"r");
+
+  if (f)
   {
-    paperPos[x][y][0]=px;
-	paperPos[x][y][1]=py;
-	paperPos[x][y][2]=pz;
-    active[x][y] = true;	
+	fseek(f,0,SEEK_END);
+	long fsize = ftell(f);
+	fseek(f,0,SEEK_SET);
+  
+    // input in x,y,z order 
+    while(ftell(f)<fsize)
+    {
+	  fread(&p,sizeof(p),1,f);
+	
+      paperPos[(int)p.x][(int)p.y][0]=p.px;
+	  paperPos[(int)p.x][(int)p.y][1]=p.py;
+	  paperPos[(int)p.x][(int)p.y][2]=p.pz;
+      active[(int)p.x][(int)p.y] = true;
+    }
+	
+    fclose(f);
+	
+	return true;
   }
-  fclose(f);
+  
+  return false;
 }
 
-void OutputSheet(char *filename)
+bool OutputSheet(char *filename)
 {
   FILE *f = fopen(filename,"w");
+
+  gridPoint p;
   
-  for(int x = 0; x<SHEET_SIZE*STEP_SIZE; x++)
-  for(int y = 0; y<SHEET_SIZE*STEP_SIZE; y++)
-  {
-	// output in x,y,z order 
-	if (activeOutput[x][y])
-      fprintf(f,"%d,%d,%f,%f,%f\n",x,y,outputPaperPos[x][y][0],outputPaperPos[x][y][1],outputPaperPos[x][y][2]); 
+  if (f)
+  {	  
+    for(int x = 0; x<SHEET_SIZE*STEP_SIZE; x++)
+    for(int y = 0; y<SHEET_SIZE*STEP_SIZE; y++)
+    {
+	  // output in x,y,z order 
+	  if (activeOutput[x][y])
+	  {
+		  p.x=x;p.y=y;
+		  p.px=outputPaperPos[x][y][0];
+		  p.py=outputPaperPos[x][y][1];
+		  p.pz=outputPaperPos[x][y][2];
+		  fwrite(&p,sizeof(p),1,f);
+	  }
+    }
+    fclose(f);
+    return true;
   }
-  fclose(f);
+  
+  return false;
 }
 
 void Interpolate(void)
@@ -66,17 +95,17 @@ void Interpolate(void)
 		{
 			// bilinear interpolation
 			
-			lower[0] = (paperPos[xs][ys][0] * (3-xm) + paperPos[xs+1][ys][0] * xm)/3.0;
-			lower[1] = (paperPos[xs][ys][1] * (3-xm) + paperPos[xs+1][ys][1] * xm)/3.0;
-			lower[2] = (paperPos[xs][ys][2] * (3-xm) + paperPos[xs+1][ys][2] * xm)/3.0;
+			lower[0] = (paperPos[xs][ys][0] * (STEP_SIZE-xm) + paperPos[xs+1][ys][0] * xm)/STEP_SIZE;
+			lower[1] = (paperPos[xs][ys][1] * (STEP_SIZE-xm) + paperPos[xs+1][ys][1] * xm)/STEP_SIZE;
+			lower[2] = (paperPos[xs][ys][2] * (STEP_SIZE-xm) + paperPos[xs+1][ys][2] * xm)/STEP_SIZE;
 
-			upper[0] = (paperPos[xs][ys+1][0] * (3-xm) + paperPos[xs+1][ys+1][0] * xm)/3.0;
-			upper[1] = (paperPos[xs][ys+1][1] * (3-xm) + paperPos[xs+1][ys+1][1] * xm)/3.0;
-			upper[2] = (paperPos[xs][ys+1][2] * (3-xm) + paperPos[xs+1][ys+1][2] * xm)/3.0;
+			upper[0] = (paperPos[xs][ys+1][0] * (STEP_SIZE-xm) + paperPos[xs+1][ys+1][0] * xm)/STEP_SIZE;
+			upper[1] = (paperPos[xs][ys+1][1] * (STEP_SIZE-xm) + paperPos[xs+1][ys+1][1] * xm)/STEP_SIZE;
+			upper[2] = (paperPos[xs][ys+1][2] * (STEP_SIZE-xm) + paperPos[xs+1][ys+1][2] * xm)/STEP_SIZE;
 			
-			outputPaperPos[x][y][0] = (lower[0]*(3-ym)+upper[0]*ym)/3.0;
-			outputPaperPos[x][y][1] = (lower[1]*(3-ym)+upper[1]*ym)/3.0;
-			outputPaperPos[x][y][2] = (lower[2]*(3-ym)+upper[2]*ym)/3.0;
+			outputPaperPos[x][y][0] = (lower[0]*(STEP_SIZE-ym)+upper[0]*ym)/STEP_SIZE;
+			outputPaperPos[x][y][1] = (lower[1]*(STEP_SIZE-ym)+upper[1]*ym)/STEP_SIZE;
+			outputPaperPos[x][y][2] = (lower[2]*(STEP_SIZE-ym)+upper[2]*ym)/STEP_SIZE;
 			
 			activeOutput[x][y] = true;
 		}
@@ -89,9 +118,23 @@ int main(int argc, char *argv[])
 	if (argc != 3)
 	{
 		printf("Usage: interpolate <input> <output>\n");
+		printf("Assumes that input gridPoints all have integer quadmesh coordinates - as output from simpaper\n");
 	}
 	
-	LoadSheet(argv[1]);
-    Interpolate();
-	OutputSheet(argv[2]);
+	if (LoadSheet(argv[1]))
+	{
+		Interpolate();
+		if (!OutputSheet(argv[2]))
+		{
+		    fprintf(stderr,"Unable to open output file:%s\n",argv[2]);
+			return -2;
+		}
+		
+		return 0;
+	}
+	else
+	{
+		fprintf(stderr,"Unable to open input file:%s\n",argv[1]);
+		return -1;
+	}
 }

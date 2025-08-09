@@ -262,7 +262,7 @@ float Forces(void)
             paperAcc[x][y][2] += direction2 * force;
 		  }
 		  
-#if 1		  
+#if 0		  
 		// If particles two steps away are too close, fend them off - resist bending too tightly
         static int twoPositions[6][3] = {{-2,0},{2,0},{0,-2},{0,2}};
         for(int i=0; i<4; i++)

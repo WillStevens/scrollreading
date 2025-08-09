@@ -21,6 +21,8 @@
 
 #define ROUND(x) ((x)-(int)(x)<0.5?(int)(x):((int)(x))+1)
 
+typedef struct __attribute__((packed)) {float x,y,px,py,pz;} gridPointStruct;
+
 int minx=-1,maxx=-1,miny=-1,maxy=-1;
 int SHEET_SIZE_X=0;
 int SHEET_SIZE_Y=0;
@@ -40,6 +42,7 @@ void render(char *fname, int maskOnly)
 	int fnameLength = strlen(fname);
 	
 	bool isBP = fname[fnameLength-1]=='p' && fname[fnameLength-2]=='b';
+	bool isCSV = fname[fnameLength-1]=='v' && fname[fnameLength-2]=='s' && fname[fnameLength-3]=='c';
 		
     //initialize the volume
     ZARR_1 *volumeZarr = NULL;
@@ -79,9 +82,29 @@ void render(char *fname, int maskOnly)
 			else
 			{
 				FILE *f = fopen(fname,"r");
-				while(fscanf(f,"%f,%f,%f,%f,%f\n",&xr,&yr,&xo,&yo,&zo)==5)
-					gridPoints.push_back(gridPoint(xr,yr,xo,yo,zo,0));
-
+				
+				if (isCSV)
+				{
+					while(fscanf(f,"%f,%f,%f,%f,%f\n",&xr,&yr,&xo,&yo,&zo)==5)
+						gridPoints.push_back(gridPoint(xr,yr,xo,yo,zo,0));
+				}
+				else
+				{
+					gridPointStruct p;
+					fseek(f,0,SEEK_END);
+					long fsize = ftell(f);
+					fseek(f,0,SEEK_SET);
+  
+					// input in x,y,z order 
+					while(ftell(f)<fsize)
+					{
+						fread(&p,sizeof(p),1,f);
+						float x,y,px,py,pz;
+						x=p.x;y=p.y;px=p.px;py=p.py;pz=p.pz;
+						gridPoints.push_back(gridPoint(x,y,px,py,pz,0));
+					}
+				}
+				
 				fclose(f);
 			}
 			
@@ -157,6 +180,8 @@ void render(char *fname, int maskOnly)
 		  sprintf(tiffName+l-3,".tif");
 		else if (!strcmp(tiffName+l-4,".csv"))
 		  sprintf(tiffName+l-4,".tif");	  
+		else if (!strcmp(tiffName+l-4,".bin"))
+		  sprintf(tiffName+l-4,".tif");	  
 		else
 		  return;
 		
@@ -200,7 +225,7 @@ int main(int argc, char *argv[])
 {
 	if (argc != 2 && argc != 3)
 	{
-		printf("Usage: render_from_zarr4 <bigpatch or csv> [1 if mask only]\n");
+		printf("Usage: render_from_zarr4 <bigpatch or csv or bin> [1 if mask only]\n");
 		printf("Render from a zarr. If mak only then output a white dilated mask on black background");
 		return -1;
 	}
