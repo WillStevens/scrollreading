@@ -236,6 +236,9 @@ void ReadPatchPoints(BigPatch *z, chunkIndex ci, std::vector<gridPoint> &gridPoi
 											   bGridPoints[i].vz,
 											   bGridPoints[i].patch));
 			}
+			
+			free(compressedData);
+			free(bGridPoints);
 		}
 	  
 	    fclose(f);

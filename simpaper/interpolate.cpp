@@ -34,10 +34,10 @@ bool LoadSheet(char *filename)
     {
 	  fread(&p,sizeof(p),1,f);
 	
-      paperPos[(int)p.x][(int)p.y][0]=p.px;
-	  paperPos[(int)p.x][(int)p.y][1]=p.py;
-	  paperPos[(int)p.x][(int)p.y][2]=p.pz;
-      active[(int)p.x][(int)p.y] = true;
+      paperPos[(int)p.x+SHEET_SIZE/2][(int)p.y+SHEET_SIZE/2][0]=p.px;
+	  paperPos[(int)p.x+SHEET_SIZE/2][(int)p.y+SHEET_SIZE/2][1]=p.py;
+	  paperPos[(int)p.x+SHEET_SIZE/2][(int)p.y+SHEET_SIZE/2][2]=p.pz;
+      active[(int)p.x+SHEET_SIZE/2][(int)p.y+SHEET_SIZE/2] = true;
     }
 	
     fclose(f);
@@ -62,7 +62,7 @@ bool OutputSheet(char *filename)
 	  // output in x,y,z order 
 	  if (activeOutput[x][y])
 	  {
-		  p.x=x;p.y=y;
+		  p.x=x-(SHEET_SIZE*STEP_SIZE)/2;p.y=y-(SHEET_SIZE*STEP_SIZE)/2;
 		  p.px=outputPaperPos[x][y][0];
 		  p.py=outputPaperPos[x][y][1];
 		  p.pz=outputPaperPos[x][y][2];

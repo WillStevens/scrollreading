@@ -433,7 +433,7 @@ void Output(const char *filename)
   for(int y = 0; y<SHEET_SIZE; y++)
 	if (active[x][y])
 	  // output in x,y,z order 
-      fprintf(f,"%d,%d,%f,%f,%f\n",x,y,paperSheet[x][y].pos.f[0],paperSheet[x][y].pos.f[1],paperSheet[x][y].pos.f[2]); 
+      fprintf(f,"%d,%d,%f,%f,%f\n",x-SHEET_SIZE/2,y-SHEET_SIZE/2,paperSheet[x][y].pos.f[0],paperSheet[x][y].pos.f[1],paperSheet[x][y].pos.f[2]); 
   fclose(f);
 }
 
@@ -447,7 +447,7 @@ void BinOutput(const char *filename)
   for(int y = 0; y<SHEET_SIZE; y++)
 	if (active[x][y])
     {
-		p.x = x; p.y = y;
+		p.x = x-SHEET_SIZE/2; p.y = y-SHEET_SIZE/2;
 		p.px = paperSheet[x][y].pos.f[0];
 		p.py = paperSheet[x][y].pos.f[1];
 		p.pz = paperSheet[x][y].pos.f[2];
@@ -607,8 +607,9 @@ int main(int argc, char *argv[])
   InitExpectedDistanceLookup();
   
   InitialiseSeed();
-    
-  for(int i = 0; i<MAX_GROWTH_STEPS; i++)
+  
+  int i;  
+  for(i = 0; i<MAX_GROWTH_STEPS; i++)
   {
     printf("--- %d ---\n",i);
     int j = 0;
@@ -643,6 +644,6 @@ int main(int argc, char *argv[])
   ZARRClose_c32i1b1024(vectorField);
   
   
-  return 0;
+  return i;
 }
 

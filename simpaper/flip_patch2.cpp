@@ -12,7 +12,6 @@ int main(int argc,char *argv[])
 		exit(-1);
 	}
 	
-    float xmin,ymin,xmax,ymax;
 	
 	FILE *fi = fopen(argv[1],"r");
 	FILE *fo = fopen(argv[2],"w");
@@ -26,25 +25,11 @@ int main(int argc,char *argv[])
 		long fsize = ftell(fi);
 		fseek(fi,0,SEEK_SET);
   
-		// input in x,y,z order 
 		while(ftell(fi)<fsize)
 		{
 			fread(&p,sizeof(p),1,fi);
-			
-			if (p.x<xmin || first) xmin=p.x;
-			if (p.y<ymin || first) ymin=p.y;
-			if (p.x>xmax || first) xmax=p.x;
-			if (p.y>ymax || first) ymax=p.y;
-			
-			first = false;
-		}
-	  		
-		fseek(fi,0,SEEK_SET);
-		while(ftell(fi)<fsize)
-		{
-			fread(&p,sizeof(p),1,fi);
-			p.x = xmax-p.x;
-			p.y = p.y-ymin;
+			p.x = -p.x;
+			p.y = p.y;
 	
             fwrite(&p,sizeof(p),1,fo);	
 		}

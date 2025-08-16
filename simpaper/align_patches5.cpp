@@ -360,7 +360,7 @@ void AlignMatches(std::vector<match> &matchList)
 		for(auto &tsIter : transformSamples)
 		{
  	        fprintf(stderr,"%d transforms for patch %d\n",(int)tsIter.second.size(),tsIter.first);
-			if (tsIter.second.size()<50)
+			if (tsIter.second.size()<30)
 			{
 				fprintf(stderr,"(Not enough to get SD)\n");
 			}
@@ -419,7 +419,8 @@ void AlignMatches(std::vector<match> &matchList)
 										  std::get<5>(sampleVariance)/tsIter.second.size()
 									  );
 				
-				printf("Patch %d\n",tsIter.first);
+				// output format is patch number, followed by variance and transform
+				printf("%d ",tsIter.first);
 				printf("%f %f %f %f %f %f ",
 					  std::get<0>(sampleVariance),
 					  std::get<1>(sampleVariance),
