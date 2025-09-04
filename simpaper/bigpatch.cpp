@@ -1,24 +1,27 @@
 /*
-Currently surface is represented as CSV containing lots of
+This implements a way of representing surfaces that makes it efficient to check for overlap and
+do alignment of patch and surface.
 
-gx,gy,x,y,z
+A surface is represented as a collection of patches, without bothering about removing patch intersections (because rendering will deal with that).
 
-Operations on surfaces are: 
-- merge in new patch
-- align patch with surface
-   load points from both patches
-   use these to align
-   
-The alignment algorithm could easily be modified to load only those points that are near points in the other patch
+Each patch is a list of:
+qx,qy,vx,vy,vz
 
-So a representation for surfaces that boxes up points would work
+where qx,qy are the floating point quadmesh coords and
+vx,vy,vz are floating point scroll voxel coords.
 
-Like a zarr, space is split up into chunks
+A surface is a collection of patches represented as a list of:
+qx,qy,vx,vy,vz,pid
 
-Each chunk file is a list:
-gx,gy,x,y,z
+Where pid is the id of the patch that the point belongs to.
 
-of all the points in the chunk
+The list is stored in a compressed chunked format, chunked on the vx,vy,vz coords,
+compressed using blosc2, and also indexed by qx,qy.
+
+Currently the qx,qy are all aligned to the same coordinate system (based on the coords of the first patch added).
+I have since realised that I don't need to transform the coords of each patch as the surface is being built, just keep
+a record of the relationship between patches (which could change as the surface adapts as it grows) and do all of the
+transformations at rendering time.
 */
 #include <string.h>
 #include <stdio.h>
