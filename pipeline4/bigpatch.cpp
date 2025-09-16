@@ -119,7 +119,8 @@ void EraseChunk(BigPatch *z,chunkIndex ci)
 {
     sprintf(z->location+z->locationRootLength,"/surface/%d.%d.%d",std::get<2>(ci),std::get<1>(ci),std::get<0>(ci));
 
-	std::remove(z->location);
+	//printf("Trying to remove:%s\n",z->location);
+	remove(z->location);
 }
 
 // TODO - this could be done more efficiently by passing in the binary data as a parameter rather than using a vector
@@ -166,6 +167,7 @@ void WritePatchPoints(BigPatch *z, chunkIndex ci, const std::vector<gridPoint> &
 	}
 	else
 	{
+		printf("Unable to open %s to append\n",z->location);
 	}
 }
 
@@ -236,8 +238,13 @@ gridPoint SelectRandomPoint(BigPatch *z, unsigned rn1, unsigned rn2)
 	int n = allChunks.size();
 	
 	std::vector<gridPoint> gridPoints;
+
+//    printf("Chosen chunk %d,%d,%d\n",std::get<0>(allChunks[rn1%n]),std::get<1>(allChunks[rn1%n]),std::get<1>(allChunks[rn1%n]));
 	
 	ReadPatchPoints(z,allChunks[rn1%n],gridPoints);
 	
+	n = gridPoints.size();
+
+//    printf("Chosen point %d of %d in chunk:%f %f %f\n",rn2%n,n,std::get<2>(gridPoints[rn2%n]),std::get<3>(gridPoints[rn2%n]),std::get<4>(gridPoints[rn2%n]));	
 	return gridPoints[rn2%n];
 }

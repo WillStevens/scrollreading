@@ -161,6 +161,8 @@ void FindMatches(std::vector<match> &matchList)
 		    // Look for matches one patch at a time
 			for(auto patch : patches)
 			{
+				//fprintf(stderr,"patch %d\n",(int)patch);
+				
 			    for(const gridPoint &gp0 : cellMap0[i->first])
 				{
                     if (std::get<5>(gp0) != patch)
@@ -267,6 +269,8 @@ void FindMatches(std::vector<match> &matchList)
 						
 					}
 				}
+				
+				//fprintf(stderr,"matchlist size is now %d\n",(int)matchList.size());
 			}
 		}
 	}
@@ -293,10 +297,24 @@ void AlignMatches(std::vector<match> &matchList)
 	
 	std::map<int,std::vector<affineTx>> transformSamples;
 	
-	for(int i = 0; l>0 && i<500; i++)
+	for(int i = 0; l>0 && i<1500; i++)
 	{
 		int pa = rand()%l;
 		int pb = rand()%l;
+
+		int patch0 = std::get<4>(matchList[pa]);
+		int patch1 = std::get<4>(matchList[pb]);
+
+        // try to get another point in the same patch if we can		
+		for(int j=0; j<100 && patch1!=patch0; j++)
+		{
+			pb = rand()%l;
+			patch1 = std::get<4>(matchList[pb]);
+		}
+		
+		// If patches aren't the same, no point carrying on
+		if (patch1 != patch0)
+			continue;
 		
 		float ax0 = std::get<0>(matchList[pa]);
 		float ay0 = std::get<1>(matchList[pa]);
@@ -308,15 +326,13 @@ void AlignMatches(std::vector<match> &matchList)
 		float bx1 = std::get<2>(matchList[pb]);
 		float by1 = std::get<3>(matchList[pb]);
 
-		int patch0 = std::get<4>(matchList[pa]);
-		int patch1 = std::get<4>(matchList[pb]);
 		
 		float d0 = Distance(ax0,ay0,bx0,by0);
 		float d1 = Distance(ax1,ay1,bx1,by1);
 		
 		//printf("distance 0: %f, distance 1: %f\n",d0,d1);
 	
-	    if (d1>50.0 && d0/d1>0.99 && d0/d1<1.01 && patch0==patch1)
+	    if (d1>25.0 && d0/d1>0.99 && d0/d1<1.01 && patch0==patch1)
 		{						
 			// Now work out the angle
 			float dx1 = bx1-ax1, dy1 = by1-ay1;
@@ -360,7 +376,7 @@ void AlignMatches(std::vector<match> &matchList)
 		for(auto &tsIter : transformSamples)
 		{
  	        fprintf(stderr,"%d transforms for patch %d\n",(int)tsIter.second.size(),tsIter.first);
-			if (tsIter.second.size()<30)
+			if (tsIter.second.size()<10)
 			{
 				fprintf(stderr,"(Not enough to get SD)\n");
 			}

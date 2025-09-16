@@ -34,25 +34,40 @@ void LoadPointSet(const char *fname,int patch)
 
 int main(int argc, char *argv[])
 {
-	if (argc != 4)
+	if (argc != 5 && argc != 2)
 	{
-		printf("Usage: randombigpatchpoint <patch> <rn1> <rn2>\n");
-		printf("Patch is a bigpatch, rn1 and rn2 are randomly generated unsigned ints used for selecting random point\n");
+		printf("Usage: listbigpatchpoints <patch> <cz> <cy> <cx>\n");
+		printf("List points in a big patch");
 		exit(-1);
 	}
 
   BigPatch *bp = OpenBigPatch(argv[1]);
 
   if (bp)
-  {	  
-    unsigned rn1 = atoi(argv[2]);
-    unsigned rn2 = atoi(argv[3]);
-  
-    gridPoint gp = SelectRandomPoint(bp,rn1,rn2);
-  
+  {
+    std::vector<chunkIndex> chunkIndices;
+
+	if (argc==2)
+	  chunkIndices = GetAllPatchChunks(bp);
+    else
+	{
+	  
+      int cz = atoi(argv[2]);
+      int cy = atoi(argv[3]);
+      int cx = atoi(argv[4]);
+      chunkIndices.push_back(chunkIndex(cx,cy,cz));
+	}
+	
+	for(auto &ci : chunkIndices)
+	{
+      std::vector<gridPoint> gridPoints;
+      ReadPatchPoints(bp, ci,gridPoints);
+      for(auto &gp : gridPoints)	
+        printf("%f %f %f %f %f %d\n",std::get<0>(gp),std::get<1>(gp),std::get<2>(gp),std::get<3>(gp),std::get<4>(gp),std::get<5>(gp));
+    }
+	
     CloseBigPatch(bp);
- 
-    printf("%f %f %f %f %f %d\n",std::get<0>(gp),std::get<1>(gp),std::get<2>(gp),std::get<3>(gp),std::get<4>(gp),std::get<5>(gp));
+
     return 0;
   }
   else

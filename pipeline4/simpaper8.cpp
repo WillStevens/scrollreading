@@ -12,7 +12,7 @@
 
 #include <smmintrin.h>
 
-#include "../zarrlike/zarr_c32i1b1024_tmp.c"
+#include "../../zarrlike/zarr_c32i1b1024_tmp.c"
 
 using namespace std;
 

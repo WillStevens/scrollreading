@@ -8,8 +8,6 @@ import csv
 import datetime
 import time
 
-from mask_add import MaskAdd
-
 def StartPatchCoordFile(patch,flipped,iterations,coords):
   f = open("d:/pipelineOutput/patchCoords.txt","w")
   f.write("ABS %d %d %d %f %f %f\n" % (patch,(1 if flipped else 0),iterations,coords[0],coords[1],coords[2]))
@@ -101,6 +99,10 @@ restart = False
 #patchNum = 1138
 #restart = True
 
+if not restart:
+  os.makedirs(outputDir+"/surface.bp/surface")
+  os.makedirs(outputDir+"/boundary.bp/surface")
+
 while True:
   print("Patch number "+str(patchNum))
 
@@ -128,66 +130,76 @@ while True:
   else:
     # Merge this patch into the current surface
     Step("align_patches")
-	alignList = CallAlignMulti(currentSurface,patchi)
+    alignList = CallAlignMulti(currentSurface,patchi)
   
     doMerge = False
-	
+    
     if len(alignList)>0:
-	  badVarianceCount = 0
-	  for align in alignList:
-	    print(align)
-	    patch = align[0]
-		transform = (align[1],align[2],align[3],align[4],align[5],align[6])
-		variance = (align[7],align[8],align[9],align[10],align[11],align[12])
-		
-		if not VarianceTest(variance)
-		  badVarianceCount += 1
-	  print("Bad variance count:%d" % badVarianceCount)
-	  
-	  if badVarianceCount > 0:
+      badVarianceCount = 0
+      for align in alignList:
+        print(align)
+        patch = align[0]
+        variance = (align[1],align[2],align[3],align[4],align[5],align[6])
+        transform = (align[7],align[8],align[9],align[10],align[11],align[12])
+        
+        if not VarianceTest(variance):
+          badVarianceCount += 1
+      print("Bad variance count:%d" % badVarianceCount)
+      
+      if badVarianceCount > 0:
         print("Flipping patch")
         Step("flip_patch and boundary")
         Call(["./flip_patch2",patchi,patchif])
         Call(["./flip_patch2",boundary,boundaryf])
         Step("align_patches")
-        alignList = CallAlign(currentSurface,patchif)
+        alignList = CallAlignMulti(currentSurface,patchif)
 
         if len(alignList)>0:
-	      badVarianceCount = 0
-	      for align in alignList:
-	        print(align)
-	        patch = align[0]
-		    transform = (align[1],align[2],align[3],align[4],align[5],align[6])
-		    variance = (align[7],align[8],align[9],align[10],align[11],align[12])
-		
-		    if not VarianceTest(variance)
-		      badVarianceCount += 1
-	      print("Bad variance count:%d" % badVarianceCount)
+          badVarianceCount = 0
+          for align in alignList:
+            print(align)
+            patch = align[0]
+            variance = (align[1],align[2],align[3],align[4],align[5],align[6])
+            transform = (align[7],align[8],align[9],align[10],align[11],align[12])
+        
+            if not VarianceTest(variance):
+              badVarianceCount += 1
+          print("Bad variance count:%d" % badVarianceCount)
           if badVarianceCount == 0:
-		    doMerge = True
-		    flipped = True
-		    patchToAdd = patchif
-		    boundaryToAdd = boundaryf          		 
+            doMerge = True
+            flipped = True
+            patchToAdd = patchif
+            boundaryToAdd = boundaryf                
           else:
             print("Unable to align, even after flipping")
       else:
-	    doMerge = True
-		flipped = False
-		patchToAdd = patchi
-		boundaryToAdd = boundary
-		
-	if doMerge:
+        doMerge = True
+        flipped = False
+        patchToAdd = patchi
+        boundaryToAdd = boundary
+        
+    if doMerge:
       AddToPatchCoordFile(patchNum,flipped,iterations,alignList)
-      Call(["./addtobigpatch",currentSurface,patchToAdd,str(patchNum)])
-	
-	  # For the boundary we need to work out:
-	  # Given the new patch, which points from the current boundary should we delete?
-	  Call(["./erasepoints",currentBoundary,patchToAdd,"0","10"])
-	  # Given the current suface, which points of the new boundary should not be used
-	  Call(["./erasepoints",currentSurface,boundaryToAdd,"1","10"])
+
+      print("currentBoundary")
+      print(len(CallOutput(["./listbigpatchpoints",currentBoundary]).split("\n")))
+      print("boundaryToAdd")
+      print(len(CallOutput(["./listpatchpoints",boundaryToAdd]).split("\n")))
+      
+      # For the boundary we need to work out:
+      # Given the new patch, which points from the current boundary should we delete?
+      Call(["./erasepoints",currentBoundary,patchToAdd,"0","10"])
+      # Given the current suface, which points of the new boundary should not be used
+      Call(["./erasepoints",currentSurface,boundaryToAdd,"1","10"])
+
+      print("currentBoundary")
+      print(len(CallOutput(["./listbigpatchpoints",currentBoundary]).split("\n")))
+      print("boundaryToAdd")
+      print(len(CallOutput(["./listpatchpoints",boundaryToAdd]).split("\n")))
 
       Call(["./addtobigpatch",currentBoundary,boundaryToAdd,str(patchNum)])
-	  
+        
+      Call(["./addtobigpatch",currentSurface,patchToAdd,str(patchNum)])      
     else:
       print("No alignment of patch could be done")
 
@@ -196,13 +208,15 @@ while True:
   Call(["rm",boundary])        
   Call(["rm",boundaryf])
 
+  #Call(["./listbigpatchpoints",currentBoundary],output=outputDir+"/boundary_"+str(patchNum)+".txt")
     
   Step("seeking next point")
   while True: 
     # Pick a random boundary point
-    rb = CallOutput(["./randombigpatchpoint",currentBoundary,str(randint(0,1000000000)),str(randint(0,1000000000)])
+    rb = CallOutput(["./randombigpatchpoint",currentBoundary,str(randint(0,1000000000)),str(randint(0,1000000000))])
+    print(rb)
     rb = [float(x) for x in rb.split(" ")]
-	
+    
     print("Selected point is %f,%f,%f" % (rb[2],rb[3],rb[4]))
   
     # Open current surface and find the grid points within a radius of 5 of x,y,z on the same patch as x,y,z (the first returned will be the nearest)

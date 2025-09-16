@@ -3,7 +3,6 @@
 #include <map>
 #include <vector>
 #include <set>
-#include <unordered_set>
 
 #include "bigpatch.cpp"
 
@@ -57,6 +56,34 @@ void LoadPointSet(const char *fname,int index)
 	}
 }
 
+void SavePointSet(const char *fname, std::vector<gridPoint>& gps)
+{
+	FILE *f = fopen(fname,"w");
+	
+	if (f)
+	{
+		gridPointStruct p;
+  
+		// input in x,y,z order 
+		for(auto &gp : gps)
+		{
+			p.x = std::get<0>(gp);
+			p.y = std::get<1>(gp);
+			p.px = std::get<2>(gp);
+			p.py = std::get<3>(gp);
+			p.pz = std::get<4>(gp);
+			
+			fwrite(&p,sizeof(p),1,f);			
+		}
+	  
+	    fclose(f);
+	}
+	else
+	{
+		printf("Unable to open file %s\n",fname);
+	}
+}
+
 
 void FillCellMap(void)
 {
@@ -87,7 +114,7 @@ void FillCellMap(void)
 	}
 }
 
-void FindMatches(std::unordered_set<gridPoint> &matchSet,int which, float radius)
+void FindMatches(std::set<gridPoint> &matchSet,int which, float radius)
 {
 	for(cellMapIterator i = cellMap0.begin(); i!= cellMap0.end(); i++)
 	{
@@ -118,6 +145,7 @@ void FindMatches(std::unordered_set<gridPoint> &matchSet,int which, float radius
 				float xp0 = std::get<2>(gp0);
 				float yp0 = std::get<3>(gp0);
 				float zp0 = std::get<4>(gp0);
+				int p0 = std::get<5>(gp0);
 
 					
 				for(int nx = g0x-1; nx<=g0x+1; nx++)
@@ -134,17 +162,18 @@ void FindMatches(std::unordered_set<gridPoint> &matchSet,int which, float radius
 							float xp1 = std::get<2>(gp1);
 							float yp1 = std::get<3>(gp1);
 							float zp1 = std::get<4>(gp1);
+				            int p1 = std::get<5>(gp1);
 			  
 							float d = Distance(xp0,yp0,zp0,xp1,yp1,zp1);
 							if (d<radius)
 							{
 								if (which==0)
 								{
-									matchSet.insert(gridPoint(x0,y0,xp0,yp0,zp0,0));
+									matchSet.insert(gridPoint(x0,y0,xp0,yp0,zp0,p0));
 								}
 								else
 								{
-									matchSet.insert(gridPoint(x1,y1,xp1,yp1,zp1,0));
+									matchSet.insert(gridPoint(x1,y1,xp1,yp1,zp1,p1));
 								}
 							}
 						}
@@ -203,62 +232,74 @@ int main(int argc, char *argv[])
   {
 	ReadPatchPoints(bp,chunk,gridPoints[0]);
   }
-	
-  CloseBigPatch(bp);
-	
+		
   FillCellMap();
 
-  std::unordered_set<gridPoint> matchSet;
+  std::set<gridPoint> matchSet;
   
   FindMatches(matchSet,which,radius);
 
+  printf("erasepoints found %d matches\n",(int)matchSet.size());
+  
   std::vector<gridPoint> gridPointsOutput;
+  std::vector<bool> outputFlag;
   
   for(auto &gp : gridPoints[which])
   {
+	  outputFlag.push_back(matchSet.count(gp)==0);
 	  if (matchSet.count(gp)==0)
 	  {
 		  gridPointsOutput.push_back(gp);
 	  }
   }
 
-  if (which==0)
+  printf("Input points:%d\n",(int)gridPoints[which].size());
+  printf("Output points:%d\n",(int)gridPointsOutput.size());
+  
+  if (which==1)
   {	  
 	  SavePointSet(argv[2],gridPointsOutput);
   }
   else
   {
-	  bool first = true;
 	  chunkIndex lastCi;
-	  atd::vector<gridPoint> batch;
+	  std::vector<gridPoint> batch;
 	  
-	  for(auto &gp : gridPointsOutput)
+	  int i = 0;
+	  for(auto &gp : gridPoints[which])
 	  {
-		  float x = std::get<0>(gp);
-		  float y = std::get<1>(gp);
 		  float xp = std::get<2>(gp);
 		  float yp = std::get<3>(gp);
 	      float zp = std::get<4>(gp);
-		  int patch = std::get<5>(gp);
 		  
 		  chunkIndex ci = GetChunkIndex(xp,yp,zp);
 		  
-		  if (first || ci != lastCi)
+		  if (i==0 || ci != lastCi)
 		  {
-			  if (!first)
+			  if (i)
 			  {
-				  WritePatchPoints(z,lastCi,batch);
+				  //printf("Writing %d points to %s\n",(int)batch.size(),argv[1]);
+	              if (batch.size() != 0)
+				    WritePatchPoints(bp,lastCi,batch);
 			  }
 			  
-			  EraseChunk(z,ci);
-			  batch.erase();
+			  EraseChunk(bp,ci);
+			  batch.clear();
 		  }
 		  lastCi = ci;
 		  
-		  batch.push_back(gp);
+		  if (outputFlag[i])
+		    batch.push_back(gp);
 		  
-		  first = false;
+		  i++;
 	  }  
+
+	  // Last batch isn't written within the loop
+	  //printf("Writing %d points to %s\n",(int)batch.size(),argv[1]);
+	  if (batch.size() != 0)
+	    WritePatchPoints(bp,lastCi,batch);
+	  
+      CloseBigPatch(bp);
   }
   
   return 0;

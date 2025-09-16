@@ -2,8 +2,10 @@ from math import pi,sqrt,sin,cos,atan2
 from time import sleep
 import tkinter as tk
 
-# x,y,orientation,radius
-patches = [(50,50,0,20),(50,100,0,20),(100,50,0,20),(100,100,0,20)]
+iterationCount = 0
+
+# x,y,orientation,radius,angle (global orientation of patch)
+patches = [(50,50,0,20,0),(50,100,0,20,0),(100,50,0,20,0),(100,100,0,20,0)]
 patchVel = [(0,0,0),(0,0,0),(0,0,0),(0,0,0)]
 patchAcc = [(0,0,0),(0,0,0),(0,0,0),(0,0,0)]
 
@@ -15,13 +17,12 @@ connections = [(0,1,50,0.0,pi),
 
 patchIndexLookup = {}
 
-translationLookup = {}
-rotationLookup = {}
+transformLookup = {}
 
 CONNECT_FORCE_CONSTANT = 0.01
 ANGLE_FORCE_CONSTANT = 0.01
-FRICTION_CONSTANT = 0.90
-ANGLE_FRICTION_CONSTANT = 0.90
+FRICTION_CONSTANT = 0.60
+ANGLE_FRICTION_CONSTANT = 0.60
 
 # Turning iterations into radius
 # Each iteration is half a radius. Then multiply by step size
@@ -73,39 +74,39 @@ def LoadPatches():
     spl = l.split(" ")
     if spl[0]=='ABS':
       patchNum = int(spl[1])
-      radius = int(spl[2])*RADIUS_FACTOR
+      radius = int(spl[3])*RADIUS_FACTOR
       patchIndexLookup[patchNum] = len(patches)
-      x,y,a = float(spl[3]),float(spl[4]),float(spl[5])
-      patches += [(x,y,a,radius)]
+      x,y,a = float(spl[4]),float(spl[5]),float(spl[6])
+      patches += [(x,y,a,radius,0)]
       patchVel += [(0,0,0)]
       patchAcc += [(0,0,0)]
-      translationLookup[patchNum] = (0,0)
-      rotationLookup[patchNum] = (1,0,0,1)
+      transformLookup[patchNum] = (1,0,0,0,1,0)
     elif spl[0]=='REL':
       patchNum = int(spl[1])
-      radius = int(spl[2])*RADIUS_FACTOR
-      other = int(float(spl[3]))
-      ta = float(spl[10])
-      tb = float(spl[11])
-      tc = float(spl[12])
-      td = float(spl[13])
-      te = float(spl[14])
-      tf = float(spl[15])
+      radius = int(spl[3])*RADIUS_FACTOR
+      other = int(float(spl[4]))
+      ta = float(spl[11])
+      tb = float(spl[12])
+      tc = float(spl[13])
+      td = float(spl[14])
+      te = float(spl[15])
+      tf = float(spl[16])
 
-      translationLookup[patchNum] = (tc,tf)
-      rotationLookup[patchNum] = (ta,tb,td,te)
       
-      if other in patchIndexLookup.keys() and other in translationLookup.keys():
-        otherTranslation = translationLookup[other]
+      if other in patchIndexLookup.keys() and other in transformLookup.keys():
+        otherTransform = transformLookup[other]
+
+        transform = ComposeTransforms(otherTransform,(ta,tb,tc,td,te,tf))
         
-        print(otherTranslation)
-        print((tc,tf))        
-        (tc,tf) = (tc-otherTranslation[0],tf-otherTranslation[1])
-        print((tc,tf))        
+        transformLookup[patchNum] = transform
         
-        locationAngle = atan2(tc,tf)
-        angle = atan2(ta,td)
-        distance = sqrt(tc*tc+tf*tf)
+        print((transform[2],transform[5]))        
+        
+        (offsetX,offsetY) = (transform[2]-otherTransform[2],transform[5]-otherTransform[5])
+        
+        locationAngle = atan2(offsetX,offsetY)
+        angle = atan2(transform[0],transform[3]) # global orientation of this patch
+        distance = sqrt(offsetX*offsetX+offsetY*offsetY)
 
         print("Location angle is %f (%f degress)" % (locationAngle,locationAngle*360/(2.0*pi)))
         print("Angle is %f (%f degress)" % (angle,angle*360/(2.0*pi)))
@@ -118,24 +119,38 @@ def LoadPatches():
 
         if patchNum >= len(patches):
           patchIndexLookup[patchNum] = len(patches)
-          patches += [(patches[otherIndex][0]+tc,patches[otherIndex][1]+tf,0.0,radius)]
+          patches += [(transform[2],transform[5],0.0,radius,angle)]
           patchVel += [(0,0,0)]
           patchAcc += [(0,0,0)]
         connections += [(len(patches)-1,otherIndex,distance,
-                         AddAngle(AddAngle(pi,locationAngle),-patches[-1][2]),
-                         AddAngle(locationAngle,-patches[otherIndex][2]))] 
+                         AddAngle(pi,locationAngle),
+                         locationAngle)] 
+      else:
+        print("Error - can't find other patch %d" % other)
+        exit(0)
     else:
       printf("Unexpected tokan in LoadPatches:"+str(spl[0]))
+      exit(0)
       
   print(patches)
+  f.close()
+  
+def SavePatches():
+  f = open("d:/pipelineOutput/patchPositions.txt","w")
+  
+  if f:
+    for (patchNum,patchIndex) in patchIndexLookup.items():
+      (x,y,a,r,ga) = patches[patchIndex]
+      f.write("%d %f %f %f\n" % (patchNum,x,y,AddAngle(a,ga)))
+
   f.close()
   
 def ConnectionForces():
   global patches,patchVel,patchAcc,connections
 
   for (p1,p2,dist,angle1,angle2) in connections:
-    (x1,y1,a1,r1) = patches[p1]  
-    (x2,y2,a2,r1) = patches[p2]
+    (x1,y1,a1,r1,ga1) = patches[p1]  
+    (x2,y2,a2,r2,ga2) = patches[p2]
 
     currentAngle12 = AddAngle(patches[p1][2],angle1)      
     currentAngle21 = AddAngle(patches[p2][2],angle2)      
@@ -169,30 +184,37 @@ def Move():
   global patches,patchVel,patchAcc,connections
 
   for i in range(0,len(patches)):
-    patches[i] = (patches[i][0]+patchVel[i][0],patches[i][1]+patchVel[i][1],patches[i][2]+patchVel[i][2],patches[i][3])
+    patches[i] = (patches[i][0]+patchVel[i][0],patches[i][1]+patchVel[i][1],patches[i][2]+patchVel[i][2],patches[i][3],patches[i][4])
     patchVel[i] = (patchAcc[i][0]+patchVel[i][0],patchAcc[i][1]+patchVel[i][1],patchAcc[i][2]+patchVel[i][2])
     patchVel[i] = (patchVel[i][0]*FRICTION_CONSTANT,patchVel[i][1]*FRICTION_CONSTANT,patchVel[i][2]*ANGLE_FRICTION_CONSTANT)
     patchAcc[i] = (0.0,0.0,0.0)
   patchAcc[0] = (0.0,0.0,0.0)
   
 def RunIteration():
+  global iterationCount
   ConnectionForces()
   Move()
+  
+  iterationCount += 1
+  
+  if iterationCount == 10:
+    SavePatches()
+    
   canvas.delete('all')
   offset=(400,300)
   scale=0.2
-  for (x,y,a,rad) in patches:
+  for (x,y,a,rad,ga) in patches:
     canvas.create_oval(offset[0]+x*scale-rad*scale,offset[1]+y*scale-rad*scale,offset[0]+x*scale+rad*scale,offset[1]+y*scale+rad*scale, fill='yellow')
     #canvas.create_line(offset[0]+x*scale[0],offset[1]+y*scale[1],offset[0]+x*scale[0]+rad*sin(a),offset[1]+y*scale[1]+rad*cos(a))
   for (p0,p1,dist,a0,a1) in connections:
-    x,y,a,rad = patches[p0]
+    x,y,a,rad,ga = patches[p0]
     canvas.create_line(offset[0]+x*scale,offset[1]+y*scale,offset[0]+x*scale+rad*0.8*sin(a+a0)*scale,offset[1]+y*scale+rad*0.8*cos(a+a0)*scale)
-    x,y,a,rad = patches[p1]
+    x,y,a,rad,ga = patches[p1]
     canvas.create_line(offset[0]+x*scale,offset[1]+y*scale,offset[0]+x*scale+rad*0.8*sin(a+a1)*scale,offset[1]+y*scale+rad*0.8*cos(a+a1)*scale)
   window.after(10,RunIteration)
     
 LoadPatches()
-
+#exit(0)
 window = tk.Tk()
 window.geometry('800x600')
 window.title('L paint')

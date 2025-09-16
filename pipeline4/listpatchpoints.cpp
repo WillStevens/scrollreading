@@ -34,29 +34,18 @@ void LoadPointSet(const char *fname,int patch)
 
 int main(int argc, char *argv[])
 {
-	if (argc != 4)
+	if (argc != 2)
 	{
-		printf("Usage: randombigpatchpoint <patch> <rn1> <rn2>\n");
-		printf("Patch is a bigpatch, rn1 and rn2 are randomly generated unsigned ints used for selecting random point\n");
+		printf("Usage: listpatchpoints <patch>\n");
+		printf("List points in a patch");
 		exit(-1);
 	}
 
-  BigPatch *bp = OpenBigPatch(argv[1]);
+  LoadPointSet(argv[1],0);
 
-  if (bp)
-  {	  
-    unsigned rn1 = atoi(argv[2]);
-    unsigned rn2 = atoi(argv[3]);
-  
-    gridPoint gp = SelectRandomPoint(bp,rn1,rn2);
-  
-    CloseBigPatch(bp);
- 
+  for(auto &gp : gridPoints)	
     printf("%f %f %f %f %f %d\n",std::get<0>(gp),std::get<1>(gp),std::get<2>(gp),std::get<3>(gp),std::get<4>(gp),std::get<5>(gp));
-    return 0;
-  }
-  else
-  {
-    return -1;
-  }	
+	
+
+  return 0;
 }

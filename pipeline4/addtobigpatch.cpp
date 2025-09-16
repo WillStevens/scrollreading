@@ -60,7 +60,8 @@ int main(int argc, char *argv[])
   }
   
   for(auto const &item : chunkedPoints)
-  {  
+  {
+//    printf("Writing %d points to chunk\n",(int)item.second.size());	  
     WritePatchPoints(bp,item.first,item.second);
   }
   

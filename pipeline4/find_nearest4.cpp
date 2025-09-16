@@ -25,7 +25,7 @@ void DilateChunkIndices(std::set<chunkIndex> &chunkIndices)
 
 int main(int argc,char *argv[])
 {
-	if (argc != 5)
+	if (argc != 7)
 	{
 		fprintf(stderr,"Usage: find_nearest4 <bigpatch> x y z p r\n");
 		fprintf(stderr,"Find all of the points within a radius r of x,y,z write them to stdout.\n");
@@ -36,8 +36,10 @@ int main(int argc,char *argv[])
 	float xTarg = atof(argv[2]);
 	float yTarg = atof(argv[3]);
 	float zTarg = atof(argv[4]);
-	float radius2 = atof(argv[5]);
-	int patchTarg = atoi(argv[6]);
+	int patchTarg = atoi(argv[5]);
+	float radius2 = atof(argv[6]);
+	
+//    printf("Called find_nearest4: %f %f %f %d %f\n",xTarg,yTarg,zTarg,patchTarg,radius2);
 	
     radius2=radius2*radius2; // square of the radius
 	
@@ -52,13 +54,14 @@ int main(int argc,char *argv[])
 		chunkIndex ci = GetChunkIndex(xTarg,yTarg,zTarg);
 		
 		std::set<chunkIndex> chunkIndices;
-		chunkIndices.add(ci);
+		chunkIndices.insert(ci);
 		
 		DilateChunkIndices(chunkIndices);
 		
 		bool first = true;
 		float x,y,xp,yp,zp,r2;
-
+        int patch;
+		
 		for(auto const &i : chunkIndices)
 		{
 			//printf("Chunk: %d.%d.%d\n",std::get<2>(i),std::get<1>(i),std::get<0>(i));
@@ -73,8 +76,9 @@ int main(int argc,char *argv[])
 				zp = std::get<4>(gp);
 				patch = std::get<5>(gp);
 						
-				r2 = (x-xTarg)*(x-xTarg)+(y-yTarg)*(y-yTarg);
-		
+				r2 = (xp-xTarg)*(xp-xTarg)+(yp-yTarg)*(yp-yTarg)+(zp-zTarg)*(zp-zTarg);
+
+//                printf("Comparing with %f %f %f %d %f\n",xp,yp,zp,patch,r2);				
 				if (patch == patchTarg && r2 < radius2)
 				{
 					if (r2<minR2 || first)
