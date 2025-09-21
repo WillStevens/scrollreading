@@ -1,6 +1,8 @@
 from math import pi,sqrt,sin,cos,atan2
 from time import sleep
 import tkinter as tk
+import sys
+from PIL import Image
 
 iterationCount = 0
 
@@ -61,8 +63,9 @@ def AddAngle(a,b):
     return r+2.0*pi
   return r
 
-def LoadPatches():
+def LoadPatches(patchLimit):
   global patches, patchVel, patchAcc,connections, patchIndexLookup
+  patchNums = set()
   patches = []
   patchVel = []
   patchAcc = []
@@ -70,6 +73,8 @@ def LoadPatches():
 
   f = open("d:/pipelineOutput/patchCoords.txt")
   
+  badPatch = False
+  newPatch = True
   for l in f.readlines():
     spl = l.split(" ")
     if spl[0]=='ABS':
@@ -82,7 +87,18 @@ def LoadPatches():
       patchAcc += [(0,0,0)]
       transformLookup[patchNum] = (1,0,0,0,1,0)
     elif spl[0]=='REL':
+      if int(spl[1]) != patchNum:
+        badPatch = False
+        newPatch = True
+      else:
+        newPatch = False
+      if badPatch:
+        continue
+        
       patchNum = int(spl[1])
+      if patchNum not in patchNums and len(patchNums)==patchLimit:
+        print("Stopped loading when %d encountered" % patchNum)
+        return
       radius = int(spl[3])*RADIUS_FACTOR
       other = int(float(spl[4]))
       ta = float(spl[11])
@@ -100,7 +116,7 @@ def LoadPatches():
         
         transformLookup[patchNum] = transform
         
-        print((transform[2],transform[5]))        
+        #print((transform[2],transform[5]))        
         
         (offsetX,offsetY) = (transform[2]-otherTransform[2],transform[5]-otherTransform[5])
         
@@ -108,26 +124,36 @@ def LoadPatches():
         angle = atan2(transform[0],transform[3]) # global orientation of this patch
         distance = sqrt(offsetX*offsetX+offsetY*offsetY)
 
-        print("Location angle is %f (%f degress)" % (locationAngle,locationAngle*360/(2.0*pi)))
-        print("Angle is %f (%f degress)" % (angle,angle*360/(2.0*pi)))
-        print("Distance is %f" % distance)
+        #print("Location angle is %f (%f degress)" % (locationAngle,locationAngle*360/(2.0*pi)))
+        #print("Angle is %f (%f degress)" % (angle,angle*360/(2.0*pi)))
+        #print("Distance is %f" % distance)
       
-        print(str(other))
-        print(patchIndexLookup)
+        #print(str(other))
+        #print(patchIndexLookup)
         otherIndex = patchIndexLookup[other]
-        print("len patches="+str(len(patches))+" otherIndex="+str(otherIndex))
+        #print("len patches="+str(len(patches))+" otherIndex="+str(otherIndex))
 
-        if patchNum >= len(patches):
+        if patchNum not in patchNums:
+          patchNums.add(patchNum)
           patchIndexLookup[patchNum] = len(patches)
           patches += [(transform[2],transform[5],0.0,radius,angle)]
           patchVel += [(0,0,0)]
           patchAcc += [(0,0,0)]
-        connections += [(len(patches)-1,otherIndex,distance,
-                         AddAngle(pi,locationAngle),
-                         locationAngle)] 
+        else:
+          if Distance(patches[-1][0],patches[-1][1],transform[2],transform[5])>500:
+            print("Patch %d is a bad patch\n" % patchNum)
+            badPatch = True
+            while connections[-1][0]==len(patches)-1:
+              connections = connections[:-1]
+            patches = patches[:-1]
+            del patchIndexLookup[patchNum]
+        if not badPatch:
+          connections += [(len(patches)-1,otherIndex,distance,
+                           AddAngle(pi,locationAngle),
+                           locationAngle)] 
       else:
-        print("Error - can't find other patch %d" % other)
-        exit(0)
+        print("Patch %d can't find other patch %d (perhaps other was a bad patch)" % (patchNum,other))
+       
     else:
       printf("Unexpected tokan in LoadPatches:"+str(spl[0]))
       exit(0)
@@ -136,6 +162,7 @@ def LoadPatches():
   f.close()
   
 def SavePatches():
+  print("Saving positions...")
   f = open("d:/pipelineOutput/patchPositions.txt","w")
   
   if f:
@@ -144,6 +171,7 @@ def SavePatches():
       f.write("%d %f %f %f\n" % (patchNum,x,y,AddAngle(a,ga)))
 
   f.close()
+  print("Saved")
   
 def ConnectionForces():
   global patches,patchVel,patchAcc,connections
@@ -165,10 +193,10 @@ def ConnectionForces():
     actualAngle21 = atan2(x1-x2,y1-y2)
     adiff2 = AddAngle(actualAngle21,-currentAngle21) 
 
-    print("%f %f %f %f" % (x1,y1,x2,y2))
-    print("%f %f %f %f" % (reqx1,reqy1,reqx2,reqy2))
-    print("%f %f" % (actualAngle12,actualAngle21))
-    print("%f %f" % (currentAngle12,currentAngle21))
+    #print("%f %f %f %f" % (x1,y1,x2,y2))
+    #print("%f %f %f %f" % (reqx1,reqy1,reqx2,reqy2))
+    #print("%f %f" % (actualAngle12,actualAngle21))
+    #print("%f %f" % (currentAngle12,currentAngle21))
         
     patchAcc[p1] = ( patchAcc[p1][0]+(reqx1-x1)*CONNECT_FORCE_CONSTANT-(reqx2-x2)*CONNECT_FORCE_CONSTANT,
                      patchAcc[p1][1]+(reqy1-y1)*CONNECT_FORCE_CONSTANT-(reqy2-y2)*CONNECT_FORCE_CONSTANT,
@@ -177,8 +205,8 @@ def ConnectionForces():
                      patchAcc[p2][1]+(reqy2-y2)*CONNECT_FORCE_CONSTANT-(reqy1-y1)*CONNECT_FORCE_CONSTANT, 
                      patchAcc[p2][2]+adiff2*ANGLE_FORCE_CONSTANT-adiff1*ANGLE_FORCE_CONSTANT)
                      
-    print(patchAcc[p1])
-    print(patchAcc[p2])
+    #print(patchAcc[p1])
+    #print(patchAcc[p2])
 
 def Move():
   global patches,patchVel,patchAcc,connections
@@ -190,6 +218,46 @@ def Move():
     patchAcc[i] = (0.0,0.0,0.0)
   patchAcc[0] = (0.0,0.0,0.0)
   
+def from_rgb(rgb):
+    """translates an rgb tuple of int to a tkinter friendly color code
+    """
+    return "#%02x%02x%02x" % rgb 
+    
+def truncate(x):
+  if x<0.0:
+    return 0.0
+  if x>1.0:
+    return 1.0
+  return x
+
+def Show(links=True):
+  canvas.delete('all')
+  offset=(600,300)
+  scale=0.08
+  patchi = 0
+  patchesLen = len(patches)
+  for (x,y,a,rad,ga) in patches:
+    patchif = pi*float(patchi)/float(patchesLen)
+    
+    red = 1.0+cos(patchif)
+    green = 1.0-cos(patchif)
+    blue = 1.0*sin(patchif)
+    (red,green,blue)=(truncate(red/2),truncate(green/2),truncate(blue))
+    
+    rgb = from_rgb((int(red*255),int(green*255),int(blue*255)))
+    
+    patchi+=1
+    
+    (y,x)=(x,y)
+    canvas.create_oval(offset[0]+x*scale-rad*scale,offset[1]+y*scale-rad*scale,offset[0]+x*scale+rad*scale,offset[1]+y*scale+rad*scale, fill=rgb)
+    #canvas.create_line(offset[0]+x*scale[0],offset[1]+y*scale[1],offset[0]+x*scale[0]+rad*sin(a),offset[1]+y*scale[1]+rad*cos(a))
+  if links:
+    for (p0,p1,dist,a0,a1) in connections:
+      y,x,a,rad,ga = patches[p0]
+      canvas.create_line(offset[0]+x*scale,offset[1]+y*scale,offset[0]+x*scale+rad*0.8*cos(a+a0)*scale,offset[1]+y*scale+rad*0.8*sin(a+a0)*scale)
+      y,x,a,rad,ga = patches[p1]
+      canvas.create_line(offset[0]+x*scale,offset[1]+y*scale,offset[0]+x*scale+rad*0.8*cos(a+a1)*scale,offset[1]+y*scale+rad*0.8*sin(a+a1)*scale)
+  
 def RunIteration():
   global iterationCount
   ConnectionForces()
@@ -197,31 +265,49 @@ def RunIteration():
   
   iterationCount += 1
   
-  if iterationCount == 10:
+  if iterationCount == 50:
     SavePatches()
-    
-  canvas.delete('all')
-  offset=(400,300)
-  scale=0.2
-  for (x,y,a,rad,ga) in patches:
-    canvas.create_oval(offset[0]+x*scale-rad*scale,offset[1]+y*scale-rad*scale,offset[0]+x*scale+rad*scale,offset[1]+y*scale+rad*scale, fill='yellow')
-    #canvas.create_line(offset[0]+x*scale[0],offset[1]+y*scale[1],offset[0]+x*scale[0]+rad*sin(a),offset[1]+y*scale[1]+rad*cos(a))
-  for (p0,p1,dist,a0,a1) in connections:
-    x,y,a,rad,ga = patches[p0]
-    canvas.create_line(offset[0]+x*scale,offset[1]+y*scale,offset[0]+x*scale+rad*0.8*sin(a+a0)*scale,offset[1]+y*scale+rad*0.8*cos(a+a0)*scale)
-    x,y,a,rad,ga = patches[p1]
-    canvas.create_line(offset[0]+x*scale,offset[1]+y*scale,offset[0]+x*scale+rad*0.8*sin(a+a1)*scale,offset[1]+y*scale+rad*0.8*cos(a+a1)*scale)
+  Show()    
   window.after(10,RunIteration)
-    
-LoadPatches()
+
+def RunGrowShow():
+  global patchesToShow,filenameIndex
+  LoadPatches(patchesToShow)
+
+  for i in range(0,50):  
+    ConnectionForces()
+    Move()
+  
+  Show(False)
+  filename = "d:/pipelineOutput/patchgrowanim/patches_%06d"%filenameIndex
+  canvas.postscript(file=filename+".eps",colormode='color')
+  img = Image.open(filename + '.eps') 
+  img.save(filename + '.png', 'png') 
+  
+  filenameIndex += 1
+  if patchesToShow < patchLimit:
+    patchesToShow += 2
+  window.after(10,RunGrowShow)
+  
+if len(sys.argv)>1:
+  patchLimit = int(sys.argv[1])
+  
 #exit(0)
 window = tk.Tk()
-window.geometry('800x600')
+window.geometry('1200x700')
 window.title('L paint')
 
 # Create a canvas
-canvas = tk.Canvas(window, width=800, height=600, bg='white')
+canvas = tk.Canvas(window, width=1200, height=700, bg='white')
 canvas.pack()
-window.after(50,RunIteration)
+
+if True:
+  LoadPatches(patchLimit)
+  window.after(50,RunIteration)
+else:
+  filenameIndex = 0
+  patchesToShow = 10
+  window.after(50,RunGrowShow)
+
 window.mainloop()
     

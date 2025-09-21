@@ -200,6 +200,9 @@ void ReadPatchPoints(BigPatch *z, chunkIndex ci, std::vector<gridPoint> &gridPoi
                 exit(-1);
             }
 
+			size_t currentGridPointsSize = gridPoints.size();
+			gridPoints.resize(currentGridPointsSize+numPoints);
+			
 			for(unsigned i = 0; i<numPoints; i++)
 			{
 				float qx,qy,vx,vy,vz;
@@ -212,7 +215,7 @@ void ReadPatchPoints(BigPatch *z, chunkIndex ci, std::vector<gridPoint> &gridPoi
 				vz = bGridPoints[i].vz;
 				patch = bGridPoints[i].patch;
 				
-				gridPoints.push_back(gridPoint(qx,qy,vx,vy,vz,patch));
+				gridPoints[currentGridPointsSize+i] = gridPoint(qx,qy,vx,vy,vz,patch);
 			}
 			
 			free(compressedData);

@@ -121,6 +121,9 @@ void render(char *fname, int maskOnly)
 				zo = std::get<4>(gp);
 				patch = std::get<5>(gp);
 				
+				if (patchPosLookup.count(patch)==0)
+					continue;
+				
 				x = (int)xo;
 				y = (int)yo;
 				z = (int)zo;
@@ -258,7 +261,7 @@ int main(int argc, char *argv[])
       float x,y,angle;	  
 	  while(fscanf(f,"%d %f %f %f",&patchNum,&x,&y,&angle)==4)
 	  {
-		  angle -= 3.1415926535/2.0;
+		  if (patchNum != 0) angle -= 3.1415926535/2.0;
 		  patchPosLookup[patchNum] = std::tuple<float,float,float,float>(x,y,cos(angle),sin(angle));
 	  }
 	  

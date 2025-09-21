@@ -3,7 +3,7 @@ import sys
 import os
 from subprocess import Popen, PIPE
 import numpy as np
-from random import randint
+from random import randint,seed
 import csv
 import datetime
 import time
@@ -36,7 +36,7 @@ def FitPlane(points):
   return (left[:, -1],left[:,-2],left[:, -3])
 
 def VarianceTest(variance):
-  return variance[0]<=0.01 and variance[1]<=0.01 and variance[2]<=10000 and variance[3]<=0.01 and variance[4]<=0.01 and variance[5]<=10000
+  return variance[0]<=0.01 and variance[1]<=0.01 and variance[2]<=10 and variance[3]<=0.01 and variance[4]<=0.01 and variance[5]<=10
   
 # Run an external program, and optionally redirect the output to a file
 def Call(arguments,output=None,append=False):
@@ -57,7 +57,7 @@ def CallOutput(arguments):
 # Returns a list of the patches and relative transform that p2 aligns with
 # Empty list if nothing
 def CallAlignMulti(p1,p2):
-  process = Popen(["./align_patches5.exe", p1,p2], stdout=PIPE)
+  process = Popen(["./align_patches6.exe", p1,p2], stdout=PIPE)
   (output, err) = process.communicate()
   exit_code = process.wait()
   
@@ -72,6 +72,9 @@ def CallAlignMulti(p1,p2):
     return r
   else:
     return []
+
+
+seed(123)
     
 globalStartTime = time.time_ns()
 
@@ -88,6 +91,8 @@ VOL_OFFSET_Z = 4608
 
 # Voxel size in microns
 VOXEL_SIZE = 7.91
+
+MIN_PATCH_ITERS = 50
 
 # A seed consists of x,y,z coords + coords of two vectors that give its orientation
 seed = (3700,2408,5632,1,0,0,0,0,1)
@@ -119,14 +124,20 @@ while True:
     iterations = Call(["./simpaper8"] + [str(x) for x in seed] + ["d:/pvfs_2048_chunk_32_v2.zarr",patch,boundary])
     iterations = int(iterations)
     print("Iterations:" + str(iterations))
-    Step("interpolate")
-    Call(["./interpolate",patch,patchi])
+    if iterations >= MIN_PATCH_ITERS:
+      Step("interpolate")
+      Call(["./interpolate",patch,patchi])
 
   if patchNum==0:
+    if iterations < MIN_PATCH_ITERS:
+      print("First patch has too few iterations")
+      exit(0)
     # Initialise current surface and current boundary
     Call(["./addtobigpatch",currentSurface,patchi,str(patchNum)])
     Call(["./addtobigpatch",currentBoundary,boundary,str(patchNum)])
     StartPatchCoordFile(patchNum,False,iterations,(0,0,0))
+  elif iterations < MIN_PATCH_ITERS:
+    print("Not enough iterations")
   else:
     # Merge this patch into the current surface
     Step("align_patches")
@@ -190,7 +201,7 @@ while True:
       # Given the new patch, which points from the current boundary should we delete?
       Call(["./erasepoints",currentBoundary,patchToAdd,"0","10"])
       # Given the current suface, which points of the new boundary should not be used
-      Call(["./erasepoints",currentSurface,boundaryToAdd,"1","10"])
+      Call(["./erasepoints",currentSurface,boundaryToAdd,"1","5"])
 
       print("currentBoundary")
       print(len(CallOutput(["./listbigpatchpoints",currentBoundary]).split("\n")))
@@ -236,7 +247,7 @@ while True:
     seed = (points[0][0],points[0][1],points[0][2])
 
     # After all of that, if we find that the seed is near the edge of the volume, go back and pick another one  
-    if seed[0]-VOL_OFFSET_X>8 and seed[0]-VOL_OFFSET_X<2048-8 and seed[1]-VOL_OFFSET_Y>8 and seed[1]-VOL_OFFSET_Y<2048-8 and seed[2]-VOL_OFFSET_Z>8 and seed[2]-VOL_OFFSET_Z<2048-8:
+    if seed[0]-VOL_OFFSET_X>8 and seed[0]-VOL_OFFSET_X<2048-8 and seed[1]-VOL_OFFSET_Y>8 and seed[1]-VOL_OFFSET_Y<2048-8 and seed[2]-VOL_OFFSET_Z>8 and seed[2]-VOL_OFFSET_Z<4096-8:
       break
       
   points = np.array([[x[0] for x in points],[x[1] for x in points],[x[2] for x in points]])
