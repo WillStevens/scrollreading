@@ -1,0 +1,7 @@
+#define VOL_OFFSET_X 2688
+#define VOL_OFFSET_Y 1536
+#define VOL_OFFSET_Z 4608
+#define VOL_SIZE_X 2048
+#define VOL_SIZE_Y 2560
+#define VOL_SIZE_Z 4096
+#define QUADMESH_SIZE 6

@@ -4,6 +4,8 @@ import tkinter as tk
 import sys
 from PIL import Image
 
+import parameters
+
 iterationCount = 0
 
 # x,y,orientation,radius,angle (global orientation of patch)
@@ -28,7 +30,7 @@ ANGLE_FRICTION_CONSTANT = 0.60
 
 # Turning iterations into radius
 # Each iteration is half a radius. Then multiply by step size
-RADIUS_FACTOR = 3
+RADIUS_FACTOR = parameters.QUADMESH_SIZE/2.0
 
 def ComposeTransforms(t1,t2):
   a = t1[0]*t2[0]+t1[1]*t2[3]
@@ -63,7 +65,16 @@ def AddAngle(a,b):
     return r+2.0*pi
   return r
 
-def LoadPatches(patchLimit):
+def LoadPatchImage(patchNum):
+  image = Image.open("d:/pipelineOutput/patch_%d.tif" % patchNum).convert("L")
+  mask = Image.open("d:/pipelineOutput/patch_%d.tifm" % patchNum).convert("L")
+
+  # Turn image and mask into a single image with transparency
+  rgba = Image.merge("RGBA",(image,image,image,mask))
+  
+  rgba.save("d:/pipelineOutput/patch_%d.png" % patchNum)
+  
+def LoadPatches(patchLimit,renderPatches):
   global patches, patchVel, patchAcc,connections, patchIndexLookup
   patchNums = set()
   patches = []
@@ -79,6 +90,8 @@ def LoadPatches(patchLimit):
     spl = l.split(" ")
     if spl[0]=='ABS':
       patchNum = int(spl[1])
+      if renderPatches:
+        LoadPatchImage(patchNum)
       radius = int(spl[3])*RADIUS_FACTOR
       patchIndexLookup[patchNum] = len(patches)
       x,y,a = float(spl[4]),float(spl[5]),float(spl[6])
@@ -90,6 +103,8 @@ def LoadPatches(patchLimit):
       if int(spl[1]) != patchNum:
         badPatch = False
         newPatch = True
+        if renderPatches:
+          LoadPatchImage(patchNum)
       else:
         newPatch = False
       if badPatch:
@@ -289,8 +304,14 @@ def RunGrowShow():
     patchesToShow += 2
   window.after(10,RunGrowShow)
   
+if len(sys.argv) not in [2,3]:
+  print("Usage: patchsprings.py <number of patches> <patch detail? 0 or 1>")
+  exit(0)
+  
 if len(sys.argv)>1:
   patchLimit = int(sys.argv[1])
+
+renderPatches = len(sys.argv)>2 and int(sys.argv[2])==1
   
 #exit(0)
 window = tk.Tk()
@@ -302,7 +323,7 @@ canvas = tk.Canvas(window, width=1200, height=700, bg='white')
 canvas.pack()
 
 if True:
-  LoadPatches(patchLimit)
+  LoadPatches(patchLimit,renderPatches)
   window.after(50,RunIteration)
 else:
   filenameIndex = 0

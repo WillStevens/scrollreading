@@ -16,7 +16,7 @@
 
 #include "tiffio.h"
 
-#include "../../zarrlike/zarr_1.c"
+#include "zarr_1.c"
 
 #include "bigpatch.cpp"
 
@@ -35,6 +35,7 @@ char imageDir[FOLDERNAME_LENGTH]="";
 unsigned zOffset=0;
 
 unsigned char **rendered;
+unsigned char **mask;
 
 std::unordered_map<int,std::tuple<float,float,float,float>> patchPosLookup; 
 
@@ -156,6 +157,7 @@ void render(char *fname, int maskOnly)
 							}
 							
 							rendered[yo-miny][xo-minx] = maskOnly?255:ZARRRead_1(volumeZarr,z,y,x);
+							mask[yo-miny][xo-minx] = 255;
 						}
 						else
 						{
@@ -176,12 +178,14 @@ void render(char *fname, int maskOnly)
 			SHEET_SIZE_Y = maxy-miny+1;
 			
 			rendered = (unsigned char **)malloc(sizeof(unsigned char *)*SHEET_SIZE_Y);
+			mask = (unsigned char **)malloc(sizeof(unsigned char *)*SHEET_SIZE_Y);
 			
 			for(int y=0; y<SHEET_SIZE_Y; y++)
 			{
 				rendered[y] = (unsigned char *)malloc(sizeof(unsigned char)*SHEET_SIZE_X);
+				mask[y] = (unsigned char *)malloc(sizeof(unsigned char)*SHEET_SIZE_X);
 				for(int x=0; x<SHEET_SIZE_X; x++)
-					rendered[y][x] = 0;
+					rendered[y][x] = mask[y][x] = 0;
 			}
 		}	
     }
@@ -193,18 +197,20 @@ void render(char *fname, int maskOnly)
 	if (!maskOnly)
         ZARRClose_1(volumeZarr);
 	
-	if (1==1)
+	// tiffout = 0 : image
+	// tiffout = 1 : mask
+	for(int tiffout = 0; tiffout<2; tiffout++)
 	{
 		char tiffName[FILENAME_LENGTH];
 		strcpy(tiffName,fname);
 		/* Now write tiff file */
 		int l = strlen(tiffName);
 		if (!strcmp(tiffName+l-3,".bp"))
-		  sprintf(tiffName+l-3,".tif");
+		  sprintf(tiffName+l-3,tiffout?".tifm":".tif");
 		else if (!strcmp(tiffName+l-4,".csv"))
-		  sprintf(tiffName+l-4,".tif");	  
+		  sprintf(tiffName+l-4,tiffout?".tifm":".tif");	  
 		else if (!strcmp(tiffName+l-4,".bin"))
-		  sprintf(tiffName+l-4,".tif");	  
+		  sprintf(tiffName+l-4,tiffout?".tifm":".tif");	  
 		else
 		  return;
 		
@@ -232,7 +238,7 @@ void render(char *fname, int maskOnly)
 			{
 				for(int i=0; i<SHEET_SIZE_X; i++)
 				{
-				   ((uint8_t *)buf)[i] = rendered[row][i];
+				   ((uint8_t *)buf)[i] = (tiffout?mask:rendered)[row][i];
 				}
 				TIFFWriteScanline(tif,buf,row,0);
 			}
@@ -268,6 +274,13 @@ int main(int argc, char *argv[])
 	  render(argv[1],argc==4 && argv[3][0]=='1');
 	
 	  fclose(f);
+	  printf("%d %d\n",minx,miny);
+	}
+	else
+	{
+      patchPosLookup[0] = std::tuple<float,float,float,float>(0,0,1,0);
+	  render(argv[1],argc==4 && argv[3][0]=='1');
+	
 	  printf("%d %d\n",minx,miny);
 	}
 	

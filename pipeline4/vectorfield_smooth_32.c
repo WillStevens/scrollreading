@@ -7,7 +7,7 @@
 #define VF_RAD 2
 
 #define SIZE_X 2048
-#define SIZE_Y 2048
+#define SIZE_Y 2560
 #define SIZE_Z 4096
 
 #define CHUNK_SIZE_X 32
@@ -32,6 +32,9 @@ int main(int argc, char *argv[]) {
 	int zmin = atoi(argv[3]);
 	int zmax = atoi(argv[4]);
 	
+	int ymin = 1920;
+	int ymax = 2560;
+	
     blosc2_init();
 
 	printf("Opening ZARRs\n");
@@ -49,7 +52,7 @@ int main(int argc, char *argv[]) {
     float min=0,max=0;
 	
 	for(int zc = zmin; zc < zmax; zc+=CHUNK_SIZE_Z)
-	for(int yc = 0; yc < SIZE_Y-VF_RAD; yc+=CHUNK_SIZE_Y)
+	for(int yc = ymin; yc < ymax; yc+=CHUNK_SIZE_Y)
 	for(int xc = 0; xc < SIZE_X-VF_RAD; xc+=CHUNK_SIZE_X)
 	{
 		bool firstInChunk = true;

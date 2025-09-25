@@ -1,0 +1,11 @@
+{
+  "VOL_OFFSET_X" : 2688,
+  "VOL_OFFSET_Y" : 1536,
+  "VOL_OFFSET_Z" : 4608,
+
+  "VOL_SIZE_X" : 2048,
+  "VOL_SIZE_Y" : 2560,
+  "VOL_SIZE_Z" : 4096,
+  
+  "QUADMESH_SIZE" : 6
+}

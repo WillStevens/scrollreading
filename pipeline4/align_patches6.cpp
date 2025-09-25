@@ -58,7 +58,7 @@ affineTx AffineTxMultiply(const affineTx &m, const affineTx &n)
 	float ed = std::get<4>(n);
 	float fd = std::get<5>(n);
 	
-	return std::tuple(a*ad+b*dd,a*bd+b*ed,a*cd+b*fd+c,d*ad+e*dd,d*bd+e*ed,d*cd+e*fd+f);
+	return affineTx(a*ad+b*dd,a*bd+b*ed,a*cd+b*fd+c,d*ad+e*dd,d*bd+e*ed,d*cd+e*fd+f);
 }
 
 float Distance(float x0, float y0, float z0, float x1, float y1, float z1)
@@ -345,11 +345,11 @@ void AlignMatches(std::map<int, std::vector<match>> &matchListMap)
 			
 			    // The transformation we need to output is:
 			    // Translation of ax1 and ay1 to origin
-			    affineTx t1 = std::tuple(1,0,ax0,0,1,ay0);
+			    affineTx t1 = affineTx(1,0,ax0,0,1,ay0);
 			    // Rotate by theta
-			    affineTx r1 = std::tuple(cos(-theta),-sin(-theta),0,sin(-theta),cos(-theta),0);
+			    affineTx r1 = affineTx(cos(-theta),-sin(-theta),0,sin(-theta),cos(-theta),0);
 			    // Translation of origin back to ax0, ay0
-			    affineTx t2 = std::tuple(1,0,-ax1,0,1,-ay1);
+			    affineTx t2 = affineTx(1,0,-ax1,0,1,-ay1);
 /*
 			affineTx t1 = std::tuple(1,0,ax1,0,1,ay1);
 			// Rotate by theta

@@ -57,7 +57,7 @@ def CallOutput(arguments):
 # Returns a list of the patches and relative transform that p2 aligns with
 # Empty list if nothing
 def CallAlignMulti(p1,p2):
-  process = Popen(["./align_patches6.exe", p1,p2], stdout=PIPE)
+  process = Popen(["./align_patches6", p1,p2], stdout=PIPE)
   (output, err) = process.communicate()
   exit_code = process.wait()
   
@@ -85,17 +85,22 @@ currentSurface = outputDir+"/surface.bp"
 currentSurfaceTif = outputDir+"/surface.tif"
 areaLogFile = outputDir+"/area.txt"
 
-VOL_OFFSET_X = 2688
-VOL_OFFSET_Y = 1536
-VOL_OFFSET_Z = 4608
+# These now come from parameters.py
+#VOL_OFFSET_X = 2688
+#VOL_OFFSET_Y = 1536
+#VOL_OFFSET_Z = 4608
 
 # Voxel size in microns
 VOXEL_SIZE = 7.91
 
-MIN_PATCH_ITERS = 50
+MIN_PATCH_ITERS = 45
 
 # A seed consists of x,y,z coords + coords of two vectors that give its orientation
 seed = (3700,2408,5632,1,0,0,0,0,1)
+
+# Some seeds near the boundary between different runs of vectorfield - are there any problems at the boundary?
+#seed = (2688+526,1536+355,6680,1,0,0,0,0,1)
+#seed = (2688+1067,1536+1655,6680,1,0,0,0,0,1)
 
 patchNum = 0
 restart = False
@@ -111,11 +116,11 @@ if not restart:
 while True:
   print("Patch number "+str(patchNum))
 
-  patch = outputDir+"/patch_"+str(patchNum)+".csv"
-  boundary = outputDir+"/boundary_"+str(patchNum)+".csv"
-  boundaryf = outputDir+"/boundary_"+str(patchNum)+"_f.csv"
-  patchi = outputDir+"/patch_"+str(patchNum)+"_i.csv"
-  patchif = outputDir+"/patch_"+str(patchNum)+"_if.csv"
+  patch = outputDir+"/patch_"+str(patchNum)+".bin"
+  boundary = outputDir+"/boundary_"+str(patchNum)+".bin"
+  boundaryf = outputDir+"/boundary_"+str(patchNum)+"_f.bin"
+  patchi = outputDir+"/patch_"+str(patchNum)+"_i.bin"
+  patchif = outputDir+"/patch_"+str(patchNum)+"_if.bin"
 
   if not restart:
 
@@ -247,7 +252,7 @@ while True:
     seed = (points[0][0],points[0][1],points[0][2])
 
     # After all of that, if we find that the seed is near the edge of the volume, go back and pick another one  
-    if seed[0]-VOL_OFFSET_X>8 and seed[0]-VOL_OFFSET_X<2048-8 and seed[1]-VOL_OFFSET_Y>8 and seed[1]-VOL_OFFSET_Y<2048-8 and seed[2]-VOL_OFFSET_Z>8 and seed[2]-VOL_OFFSET_Z<4096-8:
+    if seed[0]-parameters.VOL_OFFSET_X>8 and seed[0]-parameters.VOL_OFFSET_X<parameters.VOL_SIZE_X-8 and seed[1]-parameters.VOL_OFFSET_Y>8 and seed[1]-parameters.VOL_OFFSET_Y<parameters.VOL_SIZE_Y-8 and seed[2]-parameters.VOL_OFFSET_Z>8 and seed[2]-parameters.VOL_OFFSET_Z<parameters.VOL_SIZE_Z-8:
       break
       
   points = np.array([[x[0] for x in points],[x[1] for x in points],[x[2] for x in points]])

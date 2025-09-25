@@ -1,13 +1,14 @@
 #include <stdio.h>
 
+#include "parameters.h"
+
 #define SHEET_SIZE 1000
-#define STEP_SIZE 6
 
 float paperPos[SHEET_SIZE][SHEET_SIZE][3];
 bool active[SHEET_SIZE][SHEET_SIZE];
 
-float outputPaperPos[SHEET_SIZE*STEP_SIZE][SHEET_SIZE*STEP_SIZE][3];
-bool activeOutput[SHEET_SIZE*STEP_SIZE][SHEET_SIZE*STEP_SIZE];
+float outputPaperPos[SHEET_SIZE*QUADMESH_SIZE][SHEET_SIZE*QUADMESH_SIZE][3];
+bool activeOutput[SHEET_SIZE*QUADMESH_SIZE][SHEET_SIZE*QUADMESH_SIZE];
 
 typedef struct __attribute__((packed)) {float x,y,px,py,pz;} gridPoint;
 
@@ -56,13 +57,13 @@ bool OutputSheet(char *filename)
   
   if (f)
   {	  
-    for(int x = 0; x<SHEET_SIZE*STEP_SIZE; x++)
-    for(int y = 0; y<SHEET_SIZE*STEP_SIZE; y++)
+    for(int x = 0; x<SHEET_SIZE*QUADMESH_SIZE; x++)
+    for(int y = 0; y<SHEET_SIZE*QUADMESH_SIZE; y++)
     {
 	  // output in x,y,z order 
 	  if (activeOutput[x][y])
 	  {
-		  p.x=x-(SHEET_SIZE*STEP_SIZE)/2;p.y=y-(SHEET_SIZE*STEP_SIZE)/2;
+		  p.x=x-(SHEET_SIZE*QUADMESH_SIZE)/2;p.y=y-(SHEET_SIZE*QUADMESH_SIZE)/2;
 		  p.px=outputPaperPos[x][y][0];
 		  p.py=outputPaperPos[x][y][1];
 		  p.pz=outputPaperPos[x][y][2];
@@ -80,13 +81,13 @@ void Interpolate(void)
 {
   float lower[3],upper[3];
   
-  for(int x = 0; x<SHEET_SIZE*STEP_SIZE; x++)
-  for(int y = 0; y<SHEET_SIZE*STEP_SIZE; y++)
+  for(int x = 0; x<SHEET_SIZE*QUADMESH_SIZE; x++)
+  for(int y = 0; y<SHEET_SIZE*QUADMESH_SIZE; y++)
   {
-	  int xs = x/STEP_SIZE;
-	  int ys = y/STEP_SIZE;
-	  int xm = x%STEP_SIZE;
-	  int ym = y%STEP_SIZE;
+	  int xs = x/QUADMESH_SIZE;
+	  int ys = y/QUADMESH_SIZE;
+	  int xm = x%QUADMESH_SIZE;
+	  int ym = y%QUADMESH_SIZE;
 	  
 	  // deal with the case where all 4 corners are present
 	  if (xs+1<SHEET_SIZE && ys+1<SHEET_SIZE)
@@ -95,17 +96,17 @@ void Interpolate(void)
 		{
 			// bilinear interpolation
 			
-			lower[0] = (paperPos[xs][ys][0] * (STEP_SIZE-xm) + paperPos[xs+1][ys][0] * xm)/STEP_SIZE;
-			lower[1] = (paperPos[xs][ys][1] * (STEP_SIZE-xm) + paperPos[xs+1][ys][1] * xm)/STEP_SIZE;
-			lower[2] = (paperPos[xs][ys][2] * (STEP_SIZE-xm) + paperPos[xs+1][ys][2] * xm)/STEP_SIZE;
+			lower[0] = (paperPos[xs][ys][0] * (QUADMESH_SIZE-xm) + paperPos[xs+1][ys][0] * xm)/QUADMESH_SIZE;
+			lower[1] = (paperPos[xs][ys][1] * (QUADMESH_SIZE-xm) + paperPos[xs+1][ys][1] * xm)/QUADMESH_SIZE;
+			lower[2] = (paperPos[xs][ys][2] * (QUADMESH_SIZE-xm) + paperPos[xs+1][ys][2] * xm)/QUADMESH_SIZE;
 
-			upper[0] = (paperPos[xs][ys+1][0] * (STEP_SIZE-xm) + paperPos[xs+1][ys+1][0] * xm)/STEP_SIZE;
-			upper[1] = (paperPos[xs][ys+1][1] * (STEP_SIZE-xm) + paperPos[xs+1][ys+1][1] * xm)/STEP_SIZE;
-			upper[2] = (paperPos[xs][ys+1][2] * (STEP_SIZE-xm) + paperPos[xs+1][ys+1][2] * xm)/STEP_SIZE;
+			upper[0] = (paperPos[xs][ys+1][0] * (QUADMESH_SIZE-xm) + paperPos[xs+1][ys+1][0] * xm)/QUADMESH_SIZE;
+			upper[1] = (paperPos[xs][ys+1][1] * (QUADMESH_SIZE-xm) + paperPos[xs+1][ys+1][1] * xm)/QUADMESH_SIZE;
+			upper[2] = (paperPos[xs][ys+1][2] * (QUADMESH_SIZE-xm) + paperPos[xs+1][ys+1][2] * xm)/QUADMESH_SIZE;
 			
-			outputPaperPos[x][y][0] = (lower[0]*(STEP_SIZE-ym)+upper[0]*ym)/STEP_SIZE;
-			outputPaperPos[x][y][1] = (lower[1]*(STEP_SIZE-ym)+upper[1]*ym)/STEP_SIZE;
-			outputPaperPos[x][y][2] = (lower[2]*(STEP_SIZE-ym)+upper[2]*ym)/STEP_SIZE;
+			outputPaperPos[x][y][0] = (lower[0]*(QUADMESH_SIZE-ym)+upper[0]*ym)/QUADMESH_SIZE;
+			outputPaperPos[x][y][1] = (lower[1]*(QUADMESH_SIZE-ym)+upper[1]*ym)/QUADMESH_SIZE;
+			outputPaperPos[x][y][2] = (lower[2]*(QUADMESH_SIZE-ym)+upper[2]*ym)/QUADMESH_SIZE;
 			
 			activeOutput[x][y] = true;
 		}

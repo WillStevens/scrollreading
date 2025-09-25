@@ -12,20 +12,22 @@
 
 #include <smmintrin.h>
 
-#include "../../zarrlike/zarr_c32i1b1024_tmp.c"
+#include "zarr_c32i1b1024_tmp.c"
 
 using namespace std;
+
+#include "parameters.h"
 
 #define VOL_OFFSET_X 2688
 #define VOL_OFFSET_Y 1536
 #define VOL_OFFSET_Z 4608
 
 #define VF_SIZE_X 2048
-#define VF_SIZE_Y 2048
+#define VF_SIZE_Y 2560
 #define VF_SIZE_Z 4096
 
 #define MARGIN 8 // Don't try to fill near the edges of the volume
-#define MAX_GROWTH_STEPS 150
+#define MAX_GROWTH_STEPS 225
 #define SHEET_SIZE (MAX_GROWTH_STEPS+5)
 
 #define SPRING_FORCE_CONSTANT 0.025f
@@ -36,9 +38,7 @@ using namespace std;
 #define RELAX_FORCE_THRESHHOLD 0.01f
 #define MAX_RELAX_ITERATIONS 100
 
-#define STEP_SIZE 6
-
-#define EXPECTED_DISTANCE(xd,yd) (STEP_SIZE*sqrt(xd*xd+yd*yd))
+#define EXPECTED_DISTANCE(xd,yd) (QUADMESH_SIZE*sqrt(xd*xd+yd*yd))
 
 typedef union {
 	__m128 m;
@@ -206,24 +206,24 @@ bool InitialiseSeed(void)
   paperSheet[SHEET_SIZE/2][SHEET_SIZE/2].pos.f[2] = seeds[currentSeed][2];
   SetVectorField(SHEET_SIZE/2,SHEET_SIZE/2);
   
-  paperSheet[SHEET_SIZE/2][SHEET_SIZE/2+1].pos.f[0] = seeds[currentSeed][0]+STEP_SIZE*seeds[currentSeed][3];
-  paperSheet[SHEET_SIZE/2][SHEET_SIZE/2+1].pos.f[1] = seeds[currentSeed][1]+STEP_SIZE*seeds[currentSeed][4];
-  paperSheet[SHEET_SIZE/2][SHEET_SIZE/2+1].pos.f[2] = seeds[currentSeed][2]+STEP_SIZE*seeds[currentSeed][5];
+  paperSheet[SHEET_SIZE/2][SHEET_SIZE/2+1].pos.f[0] = seeds[currentSeed][0]+QUADMESH_SIZE*seeds[currentSeed][3];
+  paperSheet[SHEET_SIZE/2][SHEET_SIZE/2+1].pos.f[1] = seeds[currentSeed][1]+QUADMESH_SIZE*seeds[currentSeed][4];
+  paperSheet[SHEET_SIZE/2][SHEET_SIZE/2+1].pos.f[2] = seeds[currentSeed][2]+QUADMESH_SIZE*seeds[currentSeed][5];
   SetVectorField(SHEET_SIZE/2,SHEET_SIZE/2+1);
 
-  paperSheet[SHEET_SIZE/2][SHEET_SIZE/2-1].pos.f[0] = seeds[currentSeed][0]-STEP_SIZE*seeds[currentSeed][3];
-  paperSheet[SHEET_SIZE/2][SHEET_SIZE/2-1].pos.f[1] = seeds[currentSeed][1]-STEP_SIZE*seeds[currentSeed][4];
-  paperSheet[SHEET_SIZE/2][SHEET_SIZE/2-1].pos.f[2] = seeds[currentSeed][2]-STEP_SIZE*seeds[currentSeed][5];
+  paperSheet[SHEET_SIZE/2][SHEET_SIZE/2-1].pos.f[0] = seeds[currentSeed][0]-QUADMESH_SIZE*seeds[currentSeed][3];
+  paperSheet[SHEET_SIZE/2][SHEET_SIZE/2-1].pos.f[1] = seeds[currentSeed][1]-QUADMESH_SIZE*seeds[currentSeed][4];
+  paperSheet[SHEET_SIZE/2][SHEET_SIZE/2-1].pos.f[2] = seeds[currentSeed][2]-QUADMESH_SIZE*seeds[currentSeed][5];
   SetVectorField(SHEET_SIZE/2,SHEET_SIZE/2-1);
 
-  paperSheet[SHEET_SIZE/2+1][SHEET_SIZE/2].pos.f[0] = seeds[currentSeed][0]+STEP_SIZE*seeds[currentSeed][6];
-  paperSheet[SHEET_SIZE/2+1][SHEET_SIZE/2].pos.f[1] = seeds[currentSeed][1]+STEP_SIZE*seeds[currentSeed][7];
-  paperSheet[SHEET_SIZE/2+1][SHEET_SIZE/2].pos.f[2] = seeds[currentSeed][2]+STEP_SIZE*seeds[currentSeed][8];
+  paperSheet[SHEET_SIZE/2+1][SHEET_SIZE/2].pos.f[0] = seeds[currentSeed][0]+QUADMESH_SIZE*seeds[currentSeed][6];
+  paperSheet[SHEET_SIZE/2+1][SHEET_SIZE/2].pos.f[1] = seeds[currentSeed][1]+QUADMESH_SIZE*seeds[currentSeed][7];
+  paperSheet[SHEET_SIZE/2+1][SHEET_SIZE/2].pos.f[2] = seeds[currentSeed][2]+QUADMESH_SIZE*seeds[currentSeed][8];
   SetVectorField(SHEET_SIZE/2+1,SHEET_SIZE/2);
 
-  paperSheet[SHEET_SIZE/2-1][SHEET_SIZE/2].pos.f[0] = seeds[currentSeed][0]-STEP_SIZE*seeds[currentSeed][6];
-  paperSheet[SHEET_SIZE/2-1][SHEET_SIZE/2].pos.f[1] = seeds[currentSeed][1]-STEP_SIZE*seeds[currentSeed][7];
-  paperSheet[SHEET_SIZE/2-1][SHEET_SIZE/2].pos.f[2] = seeds[currentSeed][2]-STEP_SIZE*seeds[currentSeed][8];
+  paperSheet[SHEET_SIZE/2-1][SHEET_SIZE/2].pos.f[0] = seeds[currentSeed][0]-QUADMESH_SIZE*seeds[currentSeed][6];
+  paperSheet[SHEET_SIZE/2-1][SHEET_SIZE/2].pos.f[1] = seeds[currentSeed][1]-QUADMESH_SIZE*seeds[currentSeed][7];
+  paperSheet[SHEET_SIZE/2-1][SHEET_SIZE/2].pos.f[2] = seeds[currentSeed][2]-QUADMESH_SIZE*seeds[currentSeed][8];
   SetVectorField(SHEET_SIZE/2-1,SHEET_SIZE/2);
 
   MakeActive(SHEET_SIZE/2,SHEET_SIZE/2);
@@ -241,7 +241,7 @@ void InitExpectedDistanceLookup(void)
   for(int y = 0; y<3; y++)
   {
     for(int i = 0; i<4; i++)
-      expectedDistanceLookup[x][y].f[i] = STEP_SIZE*sqrt((x-1)*(x-1)+(y-1)*(y-1));
+      expectedDistanceLookup[x][y].f[i] = QUADMESH_SIZE*sqrt((x-1)*(x-1)+(y-1)*(y-1));
   }
 }
 
