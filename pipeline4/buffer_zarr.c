@@ -41,15 +41,15 @@ int main(int argc, char *argv[]) {
 
 	/* used for d:/pvfs_2048_chunk_32.zarr */
 	
-	scroll_vol = vs_vol_new(
+	/*scroll_vol = vs_vol_new(
         "d:/zarrs/s1_059_ome.zarr",
         "https://dl.ash2txt.org/community-uploads/bruniss/scrolls/s1/surfaces/s1_059_ome.zarr/0/");
+	*/
 	
-	/*
     volume* scroll_vol = vs_vol_new(
         "d:/zarrs/54keV_7.91um_Scroll1A.zarr/0/",
         "https://dl.ash2txt.org/full-scrolls/Scroll1/PHercParis4.volpkg/volumes_zarr_standardized/54keV_7.91um_Scroll1A.zarr/0/");
-	*/
+	
 	
 	
     // get the scroll data by reading it from the cache and downloading it if necessary

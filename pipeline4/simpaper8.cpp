@@ -18,6 +18,7 @@ using namespace std;
 
 #include "parameters.h"
 
+/* These are now in parameters.h
 #define VOL_OFFSET_X 2688
 #define VOL_OFFSET_Y 1536
 #define VOL_OFFSET_Z 4608
@@ -25,6 +26,7 @@ using namespace std;
 #define VF_SIZE_X 2048
 #define VF_SIZE_Y 2560
 #define VF_SIZE_Z 4096
+*/
 
 #define MARGIN 8 // Don't try to fill near the edges of the volume
 #define MAX_GROWTH_STEPS 225
@@ -79,7 +81,7 @@ paperPoint paperSheet[SHEET_SIZE][SHEET_SIZE] __attribute__((aligned(16)));
 // e.g. if VF_SIZE is 2048 and STRESS_BLOCK_SIZE is 16 then this array takes up 2Mb
 #define HIGH_STRESS_THRESHHOLD 0.08
 #define STRESS_BLOCK_SIZE 16
-bool highStress[VF_SIZE_Z/STRESS_BLOCK_SIZE][VF_SIZE_Y/STRESS_BLOCK_SIZE][VF_SIZE_X/STRESS_BLOCK_SIZE];
+bool highStress[VOL_SIZE_Z/STRESS_BLOCK_SIZE][VOL_SIZE_Y/STRESS_BLOCK_SIZE][VOL_SIZE_X/STRESS_BLOCK_SIZE];
 
 vect4 expectedDistanceLookup[3][3];
 
@@ -168,7 +170,7 @@ void SetVectorField(int x, int y)
   {
 	vect4 v;
 
-    if (px-VOL_OFFSET_X>=0 && px-VOL_OFFSET_X<VF_SIZE_X && py-VOL_OFFSET_Y>=0 && py-VOL_OFFSET_Y<VF_SIZE_Y && pz-VOL_OFFSET_Z>=0 && pz-VOL_OFFSET_Z<VF_SIZE_Z)
+    if (px-VOL_OFFSET_X>=0 && px-VOL_OFFSET_X<VOL_SIZE_X && py-VOL_OFFSET_Y>=0 && py-VOL_OFFSET_Y<VOL_SIZE_Y && pz-VOL_OFFSET_Z>=0 && pz-VOL_OFFSET_Z<VOL_SIZE_Z)
     {	
 		v.f[0] = ZARRRead_c32i1b1024(vectorField,pz,py,px,0)*VECTORFIELD_CONSTANT;
 		v.f[1] = ZARRRead_c32i1b1024(vectorField,pz,py,px,1)*VECTORFIELD_CONSTANT;
@@ -408,9 +410,9 @@ bool MarkHighStress(void)
 		int yb = (int)((paperSheet[x][y].pos.f[1]-VOL_OFFSET_Y)/STRESS_BLOCK_SIZE);
 		int zb = (int)((paperSheet[x][y].pos.f[2]-VOL_OFFSET_Z)/STRESS_BLOCK_SIZE);
 		
-		for(int xo = xb-(xb>0); xo <= xb+(xb+1<VF_SIZE_X/STRESS_BLOCK_SIZE); xo++)
-		for(int yo = yb-(yb>0); yo <= yb+(yb+1<VF_SIZE_Y/STRESS_BLOCK_SIZE); yo++)
-		for(int zo = zb-(zb>0); zo <= zb+(zb+1<VF_SIZE_Z/STRESS_BLOCK_SIZE); zo++)
+		for(int xo = xb-(xb>0); xo <= xb+(xb+1<VOL_SIZE_X/STRESS_BLOCK_SIZE); xo++)
+		for(int yo = yb-(yb>0); yo <= yb+(yb+1<VOL_SIZE_Y/STRESS_BLOCK_SIZE); yo++)
+		for(int zo = zb-(zb>0); zo <= zb+(zb+1<VOL_SIZE_Z/STRESS_BLOCK_SIZE); zo++)
  		{
 			highStress[zo][yo][xo] = true;
 			r = true;
@@ -553,7 +555,7 @@ int MakeNewPoints(pointSet &newPts, pointSet &newPtsPaper)
 			int px = (int)np0;
 			int py = (int)np1;
 			int pz = (int)np2;
-			if (px-VOL_OFFSET_X>=MARGIN && px-VOL_OFFSET_X<VF_SIZE_X-MARGIN && py-VOL_OFFSET_Y>=MARGIN && py-VOL_OFFSET_Y<VF_SIZE_Y-MARGIN && pz-VOL_OFFSET_Z>=MARGIN && pz-VOL_OFFSET_Z<VF_SIZE_Z-MARGIN)
+			if (px-VOL_OFFSET_X>=MARGIN && px-VOL_OFFSET_X<VOL_SIZE_X-MARGIN && py-VOL_OFFSET_Y>=MARGIN && py-VOL_OFFSET_Y<VOL_SIZE_Y-MARGIN && pz-VOL_OFFSET_Z>=MARGIN && pz-VOL_OFFSET_Z<VOL_SIZE_Z-MARGIN)
 			{
 			  if (HasHighStress(px,py,pz))
 			  {

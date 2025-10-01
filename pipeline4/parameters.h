@@ -4,4 +4,4 @@
 #define VOL_SIZE_X 2048
 #define VOL_SIZE_Y 2560
 #define VOL_SIZE_Z 4096
-#define QUADMESH_SIZE 6
+#define QUADMESH_SIZE 4

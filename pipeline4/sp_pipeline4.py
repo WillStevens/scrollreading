@@ -8,6 +8,8 @@ import csv
 import datetime
 import time
 
+import parameters
+
 def StartPatchCoordFile(patch,flipped,iterations,coords):
   f = open("d:/pipelineOutput/patchCoords.txt","w")
   f.write("ABS %d %d %d %f %f %f\n" % (patch,(1 if flipped else 0),iterations,coords[0],coords[1],coords[2]))
@@ -103,6 +105,7 @@ seed = (3700,2408,5632,1,0,0,0,0,1)
 #seed = (2688+1067,1536+1655,6680,1,0,0,0,0,1)
 
 patchNum = 0
+boundaryIter = 0
 restart = False
 
 #Restarting partway through
@@ -199,6 +202,8 @@ while True:
 
       print("currentBoundary")
       print(len(CallOutput(["./listbigpatchpoints",currentBoundary]).split("\n")))
+      Call(["./listbigpatchpoints",currentBoundary],outputDir+"/boundary_"+str(boundaryIter)+".txt")
+      boundaryIter+=1
       print("boundaryToAdd")
       print(len(CallOutput(["./listpatchpoints",boundaryToAdd]).split("\n")))
       

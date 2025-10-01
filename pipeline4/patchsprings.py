@@ -28,9 +28,11 @@ ANGLE_FORCE_CONSTANT = 0.01
 FRICTION_CONSTANT = 0.60
 ANGLE_FRICTION_CONSTANT = 0.60
 
-# Turning iterations into radius
-# Each iteration is half a radius. Then multiply by step size
-RADIUS_FACTOR = parameters.QUADMESH_SIZE/2.0
+# Factor for converting interations into approximate patch radius
+#RADIUS_FACTOR = parameters.QUADMESH_SIZE/2.0
+RADIUS_FACTOR = 4
+
+MAX_CORRECTABLE_DISTANCE = 3500
 
 def ComposeTransforms(t1,t2):
   a = t1[0]*t2[0]+t1[1]*t2[3]
@@ -155,7 +157,7 @@ def LoadPatches(patchLimit,renderPatches):
           patchVel += [(0,0,0)]
           patchAcc += [(0,0,0)]
         else:
-          if Distance(patches[-1][0],patches[-1][1],transform[2],transform[5])>500:
+          if Distance(patches[-1][0],patches[-1][1],transform[2],transform[5])>MAX_CORRECTABLE_DISTANCE:
             print("Patch %d is a bad patch\n" % patchNum)
             badPatch = True
             while connections[-1][0]==len(patches)-1:
@@ -247,8 +249,8 @@ def truncate(x):
 
 def Show(links=True):
   canvas.delete('all')
-  offset=(600,300)
-  scale=0.08
+  offset=(700,300)
+  scale=0.03
   patchi = 0
   patchesLen = len(patches)
   for (x,y,a,rad,ga) in patches:
@@ -287,7 +289,7 @@ def RunIteration():
 
 def RunGrowShow():
   global patchesToShow,filenameIndex
-  LoadPatches(patchesToShow)
+  LoadPatches(patchesToShow,False)
 
   for i in range(0,50):  
     ConnectionForces()
