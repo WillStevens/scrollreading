@@ -56,13 +56,13 @@ def AddAngle(a,b):
   return r
 
 def LoadPatchImage(patchNum):
-  image = Image.open("d:/pipelineOutput/patch_%d.tif" % patchNum).convert("L")
-  mask = Image.open("d:/pipelineOutput/patch_%d.tifm" % patchNum).convert("L")
+  image = Image.open(parameters.OUTPUT_DIR+"/patch_%d.tif" % patchNum).convert("L")
+  mask = Image.open(parameters.OUTPUT_DIR+"/patch_%d.tifm" % patchNum).convert("L")
 
   # Turn image and mask into a single image with transparency
   rgba = Image.merge("RGBA",(image,image,image,mask))
   
-  rgba.save("d:/pipelineOutputTry/patch_%d.png" % patchNum)
+  rgba.save(parameters.OUTPUT_DIR+"/patch_%d.png" % patchNum)
   
 def LoadPatches(patchLimit,renderPatches):
   global patches, patchVel, patchAcc,connections, patchIndexLookup
@@ -72,7 +72,7 @@ def LoadPatches(patchLimit,renderPatches):
   patchAcc = []
   connections = []
 
-  f = open("d:/pipelineOutput/patchCoords.txt")
+  f = open(parameters.OUTPUT_DIR+"/patchCoords.txt")
   
   badPatch = False
   newPatch = True
@@ -167,7 +167,7 @@ def LoadPatches(patchLimit,renderPatches):
   
 def SavePatches():
   print("Saving positions...")
-  f = open("d:/pipelineOutput/patchPositions.txt","w")
+  f = open(parameters.OUTPUT_DIR+"/patchPositions.txt","w")
   
   if f:
     for (patchNum,patchIndex) in patchIndexLookup.items():
@@ -283,7 +283,7 @@ def RunGrowShow():
     Move()
   
   Show(False)
-  filename = "d:/pipelineOutput/patchgrowanim/patches_%06d"%filenameIndex
+  filename = parameters.OUTPUT_DIR+"/patchgrowanim/patches_%06d"%filenameIndex
   canvas.postscript(file=filename+".eps",colormode='color')
   img = Image.open(filename + '.eps') 
   img.save(filename + '.png', 'png') 

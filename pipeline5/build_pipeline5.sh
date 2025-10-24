@@ -16,7 +16,12 @@
 # 80 buffers for zarr_1 because this is used for rendering, and we want to fit a whole row/column of a scroll in memory
 python zarrgen.py zarr_meta_1.json 80 _1 > zarr_1.c 
 python zarrgen.py zarr_meta_c128i1.json 8 _c128i1b8 > zarr_c128i1b8.c
+python zarrgen.py zarr_meta_c128i1.json 16 _c128i1b16 > zarr_c128i1b16.c
 python zarrgen.py zarr_meta_c128i1.json 128 _c128i1b128 > zarr_c128i1b128.c
+python zarrgen.py zarr_meta_c64i1.json 1 _c64i1b1 > zarr_c64i1b1.c
+python zarrgen.py zarr_meta_c64i1.json 64 _c64i1b64 > zarr_c64i1b64.c
+python zarrgen.py zarr_meta_c64i1.json 256 _c64i1b256 > zarr_c64i1b256.c
+
 
 # Generate parameters.h and parameters.py from parameters.json
 python parse_parameters.py
@@ -33,14 +38,14 @@ g++ -O3 -Wall find_nearest4.cpp -o find_nearest4 -lblosc2 -L/usr/local/lib -I/us
 g++ -O3 -Wall listbigpatchpoints.cpp -o listbigpatchpoints -lblosc2 -L/usr/local/lib -I/usr/local/include
 g++ -O3 -Wall listpatchpoints.cpp -o listpatchpoints -lblosc2 -L/usr/local/lib -I/usr/local/include
 
-# Program for rendering output
+# Program for showing output
 g++ -O3 -Wall render_from_zarr5.cpp -o render_from_zarr5 -lblosc2 -ltiff -L/usr/local/lib -I/usr/local/include
+g++ -O3 -Wall zarr_show2_64.cpp -o zarr_show2_64 -lblosc2 -ltiff -L/usr/local/lib -I/usr/local/include
 
 # Programs for downloading zarr data
-g++ -O3 -Wall buffer_zarr.c -o buffer_zarr -lblosc2 -lcurl -ljson-c -L/usr/local/lib -I/usr/local/include
+#g++ -O3 -Wall buffer_zarr.c -o buffer_zarr -lblosc2 -lcurl -ljson-c -L/usr/local/lib -I/usr/local/include
 
 # Programs for processing zarr data
 g++ -O3 -Wall papervectorfield_closest3.c -o papervectorfield_closest3 -lblosc2 -L/usr/local/lib -I/usr/local/include
+g++ -O3 -Wall vectorfield_smooth_64.c -o vectorfield_smooth_64 -lblosc2 -L/usr/local/lib -I/usr/local/include
 
-# Programs for converting outputs to other formats
-g++ -O3 -Wall patch2obj.cpp -o patch2obj

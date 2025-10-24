@@ -20,7 +20,7 @@
 	
 	"VOLUME_ZARR" : "d:/zarrs/54keV_7.91um_Scroll1A.zarr/0/",
 	"SURFACE_ZARR" : "d:/zarrs/s1_059_ome.zarr/",
-	"VF_TEMP_XARR" : "d:/pvf_2025_10_19.zarr"
+	"VF_TEMP_XARR" : "d:/pvf_2025_10_19.zarr",
 	"VECTORFIELD_ZARR" : "d:/pvfs_2025_10_19.zarr"
   },
   
