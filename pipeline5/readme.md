@@ -32,14 +32,16 @@ If you want to make your own vector field ZARR rather than download it, use the 
 papervectorfield_closest3.c   TODO - this needs to be updated to user parameters.h for every parameter
 vectorfieldsmooth_64.c        TODO - this needs to be updated to user parameters.h for every parameter
 
+You will need to download a surface prediction zarr, and also have space for a temporary zarr. This is used for the output of papervectorfield_closest3.c and the input of vectorfieldsmooth64.c.
+
 Invoke them as follows:
 
-papervectorfield_closest3 0 4096
-vectorfieldsmooth_64 0 4096
+papervectorfield_closest3 <surface zarr> <temporary zarr> 0 4096
+vectorfieldsmooth_64 <temporary> <vectorfield zarr> 0 4096
 
 (Assuming you want to process slices 0 to 4096 starting at VOL_OFFSET_Z in parameters.json)
 These are single threaded programs. You can make use of multiple CPU cores by running separate processes for different parts of the Zarr, e.g.
-papervectorfield_closest3 0 2048
-papervectorfield_closest3 2048 4096
+papervectorfield_closest3 <surface zarr> <temporary zarr> 0 2048
+papervectorfield_closest3 <surface zarr> <temporary zarr> 2048 4096
 
 N.B. The zarr this produces (like pvfs_2025_10_19.zarr) doesn't open with pythons Zarr library - I've haven't yet worked out why.
