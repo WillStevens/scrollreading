@@ -23,7 +23,7 @@ To download and run this pipeline, follow these steps:
     - *.bin - all of the patches in a binary qx,qy,vx,vy,vz format (q=quadmesh, v=volume). These are in low resolution (4-voxels per quadmesh point).
     -  patchCoords.txt - this contains the relationships between all overlapping patches, represented as an affine transformation, along with the variance of the transformations sampled.
 11. Run `python patchsprings.py` (still experimental) to refine the relationships between patches. This will produce a file patchPositions.txt
-12. You can render the surface that it produced using: `render_from_zarr5 <value of VOLUME_ZARR> <value of OUTPUT_DIR>/surface.bp <value of OUTPUT_DIR>/patchPositions.txt`
+12. You can render the surface that it produced using: `render_from_zarr5 <value of VOLUME_ZARR> <value of OUTPUT_DIR>/surface.bp <value of OUTPUT_DIR>/patchPositions.txt`. This will output a file surface.tif in the output directory.
 
 The pipeline has been run on windows (using cygwin) and on linux.
 
