@@ -35,7 +35,7 @@ The rest of the pipeline is slower - simpaper9 isn't the rate-limiting factor. T
 
 In future I'm going to explore what can be done to increase the size of patches that the patch growing program simpaper9 can produce, or alternatively force new patches to follow existing patches where they overlap - I beleive that this will reduce patch misalignment.
 
-If you want to make your own vector field ZARR rather than download it, use the programs: papervectorfield_closest3.c and vectorfieldsmooth_64.c
+If you want to make your own vector field zarr rather than download it, use the programs: papervectorfield_closest3.c and vectorfieldsmooth_64.c
 
 You will need to download a surface prediction zarr, and also have space for a temporary zarr. This is used for the output of papervectorfield_closest3.c and the input of vectorfieldsmooth64.c.
 
