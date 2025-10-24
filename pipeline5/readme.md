@@ -42,7 +42,7 @@ You will need to download a surface prediction zarr, and also have space for a t
 Invoke them as follows:
 ```
 papervectorfield_closest3 <surface zarr> <temporary zarr> 0 4096
-vectorfieldsmooth_64 <temporary> <vectorfield zarr> 0 4096
+vectorfieldsmooth_64 <temporary zarr> <vectorfield zarr> 0 4096
 ```
 (Assuming you want to process slices 0 to 4096 starting at VOL_OFFSET_Z in parameters.json)
 
