@@ -7,8 +7,8 @@ To download and run this pipeline, follow these steps:
 5. Set directory locations for the two Zarrs in parameters.json, e.g.: 	"VOLUME_ZARR" : "d:/zarrs/54keV_7.91um_Scroll1A.zarr/0/",
 	"VECTORFIELD_ZARR" : "d:/pvfs_2025_10_19.zarr"
 6. Set the output directory location (all patches and other files that the pipeline produces will be placed here), e.g.: "OUTPUT_DIR" : "d:/pipelineOutput"
-7. Run build_pipeline5.sh
-8. The pipeline is now ready to run: sp_pipeline4.py
+7. Run build_pipeline5.sh. This should only take a few seconds.
+8. The pipeline is now ready to run, run it using: sp_pipeline4.py
 9. After it has run for a few minutes, interupt it (Ctrl-C).
 10. The pipeline will have produced:
     - surface.bp - a chunked compressed data structure containing the patches at full resolution.
@@ -22,7 +22,7 @@ The pipeline has been run on windows (using cygwin) and on linux.
 
 The main problems to be resolved with this pipeline are that the positions in patchPositions.txt sometimes get misled by occasional badly-aligned patches. Also render_from_zarr5 is only approximate and doesn't stretch or distort patches - in future it will need to somehow treat patchPositions.txt like a distortion map to be applied to patches. There also seems to be a problem where more and more patches are rejected as the grown surfaces gets larger.
 
-The area-per-second performance of the patch-growing part of the pipeline (simpaper9) is similar to VC3Ds vc_grow_seg_from_seed. I tried both from the same seed point on the same hardware (single threaded, no GPU): vc_grow_seg_from_seed ran at an average speed of 50mm^2/s, simpaper9 ran at 33mm^2/s. simpaper9 has a higher quadmesh resolution (4 voxels per quadmesh coordinate) than vc_grow_seg_from_seed (20 voxels), so simpaper9 produces a larger number of quadmesh points per second (about 40000/s) than vc_grow_seg_from_seed (which must be about 2000/s). I have not tried running simpaper9 at a resolution of more than 6 voxels per quadmesh coordinate.
+The area-per-second performance of the patch-growing part of the pipeline (simpaper9) is similar to VC3Ds vc_grow_seg_from_seed. I tried both from the same seed point on the same hardware (single threaded, no GPU): vc_grow_seg_from_seed ran at an average speed of 50mm^2/s, simpaper9 ran at 33mm^2/s. simpaper9 has a higher quadmesh resolution (4 voxels per quadmesh coordinate) than vc_grow_seg_from_seed (20 voxels), so simpaper9 produces a larger number of quadmesh points per second (about 40000/s) than vc_grow_seg_from_seed (which must be about 2000/s). I have not tried running simpaper9 at a resolution lower than 6 voxels per quadmesh coordinate.
 
 The rest of the pipeline is slower - simpaper9 isn't the rate-limiting factor. There are losses due to a high degree of patch overlap, rejection of patches that don't seem to align, and due to the fact that the rest of the pipeline after simpaper9 runs at full resolution - 1 voxel per quadmesh point. It can produce 100cm"2 in about 8 hours (i.e. 0.35 mm^2/s). All of these things could probably be improved.
 
