@@ -11,12 +11,12 @@ import time
 import parameters
 
 def StartPatchCoordFile(patch,flipped,iterations,coords):
-  f = open(OUTPUT_DIR + "/patchCoords.txt","w")
+  f = open(parameters.OUTPUT_DIR + "/patchCoords.txt","w")
   f.write("ABS %d %d %d %f %f %f\n" % (patch,(1 if flipped else 0),iterations,coords[0],coords[1],coords[2]))
   f.close()
   
 def AddToPatchCoordFile(patch,flipped,iterations,l):
-  f = open(OUTPUT_DIR + "/patchCoords.txt","a")
+  f = open(parameters.OUTPUT_DIR + "/patchCoords.txt","a")
   for i in l:
     f.write("REL " + str(patch) + " " + str(1 if flipped else 0) + " " + str(iterations))
     for n in i:
@@ -38,7 +38,7 @@ def FitPlane(points):
   return (left[:, -1],left[:,-2],left[:, -3])
 
 def VarianceTest(variance):
-  return variance[0]<=MAX_ROTATE_VARIANCE and variance[1]<=MAX_ROTATE_VARIANCE and variance[2]<=MAX_TRANSLATE_VARIANCE and variance[3]<=MAX_ROTATE_VARIANCE and variance[4]<=MAX_ROTATE_VARIANCE and variance[5]<=MAX_TRANSLATE_VARIANCE
+  return variance[0]<=parameters.MAX_ROTATE_VARIANCE and variance[1]<=parameters.MAX_ROTATE_VARIANCE and variance[2]<=parameters.MAX_TRANSLATE_VARIANCE and variance[3]<=parameters.MAX_ROTATE_VARIANCE and variance[4]<=parameters.MAX_ROTATE_VARIANCE and variance[5]<=parameters.MAX_TRANSLATE_VARIANCE
   
 # Run an external program, and optionally redirect the output to a file
 def Call(arguments,output=None,append=False):
@@ -76,11 +76,11 @@ def CallAlignMulti(p1,p2):
     return []
 
 
-seed(RANDOM_SEED)
+seed(parameters.RANDOM_SEED)
     
 globalStartTime = time.time_ns()
 
-outputDir = OUTPUT_DIR
+outputDir = parameters.OUTPUT_DIR
 
 currentBoundary = outputDir+"/boundary.bp"
 currentSurface = outputDir+"/surface.bp"
@@ -88,7 +88,7 @@ currentSurfaceTif = outputDir+"/surface.tif"
 areaLogFile = outputDir+"/area.txt"
 
 # A seed consists of x,y,z coords + coords of two vectors that give its orientation
-seed = (SEED_X,SEED_Y,SEED_Z,SEED_AXIS1_X,SEED_AXIS1_Y,SEED_AXIS1_Z,SEED_AXIS2_X,SEED_AXIS2_Y,SEED_AXIS2_Z)
+seed = (parameters.SEED_X,parameters.SEED_Y,parameters.SEED_Z,parameters.SEED_AXIS1_X,parameters.SEED_AXIS1_Y,parameters.SEED_AXIS1_Z,parameters.SEED_AXIS2_X,parameters.SEED_AXIS2_Y,parameters.SEED_AXIS2_Z)
 
 patchNum = 0
 boundaryIter = 0
@@ -99,6 +99,7 @@ restart = False
 #restart = True
 
 if not restart:
+  os.makedirs(outputDir)
   os.makedirs(outputDir+"/surface.bp/surface")
   os.makedirs(outputDir+"/boundary.bp/surface")
 
@@ -115,22 +116,22 @@ while True:
 
     # Call simpaper9 with current seed to produce a patch and boundary
     Step("simpaper9")
-    iterations = Call(["./simpaper9"] + [str(x) for x in seed] + [VECTORFIELD_ZARR,patch,boundary])
+    iterations = Call(["./simpaper9"] + [str(x) for x in seed] + [parameters.VECTORFIELD_ZARR,patch,boundary])
     iterations = int(iterations)
     print("Iterations:" + str(iterations))
-    if iterations >= MIN_PATCH_ITERS:
+    if iterations >= parameters.MIN_PATCH_ITERS:
       Step("interpolate")
       Call(["./interpolate",patch,patchi])
 
   if patchNum==0:
-    if iterations < MIN_PATCH_ITERS:
+    if iterations < parameters.MIN_PATCH_ITERS:
       print("First patch has too few iterations")
       exit(0)
     # Initialise current surface and current boundary
     Call(["./addtobigpatch",currentSurface,patchi,str(patchNum)])
     Call(["./addtobigpatch",currentBoundary,boundary,str(patchNum)])
     StartPatchCoordFile(patchNum,False,iterations,(0,0,0))
-  elif iterations < MIN_PATCH_ITERS:
+  elif iterations < parameters.MIN_PATCH_ITERS:
     print("Not enough iterations")
   else:
     # Merge this patch into the current surface
@@ -195,9 +196,9 @@ while True:
       
       # For the boundary we need to work out:
       # Given the new patch, which points from the current boundary should we delete?
-      Call(["./erasepoints",currentBoundary,patchToAdd,"0",str(CURRENT_BOUNDARY_ERASE_DISTANCE)])
+      Call(["./erasepoints",currentBoundary,patchToAdd,"0",str(parameters.CURRENT_BOUNDARY_ERASE_DISTANCE)])
       # Given the current suface, which points of the new boundary should not be used
-      Call(["./erasepoints",currentSurface,boundaryToAdd,"1",str(NEW_BOUNDARY_ERASE_DISTANCE)])
+      Call(["./erasepoints",currentSurface,boundaryToAdd,"1",str(parameters.NEW_BOUNDARY_ERASE_DISTANCE)])
 
       #print("currentBoundary")
       #print(len(CallOutput(["./listbigpatchpoints",currentBoundary]).split("\n")))

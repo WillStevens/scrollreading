@@ -2,25 +2,15 @@ from math import pi,sqrt,sin,cos,atan2
 from time import sleep
 import tkinter as tk
 import sys
-import os
-import numpy as np
-from PIL import Image,ImageTk
+from PIL import Image
 
 import parameters
 
-filenameIndex = 0
-patchToAdd = 0
+iterationCount = 0
 
-patches = {}
-patchesAlt = {} # positions derived from other connections
-patchVel = {}
-patchAcc = {}
-connections = {}
+patchIndexLookup = {}
 
 transformLookup = {}
-
-patchImages = {}
-ImageRefs = [] # keep refs that canvas has so that they don't get GC
 
 CONNECT_FORCE_CONSTANT = 0.01
 ANGLE_FORCE_CONSTANT = 0.01
@@ -28,13 +18,9 @@ FRICTION_CONSTANT = 0.60
 ANGLE_FRICTION_CONSTANT = 0.60
 
 # Factor for converting interations into approximate patch radius
-#RADIUS_FACTOR = parameters.QUADMESH_SIZE/2.0
-RADIUS_FACTOR = 3
+RADIUS_FACTOR = parameters.QUADMESH_SIZE/2.0
 
-MAX_CORRECTABLE_DISTANCE = 3500
-
-centreOffset = (675,350)
-currentFocus = (0,0)
+MAX_CORRECTABLE_DISTANCE = 2000
 
 def ComposeTransforms(t1,t2):
   a = t1[0]*t2[0]+t1[1]*t2[3]
@@ -70,91 +56,114 @@ def AddAngle(a,b):
   return r
 
 def LoadPatchImage(patchNum):
-  global patchImages
-  
-  if os.path.exists("d:/pipelineOutputTry20/patch_%d.tif" % patchNum):
-    image = Image.open("d:/pipelineOutputTry20/patch_%d.tif" % patchNum).convert("L")
-    mask = Image.open("d:/pipelineOutputTry20/patch_%d.tifm" % patchNum).convert("L")
+  image = Image.open("d:/pipelineOutput/patch_%d.tif" % patchNum).convert("L")
+  mask = Image.open("d:/pipelineOutput/patch_%d.tifm" % patchNum).convert("L")
 
-    # Turn image and mask into a single image with transparency
-    rgba = Image.merge("RGBA",(image,image,image,mask))
+  # Turn image and mask into a single image with transparency
+  rgba = Image.merge("RGBA",(image,image,image,mask))
   
-    rgba.save("d:/pipelineOutputTry20/patch_%d.png" % patchNum)
-    patchImages[patchNum] = rgba
-
-def SortPatchCoords(fin):
-  """ Sort the patch coords so that the neighbours of 0 are added first, then neighbours of next lowest etc..."""
-  f = open(fin)
-
-  outlines = []
+  rgba.save("d:/pipelineOutputTry/patch_%d.png" % patchNum)
   
+def LoadPatches(patchLimit,renderPatches):
+  global patches, patchVel, patchAcc,connections, patchIndexLookup
+  patchNums = set()
+  patches = []
+  patchVel = []
+  patchAcc = []
+  connections = []
+
+  f = open("d:/pipelineOutput/patchCoords.txt")
+  
+  badPatch = False
+  newPatch = True
   for l in f.readlines():
     spl = l.split(" ")
     if spl[0]=='ABS':
-      outlines += [(0,0,l)]
-    elif spl[0]=='REL':
       patchNum = int(spl[1])
-      other = int(float(spl[4]))
-      outlines += [(other,patchNum,l)]
- 
-  f.close()
-  outlines.sort()
-
-  return outlines
-  
-def AddPatch(sortedPatches,index):
-  global renderPatches, patches, patchVel, patchAcc,connections, patchesAlt
-  
-  (other,patchNum,l) = sortedPatches[index]
-  spl = l.split(" ")
-  if spl[0]=='ABS':
-    if renderPatches:
-      LoadPatchImage(patchNum)
-    radius = int(spl[3])*RADIUS_FACTOR
-    x,y,a = float(spl[4]),float(spl[5]),float(spl[6])
-    patches[patchNum]= (x,y,a,radius,0,False)
-    patchVel[patchNum]= (0,0,0)
-    patchAcc[patchNum]= (0,0,0)
-    transformLookup[patchNum] = (1,0,0,0,1,0)
-  elif spl[0]=='REL':
-    flip = (spl[2]=='1')
-    radius = int(spl[3])*RADIUS_FACTOR
-    ta = float(spl[11])
-    tb = float(spl[12])
-    tc = float(spl[13])
-    td = float(spl[14])
-    te = float(spl[15])
-    tf = float(spl[16])
-      
-    if other in transformLookup.keys():
-      otherTransform = transformLookup[other]
-    else:
-      return False
-
-    transform = ComposeTransforms(otherTransform,(ta,tb,tc,td,te,tf))
-                        
-    (offsetX,offsetY) = (transform[2]-otherTransform[2],transform[5]-otherTransform[5])
-        
-    locationAngle = atan2(offsetX,offsetY)
-    angle = atan2(transform[0],transform[3]) # global orientation of this patch
-    distance = sqrt(offsetX*offsetX+offsetY*offsetY)
-
-    if patchNum not in patches.keys():
       if renderPatches:
         LoadPatchImage(patchNum)
-      transformLookup[patchNum] = transform
-      patches[patchNum]= (transform[2],transform[5],0.0,radius,angle,flip)
-      patchVel[patchNum]= (0,0,0)
-      patchAcc[patchNum]= (0,0,0)
-    else:
-      print("For patch %d, existing angle = %f, angle inferred via patch %d is %f" % (patchNum,patches[patchNum][4],other,angle))
-      patchesAlt[(patchNum,other)] = (transform[2],transform[5],0.0,radius,angle,flip)
-    connections[(other,patchNum)] = (distance,AddAngle(pi,locationAngle),locationAngle)
-  else:
-    print("Unexpected token in LoadPatches:"+str(spl[0]))
-    exit(0)
+      radius = int(spl[3])*RADIUS_FACTOR
+      patchIndexLookup[patchNum] = len(patches)
+      x,y,a = float(spl[4]),float(spl[5]),float(spl[6])
+      patches += [(x,y,a,radius,0)]
+      patchVel += [(0,0,0)]
+      patchAcc += [(0,0,0)]
+      transformLookup[patchNum] = (1,0,0,0,1,0)
+    elif spl[0]=='REL':
+      if int(spl[1]) != patchNum:
+        badPatch = False
+        newPatch = True
+        if renderPatches:
+          LoadPatchImage(patchNum)
+      else:
+        newPatch = False
+      if badPatch:
+        continue
+        
+      patchNum = int(spl[1])
+      if patchNum not in patchNums and len(patchNums)==patchLimit:
+        print("Stopped loading when %d encountered" % patchNum)
+        return
+      radius = int(spl[3])*RADIUS_FACTOR
+      other = int(float(spl[4]))
+      ta = float(spl[11])
+      tb = float(spl[12])
+      tc = float(spl[13])
+      td = float(spl[14])
+      te = float(spl[15])
+      tf = float(spl[16])
+
       
-  #print(patches)
+      if other in patchIndexLookup.keys() and other in transformLookup.keys():
+        otherTransform = transformLookup[other]
+
+        transform = ComposeTransforms(otherTransform,(ta,tb,tc,td,te,tf))
+                
+        #print((transform[2],transform[5]))        
+        
+        (offsetX,offsetY) = (transform[2]-otherTransform[2],transform[5]-otherTransform[5])
+        
+        locationAngle = atan2(offsetX,offsetY)
+        angle = atan2(transform[0],transform[3]) # global orientation of this patch
+        distance = sqrt(offsetX*offsetX+offsetY*offsetY)
+
+        #print("Location angle is %f (%f degress)" % (locationAngle,locationAngle*360/(2.0*pi)))
+        #print("Angle is %f (%f degress)" % (angle,angle*360/(2.0*pi)))
+        #print("Distance is %f" % distance)
+      
+        #print(str(other))
+        #print(patchIndexLookup)
+        otherIndex = patchIndexLookup[other]
+        #print("len patches="+str(len(patches))+" otherIndex="+str(otherIndex))
+
+        if patchNum not in patchNums:
+          transformLookup[patchNum] = transform # this had previous been before the if statement, which could have led to inconsistent results
+          patchNums.add(patchNum)
+          patchIndexLookup[patchNum] = len(patches)
+          patches += [(transform[2],transform[5],0.0,radius,angle)]
+          patchVel += [(0,0,0)]
+          patchAcc += [(0,0,0)]
+        else:
+          if Distance(patches[-1][0],patches[-1][1],transform[2],transform[5])>MAX_CORRECTABLE_DISTANCE:
+            print("Patch %d is a bad patch\n" % patchNum)
+            badPatch = True
+            while connections[-1][0]==len(patches)-1:
+              connections = connections[:-1]
+            patches = patches[:-1]
+            del patchIndexLookup[patchNum]
+        if not badPatch:
+          connections += [(len(patches)-1,otherIndex,distance,
+                           AddAngle(pi,locationAngle),
+                           locationAngle)] 
+      else:
+        print("Patch %d can't find other patch %d (perhaps other was a bad patch)" % (patchNum,other))
+       
+    else:
+      printf("Unexpected tokan in LoadPatches:"+str(spl[0]))
+      exit(0)
+      
+  print(patches)
+  f.close()
   
 def SavePatches():
   print("Saving positions...")
@@ -225,22 +234,13 @@ def truncate(x):
     return 1.0
   return x
 
-def Show(highlightedIndex,links=True):
-  global renderPatches,ImageRefs,sortedPatches,currentOffset,currentFocus,mode,filenameIndex
-  ImageRefs = []
+def Show(links=True):
   canvas.delete('all')
-  offset=(centreOffset[0]-currentFocus[0],centreOffset[1]-currentFocus[1])
-  scale=0.3
+  offset=(750,300)
+  scale=0.15
   patchi = 0
   patchesLen = len(patches)
-  focus=currentFocus
-  for patchNum in patches.keys():
-    alternate = (sortedPatches[highlightedIndex][1],sortedPatches[highlightedIndex][0])
-    if patchNum == alternate[0] and alternate in patchesAlt.keys():
-      (x,y,a,rad,ga,flip) = patchesAlt[alternate]
-    else:
-      (x,y,a,rad,ga,flip) = patches[patchNum]
-
+  for (x,y,a,rad,ga) in patches:
     patchif = pi*float(patchi)/float(patchesLen)
     
     red = 1.0+cos(patchif)
@@ -252,66 +252,16 @@ def Show(highlightedIndex,links=True):
     
     patchi+=1
     
-    (y,x)=(-x,y)
-
-    if not renderPatches:
-      canvas.create_oval(offset[0]+x*scale-rad*scale,offset[1]+y*scale-rad*scale,offset[0]+x*scale+rad*scale,offset[1]+y*scale+rad*scale, fill=rgb)
-      #canvas.create_line(offset[0]+x*scale[0],offset[1]+y*scale[1],offset[0]+x*scale[0]+rad*sin(a),offset[1]+y*scale[1]+rad*cos(a))
-    if renderPatches and patchNum in patchImages.keys():
-      rgba = patchImages[patchNum]
-      if patchNum == sortedPatches[highlightedIndex][1] or patchNum == sortedPatches[highlightedIndex][0]:
-        arr = np.array(rgba,dtype=np.float32)
-        if patchNum == sortedPatches[highlightedIndex][1]:
-          arr[...,0] *= 1.5
-          focus = (x*scale,y*scale)
-        if patchNum == sortedPatches[highlightedIndex][0]:
-          arr[...,1] *= 1.5
-        np.clip(arr,0,255,out=arr)
-        arr = arr.astype(np.uint8,copy=False)
-        rgba = Image.fromarray(arr)
-      if flip:
-        rgba = rgba.transpose(Image.FLIP_LEFT_RIGHT)
-      scale_factor = scale*RADIUS_FACTOR*2
-      rgba = rgba.resize((int(rgba.size[0]*scale_factor),int(rgba.size[1]*scale_factor)),Image.Resampling.LANCZOS)
-      if patchNum != 0:
-        rgba = rgba.rotate(ga*360.0/(2*3.141592))
-      else:
-        rgba = rgba.rotate(90)
-      rgba = ImageTk.PhotoImage(rgba)
-      ImageRefs += [rgba]
-      canvas.create_image(offset[0]+x*scale-rad*scale,offset[1]+y*scale-rad*scale, image = rgba, anchor = tk.NW)
-    if renderPatches and patchNum not in patchImages.keys():
-      print("Patch image not loaded %d" % patchNum) 
-  if links and not renderPatches:
-    for (other,patchNum) in connections.keys():
-      (dist,a0,a1) = connections[(other,patchNum)]
-      # TODO - need to do (y,x)=(-x,y)
-      y,x,a,rad,ga = patches[patchNum]
+    (y,x)=(x,y)
+    canvas.create_oval(offset[0]+x*scale-rad*scale,offset[1]+y*scale-rad*scale,offset[0]+x*scale+rad*scale,offset[1]+y*scale+rad*scale, fill=rgb)
+    #canvas.create_line(offset[0]+x*scale[0],offset[1]+y*scale[1],offset[0]+x*scale[0]+rad*sin(a),offset[1]+y*scale[1]+rad*cos(a))
+  if links:
+    for (p0,p1,dist,a0,a1) in connections:
+      y,x,a,rad,ga = patches[p0]
       canvas.create_line(offset[0]+x*scale,offset[1]+y*scale,offset[0]+x*scale+rad*0.8*cos(a+a0)*scale,offset[1]+y*scale+rad*0.8*sin(a+a0)*scale)
-      y,x,a,rad,ga = patches[other]
+      y,x,a,rad,ga = patches[p1]
       canvas.create_line(offset[0]+x*scale,offset[1]+y*scale,offset[0]+x*scale+rad*0.8*cos(a+a1)*scale,offset[1]+y*scale+rad*0.8*sin(a+a1)*scale)
-
-  canvas.create_text(50,15,text=str(highlightedIndex),font=("Arial",16),fill="black")
-  canvas.create_text(50,35,text=str(sortedPatches[highlightedIndex][1]),font=("Arial",16),fill="red")
-  canvas.create_text(50,55,text=str(sortedPatches[highlightedIndex][0]),font=("Arial",16),fill="green")
-  canvas.create_text(50,75,text=mode,font=("Arial",16),fill="green")
-
   
-  filename = "d:/pipelineOutputTry20/patchgrowanim2/patches_%06d"%filenameIndex
-  canvas.postscript(file=filename+".eps",pagewidth="18.75i",pageheight="9.72222i",colormode='color')
-  img = Image.open(filename + '.eps') 
-  img.save(filename + '.png', 'png') 
-  filenameIndex += 1
-  
-  
-  print(currentFocus)
-  print(focus)
-  if Distance(focus[0],focus[1],currentFocus[0],currentFocus[1])>200:
-    currentFocus = ((4*currentFocus[0]+focus[0])/5,(4*currentFocus[1]+focus[1])/5)
-    return False
-  else:
-    return True
-    
 def RunIteration():
   global iterationCount
   ConnectionForces()
@@ -324,32 +274,25 @@ def RunIteration():
   Show()    
   window.after(10,RunIteration)
 
+def RunGrowShow():
+  global patchesToShow,filenameIndex
+  LoadPatches(patchesToShow,False)
 
-def DoShow():
-  if Show(patchToAdd):
-    window.after(500,AddPatches)
-  else:
-    window.after(100,DoShow)
+  for i in range(0,50):  
+    ConnectionForces()
+    Move()
   
-def AddPatches():
-  global patchToAdd
-  if mode=='WAIT':
-    return
-  patchToAdd+=1
-  print("(other,patchNum) = (" + str(sortedPatches[patchToAdd][0]) + "," + str(sortedPatches[patchToAdd][1]) + ")")
-  AddPatch(sortedPatches,patchToAdd)
-  DoShow()
-
-def keydown(e):
-  global mode
-  print("'"+e.char+"'")  
-  print(mode)
-  if e.char == ' ' and mode=="WAIT":
-    mode='ADDING'
-    AddPatches()
-  elif e.char == ' ' and mode=='ADDING':
-    mode='WAIT'
-	
+  Show(False)
+  filename = "d:/pipelineOutput/patchgrowanim/patches_%06d"%filenameIndex
+  canvas.postscript(file=filename+".eps",colormode='color')
+  img = Image.open(filename + '.eps') 
+  img.save(filename + '.png', 'png') 
+  
+  filenameIndex += 1
+  if patchesToShow < patchLimit:
+    patchesToShow += 2
+  window.after(10,RunGrowShow)
+  
 if len(sys.argv) not in [2,3]:
   print("Usage: patchsprings.py <number of patches> <patch detail? 0 or 1>")
   exit(0)
@@ -358,7 +301,7 @@ if len(sys.argv)>1:
   patchLimit = int(sys.argv[1])
 
 renderPatches = len(sys.argv)>2 and int(sys.argv[2])==1
-
+  
 #exit(0)
 window = tk.Tk()
 window.geometry('1350x700')
@@ -366,17 +309,15 @@ window.title('L paint')
 
 # Create a canvas
 canvas = tk.Canvas(window, width=1350, height=700, bg='white')
-canvas.bind("<KeyPress>", keydown)
-canvas.focus_set()
 canvas.pack()
 
-mode = "WAIT"
-
 if True:
-  sortedPatches = SortPatchCoords("d:/pipelineOutputTry20/patchCoords.txt")
-  AddPatch(sortedPatches,patchToAdd)
-  Show(patchToAdd)
-  
+  LoadPatches(patchLimit,renderPatches)
+  window.after(50,RunIteration)
+else:
+  filenameIndex = 0
+  patchesToShow = 10
+  window.after(50,RunGrowShow)
 
 window.mainloop()
     

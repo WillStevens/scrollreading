@@ -8,27 +8,27 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <blosc2.h>
-typedef int8_t ZARRType_c128i1b8;
+typedef int8_t ZARRType_c128i1b16;
 
 typedef struct {
     int locationRootLength;
     char *location;
   
-    unsigned char compressedData[sizeof(ZARRType_c128i1b8)*8388608+BLOSC2_MAX_OVERHEAD];
-    ZARRType_c128i1b8 buffers[8][128][128][128][4];
-    int bufferIndex[8][4];
-    unsigned char written[8];
-    uint64_t bufferUsed[8];
-    ZARRType_c128i1b8 (*buffer)[128][128][128][4];
+    unsigned char compressedData[sizeof(ZARRType_c128i1b16)*8388608+BLOSC2_MAX_OVERHEAD];
+    ZARRType_c128i1b16 buffers[16][128][128][128][4];
+    int bufferIndex[16][4];
+    unsigned char written[16];
+    uint64_t bufferUsed[16];
+    ZARRType_c128i1b16 (*buffer)[128][128][128][4];
 
     int index;
   
     uint64_t counter;
-} ZARR_c128i1b8;
+} ZARR_c128i1b16;
 
-ZARR_c128i1b8 *ZARROpen_c128i1b8(const char *location)
+ZARR_c128i1b16 *ZARROpen_c128i1b16(const char *location)
 {
-	ZARR_c128i1b8 *z = (ZARR_c128i1b8 *)malloc(sizeof(ZARR_c128i1b8));
+	ZARR_c128i1b16 *z = (ZARR_c128i1b16 *)malloc(sizeof(ZARR_c128i1b16));
 	
 	z->locationRootLength = strlen(location);
 	
@@ -37,7 +37,7 @@ ZARR_c128i1b8 *ZARROpen_c128i1b8(const char *location)
 	z->buffer = NULL;
 	z->index = -1;
 
-    for(int i = 0; i<8; i++)
+    for(int i = 0; i<16; i++)
 	{
 	  z->written[i] = 0;
       for(int j = 0; j<4; j++)
@@ -48,20 +48,20 @@ ZARR_c128i1b8 *ZARROpen_c128i1b8(const char *location)
 	
 	z->counter = 1;
 
-    for(int i = 0; i<8; i++)
+    for(int i = 0; i<16; i++)
       z->bufferUsed[i] = 0;
   
 	return z;
 }
 
-int ZARRFlushOne_c128i1b8(ZARR_c128i1b8 *z, int i)
+int ZARRFlushOne_c128i1b16(ZARR_c128i1b16 *z, int i)
 {
     if (z->written[i])
 	{
       sprintf(z->location+z->locationRootLength,"/%d.%d.%d.%d",z->bufferIndex[i][0],z->bufferIndex[i][1],z->bufferIndex[i][2],z->bufferIndex[i][3]);
 
       blosc1_set_compressor("zstd");
-	  int compressed_len = blosc2_compress(3,1,sizeof(ZARRType_c128i1b8),z->buffers[i],sizeof(ZARRType_c128i1b8)*8388608,z->compressedData,sizeof(ZARRType_c128i1b8)*8388608+BLOSC2_MAX_OVERHEAD);
+	  int compressed_len = blosc2_compress(3,1,sizeof(ZARRType_c128i1b16),z->buffers[i],sizeof(ZARRType_c128i1b16)*8388608,z->compressedData,sizeof(ZARRType_c128i1b16)*8388608+BLOSC2_MAX_OVERHEAD);
 
       if (compressed_len <= 0) {
         return -1;
@@ -77,22 +77,22 @@ int ZARRFlushOne_c128i1b8(ZARR_c128i1b8 *z, int i)
 	return 0;
 }
 
-int ZARRFlush_c128i1b8(ZARR_c128i1b8 *z)
+int ZARRFlush_c128i1b16(ZARR_c128i1b16 *z)
 {
-	for(int i = 0; i<8; i++)
+	for(int i = 0; i<16; i++)
 	{
 		if (z->bufferIndex[i][0] != -1)
 		{
-			ZARRFlushOne_c128i1b8(z,i);
+			ZARRFlushOne_c128i1b16(z,i);
 		}
 	}
 	
 	return 0;
 }
 
-int ZARRClose_c128i1b8(ZARR_c128i1b8 *z)
+int ZARRClose_c128i1b16(ZARR_c128i1b16 *z)
 {
-    ZARRFlush_c128i1b8(z);
+    ZARRFlush_c128i1b16(z);
     free(z->location);
     free(z);
 	
@@ -100,12 +100,12 @@ int ZARRClose_c128i1b8(ZARR_c128i1b8 *z)
 }
 
 /* Make buffer point to the chunk and index contain the index*/
-int ZARRCheckChunk_c128i1b8(ZARR_c128i1b8 *z, int c[4])
+int ZARRCheckChunk_c128i1b16(ZARR_c128i1b16 *z, int c[4])
 {	
 	if (z->buffer && c[0] == z->bufferIndex[z->index][0] && c[1] == z->bufferIndex[z->index][1] && c[2] == z->bufferIndex[z->index][2] && c[3] == z->bufferIndex[z->index][3])
 		return 0;
 
-	for(z->index = 0; z->index < 8; z->index++)
+	for(z->index = 0; z->index < 16; z->index++)
 	{
 		if (1  && c[0] == z->bufferIndex[z->index][0] && c[1] == z->bufferIndex[z->index][1] && c[2] == z->bufferIndex[z->index][2] && c[3] == z->bufferIndex[z->index][3])
 		{
@@ -115,19 +115,19 @@ int ZARRCheckChunk_c128i1b8(ZARR_c128i1b8 *z, int c[4])
 		}
 	}
 		
-	for(z->index = 0; z->index < 8; z->index++)
+	for(z->index = 0; z->index < 16; z->index++)
 	{
 		if (z->bufferIndex[z->index][0]==-1)
 			break;
 	}
   	
-	if (z->index == 8)
+	if (z->index == 16)
 	{
 		/* Find the buffer that was least recently used and free it up */
 		printf("Ran out of buffers - flushing oldest\n");
 		int oldestIndex = 0;
 		uint64_t oldestAge = z->bufferUsed[0];
-		for(int i = 1; i<8; i++)
+		for(int i = 1; i<16; i++)
 		{
 			if (z->bufferUsed[i]<oldestAge)
 			{
@@ -136,7 +136,7 @@ int ZARRCheckChunk_c128i1b8(ZARR_c128i1b8 *z, int c[4])
 			}
 		}
 		
-		ZARRFlushOne_c128i1b8(z,oldestIndex);
+		ZARRFlushOne_c128i1b16(z,oldestIndex);
 		z->index = oldestIndex;
 	}
     z->bufferIndex[z->index][0] = c[0];
@@ -156,7 +156,7 @@ int ZARRCheckChunk_c128i1b8(ZARR_c128i1b8 *z, int c[4])
 	{
 		printf("Did not find file:%s\n",z->location); // Useful to display this message because it often indicates a file naming problem
 
-		memset(z->buffer,0,sizeof(ZARRType_c128i1b8)*8388608);
+		memset(z->buffer,0,sizeof(ZARRType_c128i1b16)*8388608);
 
 		//No need to count it as written to yet - if it remains empty then just leave the file as non-existent
 	    //z->written[z->index] = 1;
@@ -174,7 +174,7 @@ int ZARRCheckChunk_c128i1b8(ZARR_c128i1b8 *z, int c[4])
 		
 
         blosc1_set_compressor("zstd");
-        int decompressed_size = blosc2_decompress(z->compressedData, fsize, z->buffer, sizeof(ZARRType_c128i1b8)*8388608);
+        int decompressed_size = blosc2_decompress(z->compressedData, fsize, z->buffer, sizeof(ZARRType_c128i1b16)*8388608);
         if (decompressed_size < 0) {
             return 0;
         }
@@ -183,7 +183,7 @@ int ZARRCheckChunk_c128i1b8(ZARR_c128i1b8 *z, int c[4])
 	
 	return 0;
 }
-ZARRType_c128i1b8 ZARRRead_c128i1b8(ZARR_c128i1b8 *za,int x0,int x1,int x2,int x3)
+ZARRType_c128i1b16 ZARRRead_c128i1b16(ZARR_c128i1b16 *za,int x0,int x1,int x2,int x3)
 {
 	int c[4],m[4];
     c[0] = x0/128;
@@ -195,14 +195,14 @@ ZARRType_c128i1b8 ZARRRead_c128i1b8(ZARR_c128i1b8 *za,int x0,int x1,int x2,int x
     c[3] = x3/4;
     m[3] = x3%4;
 	
-	ZARRCheckChunk_c128i1b8(za,c);
+	ZARRCheckChunk_c128i1b16(za,c);
 	
     return (*za->buffer)[m[0]][m[1]][m[2]][m[3]];	  	  	  	  
 }
 
 
 // Read several values from the last dimensions
-void ZARRReadN_c128i1b8(ZARR_c128i1b8 *za,int x0,int x1,int x2,int x3,int n,ZARRType_c128i1b8 *v)
+void ZARRReadN_c128i1b16(ZARR_c128i1b16 *za,int x0,int x1,int x2,int x3,int n,ZARRType_c128i1b16 *v)
 {
 	int c[4],m[4];
     c[0] = x0/128;
@@ -214,12 +214,12 @@ void ZARRReadN_c128i1b8(ZARR_c128i1b8 *za,int x0,int x1,int x2,int x3,int n,ZARR
     c[3] = x3/4;
     m[3] = x3%4;
 	
-	ZARRCheckChunk_c128i1b8(za,c);
+	ZARRCheckChunk_c128i1b16(za,c);
 			  
-	memcpy(v,&(*za->buffer)[m[0]][m[1]][m[2]][m[3]],n*sizeof(ZARRType_c128i1b8));
+	memcpy(v,&(*za->buffer)[m[0]][m[1]][m[2]][m[3]],n*sizeof(ZARRType_c128i1b16));
 }
 
-int ZARRWrite_c128i1b8(ZARR_c128i1b8 *za,int x0,int x1,int x2,int x3,ZARRType_c128i1b8 value)
+int ZARRWrite_c128i1b16(ZARR_c128i1b16 *za,int x0,int x1,int x2,int x3,ZARRType_c128i1b16 value)
 {
 	int c[4],m[4];
     c[0] = x0/128;
@@ -231,7 +231,7 @@ int ZARRWrite_c128i1b8(ZARR_c128i1b8 *za,int x0,int x1,int x2,int x3,ZARRType_c1
     c[3] = x3/4;
     m[3] = x3%4;
 	
-	ZARRCheckChunk_c128i1b8(za,c);
+	ZARRCheckChunk_c128i1b16(za,c);
 			  
 	(*za->buffer)[m[0]][m[1]][m[2]][m[3]] = value;
 
@@ -241,7 +241,7 @@ int ZARRWrite_c128i1b8(ZARR_c128i1b8 *za,int x0,int x1,int x2,int x3,ZARRType_c1
 }
 
 
-void ZARRWriteN_c128i1b8(ZARR_c128i1b8 *za,int x0,int x1,int x2,int x3,int n, ZARRType_c128i1b8 *v)
+void ZARRWriteN_c128i1b16(ZARR_c128i1b16 *za,int x0,int x1,int x2,int x3,int n, ZARRType_c128i1b16 *v)
 {
 	int c[4],m[4];
     c[0] = x0/128;
@@ -253,15 +253,15 @@ void ZARRWriteN_c128i1b8(ZARR_c128i1b8 *za,int x0,int x1,int x2,int x3,int n, ZA
     c[3] = x3/4;
     m[3] = x3%4;
 	
-	ZARRCheckChunk_c128i1b8(za,c);
+	ZARRCheckChunk_c128i1b16(za,c);
 			  
-	memcpy(&(*za->buffer)[m[0]][m[1]][m[2]][m[3]],v,n*sizeof(ZARRType_c128i1b8));
+	memcpy(&(*za->buffer)[m[0]][m[1]][m[2]][m[3]],v,n*sizeof(ZARRType_c128i1b16));
 
 	za->written[za->index] = 1;  
 }
 
 // Assumes that we have already written at least once to this chunk
-void ZARRNoCheckWriteN_c128i1b8(ZARR_c128i1b8 *za,int x0,int x1,int x2,int x3,int n, ZARRType_c128i1b8 *v)
+void ZARRNoCheckWriteN_c128i1b16(ZARR_c128i1b16 *za,int x0,int x1,int x2,int x3,int n, ZARRType_c128i1b16 *v)
 {
 	int m[4];
     m[0] = x0%128;
@@ -269,7 +269,7 @@ void ZARRNoCheckWriteN_c128i1b8(ZARR_c128i1b8 *za,int x0,int x1,int x2,int x3,in
     m[2] = x2%128;
     m[3] = x3%4;
 	
-	memcpy(&(*za->buffer)[m[0]][m[1]][m[2]][m[3]],v,n*sizeof(ZARRType_c128i1b8));
+	memcpy(&(*za->buffer)[m[0]][m[1]][m[2]][m[3]],v,n*sizeof(ZARRType_c128i1b16));
 
 	za->written[za->index] = 1;  
 }

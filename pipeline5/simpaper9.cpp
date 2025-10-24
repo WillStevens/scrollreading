@@ -12,7 +12,7 @@
 
 #include <smmintrin.h>
 
-#include "zarr_c128i1b128.c"
+#include "zarr_c64i1b256.c"
 
 using namespace std;
 
@@ -82,13 +82,13 @@ paperPoint paperSheet[SHEET_SIZE][SHEET_SIZE] __attribute__((aligned(16)));
 // Don't need full resolution, so this shouldn't take up too much space
 // e.g. if VF_SIZE is 2048 and STRESS_BLOCK_SIZE is 16 then this array takes up 2Mb
 //#define HIGH_STRESS_THRESHHOLD 0.08
-#define HIGH_STRESS_THRESHHOLD 0.8
+//#define HIGH_STRESS_THRESHHOLD 0.8
 #define STRESS_BLOCK_SIZE 16
 bool highStress[VOL_SIZE_Z/STRESS_BLOCK_SIZE][VOL_SIZE_Y/STRESS_BLOCK_SIZE][VOL_SIZE_X/STRESS_BLOCK_SIZE];
 
 vect4 expectedDistanceLookup[3][3];
 
-ZARR_c128i1b128 *vectorField;
+ZARR_c64i1b256 *vectorField;
 
 void MakeActive(int x, int y)
 {
@@ -134,7 +134,7 @@ float GetDistanceAtPoint(const pointInt &p)
 
 	if (distanceLookup.count(p) == 0)
 	{
-		distanceLookup[p] = ZARRRead_c128i1b128(vectorField,zp,yp,xp,3);
+		distanceLookup[p] = ZARRRead_c64i1b256(vectorField,zp,yp,xp,3);
 	}
 	return distanceLookup[p];
 }
@@ -175,9 +175,9 @@ void SetVectorField(int x, int y)
 
     if (px-VOL_OFFSET_X>=0 && px-VOL_OFFSET_X<VOL_SIZE_X && py-VOL_OFFSET_Y>=0 && py-VOL_OFFSET_Y<VOL_SIZE_Y && pz-VOL_OFFSET_Z>=0 && pz-VOL_OFFSET_Z<VOL_SIZE_Z)
     {	
-		v.f[0] = ZARRRead_c128i1b128(vectorField,pz,py,px,0)*VECTORFIELD_CONSTANT;
-		v.f[1] = ZARRRead_c128i1b128(vectorField,pz,py,px,1)*VECTORFIELD_CONSTANT;
-		v.f[2] = ZARRRead_c128i1b128(vectorField,pz,py,px,2)*VECTORFIELD_CONSTANT;
+		v.f[0] = ZARRRead_c64i1b256(vectorField,pz,py,px,0)*VECTORFIELD_CONSTANT;
+		v.f[1] = ZARRRead_c64i1b256(vectorField,pz,py,px,1)*VECTORFIELD_CONSTANT;
+		v.f[2] = ZARRRead_c64i1b256(vectorField,pz,py,px,2)*VECTORFIELD_CONSTANT;
 		v.f[3] = 0;
 		
 	}
@@ -617,7 +617,7 @@ int main(int argc, char *argv[])
 { 
   if (argc != 9+4)
   {
-	printf("Usage: simpaper6 <seed> <vector field zarr> <surface points output> <boundary points>\n");
+	printf("Usage: simpaper9 <seed> <vector field zarr> <surface points output> <boundary points>\n");
 	printf("Where seed is x,y,z,ax,ay,az,bx,by,bz - coordinates and two vectors specifying orientation of plane\n");
 	return -1;
   }
@@ -630,21 +630,25 @@ int main(int argc, char *argv[])
   pointSet newPtsPaper;
   pointSet newPts;
 
-  vectorField = ZARROpen_c128i1b128(argv[9+1]);
+  vectorField = ZARROpen_c64i1b256(argv[9+1]);
   InitExpectedDistanceLookup();
   
   InitialiseSeed();
   
-  int i;  
+  int i;
+  int totIters=0;
+  float f;  
   for(i = 0; i<MAX_GROWTH_STEPS; i++)
   {
     printf("#");
 	fflush(stdout);
     int j = 0;
-    while (j<10 || (ForcesAndMove()>RELAX_FORCE_THRESHHOLD && j<MAX_RELAX_ITERATIONS))
+    while (((f=ForcesAndMove())>RELAX_FORCE_THRESHHOLD && j<MAX_RELAX_ITERATIONS) || j<MIN_RELAX_ITERATIONS)
 	{
+	  //printf("Largest force:%f\n",f);
       j++;
 	}
+	totIters += j;
 	
 	if (MarkHighStress())
 	{
@@ -665,11 +669,12 @@ int main(int argc, char *argv[])
   }
   
   printf("\n");
+  printf("Mean relaxation iterations:%f\n",((float)totIters)/(float)i);
   
   BinOutput(argv[9+2]);
   BinBoundaryOutput(argv[9+3],newPts,newPtsPaper);
   
-  ZARRClose_c128i1b128(vectorField);
+  ZARRClose_c64i1b256(vectorField);
   
   
   return i;

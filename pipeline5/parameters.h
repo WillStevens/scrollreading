@@ -1,5 +1,5 @@
 /* Parameters shared by several programs */
-#define OUTPUT_DIR d:/pipelineOutput
+#define OUTPUT_DIR "d:/pipelineOutput"
 #define VOL_OFFSET_X 2176
 #define VOL_OFFSET_Y 1536
 #define VOL_OFFSET_Z 4608
@@ -9,8 +9,8 @@
 #define QUADMESH_SIZE 4
 #define VOXEL_SIZE 7.91
 #define RANDOM_SEED 123
-#define VOLUME_ZARR d:/zarrs/54keV_7.91um_Scroll1A.zarr/0/
-#define VECTORFIELD_ZARR d:/pvf_2025_10_19.zarr
+#define VOLUME_ZARR "d:/zarrs/54keV_7.91um_Scroll1A.zarr/0/"
+#define VECTORFIELD_ZARR "d:/pvfs_2025_10_19.zarr"
 /* The initial seed point */
 #define SEED_X 3700
 #define SEED_Y 2408
@@ -28,13 +28,15 @@
 #define BEND_FORCE_CONSTANT 0.025
 /* This is select so as to make the system critically damped */
 #define FRICTION_CONSTANT 0.6
-/* Factor of 1/73.0f was added when changing to single-byte vector field. Divide by spring force constant to make inner loop of Forces faster */
-#define VECTORFIELD_CONSTANT ((0.05/73.0)/SPRING_FORCE_CONSTANT)
-#define RELAX_FORCE_THRESHHOLD 0.01
+/* VECTORFIELD_CONSTANT is ((0.02/125.0)/SPRING_FORCE_CONSTANT). Factor of 1/125.0f is inverse of max value in fector field zarr. Divide by spring force constant to make inner loop of Forces faster */
+#define VECTORFIELD_CONSTANT 0.0032
+#define RELAX_FORCE_THRESHHOLD 0.04
 #define MAX_RELAX_ITERATIONS 100
+#define MIN_RELAX_ITERATIONS 15
+#define HIGH_STRESS_THRESHHOLD 0.1
 /* Parameters related to testing patches and adding them to a surface */
 #define MAX_ROTATE_VARIANCE 0.1
-#define MAX_TRANSLATE_VARIANCE 10
+#define MAX_TRANSLATE_VARIANCE 50
 /* If any points on the current boundary are within this distance of any points in the patch, erase them. Okay to be overzealous. */
 #define CURRENT_BOUNDARY_ERASE_DISTANCE 10
 /* If any points on the boundary to add are within this distance of the current surface, erase them */

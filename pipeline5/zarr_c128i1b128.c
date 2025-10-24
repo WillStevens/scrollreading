@@ -151,10 +151,10 @@ int ZARRCheckChunk_c128i1b128(ZARR_c128i1b128 *z, int c[4])
 
     FILE *f = fopen(z->location,"rb");
 
-    printf("Opening:%s\n",z->location);	
+    //printf("Opening:%s\n",z->location);	
 	if (!f)
 	{
-		printf("Did not find file\n");
+		printf("Did not find file:%s\n",z->location); // Useful to display this message because it often indicates a file naming problem
 
 		memset(z->buffer,0,sizeof(ZARRType_c128i1b128)*8388608);
 

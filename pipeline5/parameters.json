@@ -19,7 +19,9 @@
 	"RANDOM_SEED" : 123,
 	
 	"VOLUME_ZARR" : "d:/zarrs/54keV_7.91um_Scroll1A.zarr/0/",
-	"VECTORFIELD_ZARR" : "d:/pvf_2025_10_19.zarr"
+	"SURFACE_ZARR" : "d:/zarrs/s1_059_ome.zarr/",
+	"VF_TEMP_XARR" : "d:/pvf_2025_10_19.zarr"
+	"VECTORFIELD_ZARR" : "d:/pvfs_2025_10_19.zarr"
   },
   
   "seed" : {
@@ -47,16 +49,19 @@
     "__comment__1" : "This is select so as to make the system critically damped",
     "FRICTION_CONSTANT" : 0.6,
 	
-    "__comment__2" : "Factor of 1/73.0f was added when changing to single-byte vector field. Divide by spring force constant to make inner loop of Forces faster",	
-    "VECTORFIELD_CONSTANT" : "((0.05/73.0)/SPRING_FORCE_CONSTANT)",
-	"RELAX_FORCE_THRESHHOLD" : 0.01,
-    "MAX_RELAX_ITERATIONS" : 100
+    "__comment__2" : "VECTORFIELD_CONSTANT is ((0.02/125.0)/SPRING_FORCE_CONSTANT). Factor of 1/125.0f is inverse of max value in fector field zarr. Divide by spring force constant to make inner loop of Forces faster",	
+    "VECTORFIELD_CONSTANT" : 0.0032,
+	"RELAX_FORCE_THRESHHOLD" : 0.04,
+    "MAX_RELAX_ITERATIONS" : 100,
+    "MIN_RELAX_ITERATIONS" : 15,
+	
+	"HIGH_STRESS_THRESHHOLD" : 0.1
   },
   
   "patch_add" : {
     "__comment__" : "Parameters related to testing patches and adding them to a surface",
 	"MAX_ROTATE_VARIANCE" : 0.1,
-	"MAX_TRANSLATE_VARIANCE" : 10,
+	"MAX_TRANSLATE_VARIANCE" : 50,
 	
 	"__comment__1" : "If any points on the current boundary are within this distance of any points in the patch, erase them. Okay to be overzealous.",
 	"CURRENT_BOUNDARY_ERASE_DISTANCE" : 10,

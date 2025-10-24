@@ -59,7 +59,7 @@ int main(int argc,char *argv[])
 		DilateChunkIndices(chunkIndices);
 		
 		bool first = true;
-		float x,y,xp,yp,zp,r2;
+		float xp,yp,zp,r2;
         int patch;
 		
 		for(auto const &i : chunkIndices)
@@ -69,8 +69,8 @@ int main(int argc,char *argv[])
 			ReadPatchPoints(bp,i,gridPoints);
 			for(auto const &gp : gridPoints)
 			{
-				x = std::get<0>(gp);
-				y = std::get<1>(gp);
+				//x = std::get<0>(gp);
+				//y = std::get<1>(gp);
 				xp = std::get<2>(gp);
 				yp = std::get<3>(gp);
 				zp = std::get<4>(gp);

@@ -244,10 +244,10 @@ int ZARRCheckChunk"""+suffix+"""(ZARR"""+suffix+""" *z, int c[""" + str(len(meta
   print("""
     FILE *f = fopen(z->location,"rb");
 
-    printf("Opening:%s\\n",z->location);	
+    //printf("Opening:%s\\n",z->location);	
 	if (!f)
 	{
-		printf("Did not find file\\n");
+		printf("Did not find file:%s\\n",z->location); // Useful to display this message because it often indicates a file naming problem
 
 		memset(z->buffer,0,"""+ChunkBytes(metadata,suffix)+""");
 

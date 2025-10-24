@@ -17,71 +17,26 @@
 
 #define SURFACE_VALUE 255
 
-int vol_start[3] = {VOL_OFFSET_Z,VOL_OFFSET_Y,VOL_OFFSET_X};
-int chunk_dims[3] = {128,128,128};
-int chunk_start[3] = {-1,-1,-1};
-
-
 int main(int argc, char *argv[]) {
-	if (argc != 3) {
-		printf("Usage: papervectorfield_closest3 <zmin> <zmax>\n");
+	if (argc != 5) {
+		printf("Usage: papervectorfield_closest3 <surface zarr> <output zarr> <zmin> <zmax>\n");
 		printf("Use zmin and zmax to have different threads produce different parts of the output zarr\n");
 		exit(-1);
 	}
 	
-	int zmin = atoi(argv[1]);
-	int zmax = atoi(argv[2]);
+	int zmin = atoi(argv[3]);
+	int zmax = atoi(argv[4]);
 
 	int ymin = 0;
 	int ymax = VOL_SIZE_Y;
 	
     blosc2_init();
-	
+
+    ZARR_1 *surfaceZarr = ZARROpen_1(argv[1]);
     
-    //initialize the volume
-    /*
-	volume* scroll_vol = vs_vol_new(
-        "d:/zarrs/1213_aug_erode_threshold-ome.zarr/0/",
-        "http://0.0.0.0:8080/1213_aug_erode_threshold-ome.zarr/0/");
-    */
-
-
-    ZARR_1 *surfaceZarr = ZARROpen_1("D:/zarrs/s1_059_ome.zarr");
-    
-	
-	
-	/*
-	volume* scroll_vol = vs_vol_new(
-        "d:/zarrs/s1a-rectoverso-06032025-ome.zarr/0/",
-        "https://dl.ash2txt.org/other/dev/meshes/s1a-rectoverso-06032025-ome.zarr/0/");
-	*/
-	
-    // get the scroll data by reading it from the cache and downloading it if necessary
-    //scroll_chunk = vs_vol_get_chunk(scroll_vol, vol_start,chunk_dims);
-
-	/*
-	for(int z=0; z<SIZE_Z; z++)
-	{
-		slice* myslice = vs_slice_extract(scroll_chunk, z);
-
-		char fname[100];
-		
-		sprintf(fname,"tmp\\papervectorfield_test_surface_%05d.bmp",z);
-        // Write slice image to file
-        vs_bmp_write(fname,myslice);
-    }
-	*/
-
-    /*
-    static float vf[SIZE_Z-2*VF_RAD][SIZE_Y-2*VF_RAD][SIZE_X-2*VF_RAD][3];
-    static float vf_smooth[SIZE_Z-2*VF_RAD][SIZE_Y-2*VF_RAD][SIZE_X-2*VF_RAD][3];
-	static float distance[SIZE_Z-2*VF_RAD][SIZE_Y-2*VF_RAD][SIZE_X-2*VF_RAD];
-	*/
 	printf("Creating ZARR\n");
 	printf("Vector field is in the following order: x,y,z,distance\n");
-//	ZARR_c128i1b8 *vfz = ZARROpen_c128i1b8("d:/pvf_2048_i1.zarr");
-	ZARR_c128i1b8 *vfz = ZARROpen_c128i1b8("d:/temp");
-//	ZARR *vfsz = ZarrOpen("d:/pvfs_508.zarr");
+	ZARR_c128i1b8 *vfz = ZARROpen_c128i1b8(argv[2]);
 		
     // Precompute nearest voxels and associated distance and direction vector
     float sortedDistances[SORTED_DIST_SIZE][7];
@@ -147,7 +102,7 @@ int main(int argc, char *argv[]) {
 			vf[1]=0.0;
 			vf[2]=0.0;
 		
-		    uint8_t foundValue = ZARRRead_1(surfaceZarr,z+vol_start[0],y+vol_start[1],x+vol_start[2]);
+		    uint8_t foundValue = ZARRRead_1(surfaceZarr,z+VOL_OFFSET_Z,y+VOL_OFFSET_Y,x+VOL_OFFSET_X);
 			
 			{
                 int minCount = 0;
@@ -155,7 +110,7 @@ int main(int argc, char *argv[]) {
                 for(int i = 0; i<SORTED_DIST_SIZE; i++)
 				{ 
 
-                    if (ZARRRead_1(surfaceZarr,z+sortedDistances[i][3]+vol_start[0],y+sortedDistances[i][2]+vol_start[1],x+sortedDistances[i][1]+vol_start[2]) != foundValue)
+                    if (ZARRRead_1(surfaceZarr,z+sortedDistances[i][3]+VOL_OFFSET_Z,y+sortedDistances[i][2]+VOL_OFFSET_Y,x+sortedDistances[i][1]+VOL_OFFSET_X) != foundValue)
 					{
 
                         if (sortedDistances[i][0] != lastDist)
@@ -172,12 +127,12 @@ int main(int argc, char *argv[]) {
 
 								if (firstInChunk)
 								{
-									ZARRWriteN_c128i1b8(vfz,z+vol_start[0],y+vol_start[1],x+vol_start[2],0,4,vfi);
+									ZARRWriteN_c128i1b8(vfz,z+VOL_OFFSET_Z,y+VOL_OFFSET_Y,x+VOL_OFFSET_X,0,4,vfi);
 									firstInChunk = false;
 								}
 								else
 								{
-									ZARRNoCheckWriteN_c128i1b8(vfz,z+vol_start[0],y+vol_start[1],x+vol_start[2],0,4,vfi);
+									ZARRNoCheckWriteN_c128i1b8(vfz,z+VOL_OFFSET_Z,y+VOL_OFFSET_Y,x+VOL_OFFSET_X,0,4,vfi);
 								}
 
                                 break;
