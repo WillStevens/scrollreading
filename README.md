@@ -1,5 +1,5 @@
 # scrollreading
-Code and experiments related to reading the Herculanium Papyri.
+Code and experiments related to reading the Herculaneum Papyri.
 
 The aim of this project is to put together a fast autosegmentation and ink-detection pipeline. Work is currently focussed on the autosegmantation stages.
 
