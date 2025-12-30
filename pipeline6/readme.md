@@ -1,43 +1,23 @@
+This pipeline (pipeline6) is derived from pipeline5, but targets Scroll 4.
 To download and run this pipeline, follow these steps:
 
 1. Install the blosc2 and libtiff-dev C libraries.
-2. Download the vector field Zarr from here (this is from a 3072 by 3072 by 4096 region of scroll1A): https://dl.ash2txt.org/community-uploads/will/pvfs_2025_10_19.zarr.7z
-3. Download all or part of the scroll1A OME Zarr from https://dl.ash2txt.org/full-scrolls/Scroll1/PHercParis4.volpkg/volumes_zarr_standardized/54keV_7.91um_Scroll1A.zarr/0/ (This pipeline only uses the full resolution subfolder of the OME Zarr).
+2. Download a surface prediction zarr from here: (https://dl.ash2txt.org/community-uploads/bruniss/scrolls/s4/surfaces/s4_059_medial_ome.zarr/)
+3. Download all or part of the scroll 4 OME 7.91um resolution zarr from (https://dl.ash2txt.org/full-scrolls/Scroll4/PHerc1667.volpkg/volumes_zarr/20231117161658.zarr/0) (This pipeline only uses the full resolution subfolder of the OME Zarr).
 4. Do a sparse git clone to get just this pipeline5 folder:
    ```
    git clone --no-checkout https://github.com/WillStevens/scrollreading.git
    cd scrollreading
    git sparse-checkout init --no-cone
-   git sparse-checkout set pipeline5
+   git sparse-checkout set pipeline6
    git checkout @
    ```
-5. Set directory locations for the two Zarrs in parameters.json, e.g.: 	`"VOLUME_ZARR" : "d:/zarrs/54keV_7.91um_Scroll1A.zarr/0/",
-	"VECTORFIELD_ZARR" : "d:/pvfs_2025_10_19.zarr"`
+5. Set directory locations for the two Zarrs obtained above in parameters.json: "VOLUME_ZARR" and "SURFACE_ZARR"
 6. Set the output directory location (all patches and other files that the pipeline produces will be placed here), e.g.: `"OUTPUT_DIR" : "d:/pipelineOutput"`
-7. Run `bash build_pipeline5.sh`. This should only take a few seconds.
-8. The pipeline is now ready to run, run it using: `python sp_pipeline4.py`
-9. After it has run for a few minutes, interupt it (Ctrl-C).
-10. The pipeline will have produced:
-    - surface.bp - a chunked compressed data structure containing the patches at full resolution.
-    - boundary.bp - a representation of the boundary used by the pipeline to work out the next seed point.
-    - *.bin - all of the patches in a binary qx,qy,vx,vy,vz format (q=quadmesh, v=volume). These are in low resolution (4-voxels per quadmesh point).
-    -  patchCoords.txt - this contains the relationships between all overlapping patches, represented as an affine transformation, along with the variance of the transformations sampled.
-11. Run `python patchsprings.py` (still experimental) to refine the relationships between patches. This will produce a file patchPositions.txt
-12. You can render the surface that it produced using: `render_from_zarr5 <value of VOLUME_ZARR> <value of OUTPUT_DIR>/surface.bp <value of OUTPUT_DIR>/patchPositions.txt`. This will output a file surface.tif in the output directory.
+7. Run `bash build_pipeline6.sh`. This should only take a few seconds.
+8. Make your own vector field zarr using the programs: papervectorfield_closest3.c and vectorfieldsmooth_64.c
 
-The pipeline has been run on windows (using cygwin) and on linux.
-
-The main problems to be resolved with this pipeline are that the positions in patchPositions.txt sometimes get misled by occasional badly-aligned patches. Also render_from_zarr5 is only approximate and doesn't stretch or distort patches - in future it will need to somehow treat patchPositions.txt like a distortion map to be applied to patches. There also seems to be a problem where more and more patches are rejected as the grown surfaces gets larger.
-
-The area-per-second performance of the patch-growing part of the pipeline (simpaper9) is similar to VC3Ds vc_grow_seg_from_seed. I tried both from the same seed point on the same hardware (single threaded, no GPU): vc_grow_seg_from_seed ran at an average speed of 50mm^2/s, simpaper9 ran at 33mm^2/s. simpaper9 has a higher quadmesh resolution (4 voxels per quadmesh coordinate) than vc_grow_seg_from_seed (20 voxels), so simpaper9 produces a larger number of quadmesh points per second (about 40000/s) than vc_grow_seg_from_seed (which must be about 2000/s). I have not tried running simpaper9 at a resolution lower than 6 voxels per quadmesh coordinate.
-
-The rest of the pipeline is slower - simpaper9 isn't the rate-limiting factor. There are losses due to a high degree of patch overlap, rejection of patches that don't seem to align, and due to the fact that the rest of the pipeline after simpaper9 runs at full resolution - 1 voxel per quadmesh point. It can produce 100cm"2 in about 8 hours (i.e. 0.35 mm^2/s). All of these things could probably be improved.
-
-In future I'm going to explore what can be done to increase the size of patches that the patch growing program simpaper9 can produce, or alternatively force new patches to follow existing patches where they overlap - I beleive that this will reduce patch misalignment.
-
-If you want to make your own vector field zarr rather than download it, use the programs: papervectorfield_closest3.c and vectorfieldsmooth_64.c
-
-You will need to download a surface prediction zarr, and also have space for a temporary zarr. This is used for the output of papervectorfield_closest3.c and the input of vectorfieldsmooth64.c.
+These use the surface prediction zarr from step 2. You will need to have space for a temporary zarr VF_TEMP_ZARR. This is used for the output of papervectorfield_closest3.c and the input of vectorfieldsmooth_64.c and the vectorfield zarr VECTORFIELD_ZARR that vectorfieldsmooth_64.c outputs.
 
 Invoke them as follows:
 ```
@@ -51,4 +31,29 @@ These are single threaded programs. You can make use of multiple CPU cores by ru
 papervectorfield_closest3 <surface zarr> <temporary zarr> 0 2048
 papervectorfield_closest3 <surface zarr> <temporary zarr> 2048 4096
 ```
-N.B. The zarr this produces (like pvfs_2025_10_19.zarr) doesn't open with pythons zarr library - I've haven't yet worked out why.
+N.B. The zarr this produces doesn't open with pythons zarr library - I've haven't yet worked out why.
+
+9. The pipeline is now ready to run, run it using: `python sp_pipeline4.py`
+10. After it has run for a few minutes, interupt it (Ctrl-C).
+11. The pipeline will have produced:
+    - surface.bp - a chunked compressed data structure containing the patches at full resolution.
+    - boundary.bp - a representation of the boundary used by the pipeline to work out the next seed point.
+    - *.bin - all of the patches in a binary qx,qy,vx,vy,vz format (q=quadmesh, v=volume). These are in low resolution (4-voxels per quadmesh point).
+    -  patchCoords.txt - this contains the relationships between all overlapping patches, represented as an affine transformation, along with the variance of the transformations sampled.
+12. Run `python patchsprings.py` (still experimental) to refine the relationships between patches. This will produce a file patchPositions.txt
+13. You can render the surface that it produced using: `render_from_zarr5 <value of VOLUME_ZARR> <value of OUTPUT_DIR>/surface.bp <value of OUTPUT_DIR>/patchPositions.txt`. This will output a file surface.tif in the output directory.
+
+The pipeline has been run on windows (using cygwin) and on linux.
+
+The main problems to be resolved with this pipeline are that the positions in patchPositions.txt sometimes get misled by occasional badly-aligned patches. Also render_from_zarr5 is only approximate and doesn't stretch or distort patches - in future it will need to somehow treat patchPositions.txt like a distortion map to be applied to patches. There also seems to be a problem where more and more patches are rejected as the grown surfaces gets larger.
+
+This version of the pipeline (pipeline6) introduces several new programs that attempt to identify patches that result in sheet switching and misalignement. These programs are:
+
+- find_bad_patches.py : top level program for finding bad patches. Calls some of the other programs below, writes all outputs to the specified working directory.
+- make_neighbourmap.py : output patch neighbour relationships into the specified working directory.
+- find_mismatch.cpp : given a directory containing .bin patches and a <patchpositions> file, look for 2D points that map to different 3D points farther apart than the specified distance threshhold. Optionally produce graphical output showing 3D distances for each 2D point.
+- random_patch_path.py : produce a large number of random overlapping patch sequences of the specified length 
+- show_patchpositions.py : tkinter program to display a patch path produced by random_patch_path.py. Mainly used to check that random_patch_path.py is behaving correctly. Sometimes useful to help visualise and understand outputs.
+- combine_badscore.py : if find_bad_patches.py has been run separetely from several threads, use this program to combine the outputs.
+- print_badscore.py : displays the resulting bad patches.
+- patchnum_from_rgb.py : from the rgb value produced by zarr_show2_64.cpp, identify the patch number
