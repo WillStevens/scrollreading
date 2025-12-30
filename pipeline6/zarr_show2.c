@@ -55,8 +55,8 @@ void render(char *fname)
 				{
 				    ZARRReadN_c128i1b128(za,zcoord,ycoord+row,xcoord+i,0,4,vfi);
 					unsigned char pixel = sqrt(vfi[0]*vfi[0]+vfi[1]*vfi[1]+vfi[2]*vfi[2]);
-				   //((uint8_t *)buf)[i] = pixel;
-				   ((uint8_t *)buf)[i] = vfi[3];
+				   ((uint8_t *)buf)[i] = pixel;
+				   //((uint8_t *)buf)[i] = vfi[3];
 				   
 				   //overwrite if pointbuffer has something
 				   if (pointBuffer[i+row*width] == 255)

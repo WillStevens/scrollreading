@@ -53,7 +53,7 @@ int main(int argc, char *argv[]) {
 		i++;
 	  }
 
-	// Bubble sort to get them in order
+	// Bubble sort to get them in order 
 	int done = 0;
 	while(!done)
     {
@@ -142,6 +142,29 @@ int main(int argc, char *argv[]) {
                         minCount += 1;
 					}
 				}
+			
+				if (i==SORTED_DIST_SIZE && minCount>0)
+				{
+					/* If we're in a surface voxel, then point the vector away from the edge of the surface, but
+					if we're not in a surface voxel point it towards the surface */
+					vfi[0] = (int8_t)((vf[0] / minCount)*127) * (foundValue==SURFACE_VALUE?-1.0f:1.0f);
+					vfi[1] = (int8_t)((vf[1] / minCount)*127) * (foundValue==SURFACE_VALUE?-1.0f:1.0f);
+					vfi[2] = (int8_t)((vf[2] / minCount)*127) * (foundValue==SURFACE_VALUE?-1.0f:1.0f);
+					/* we need vfi[3] to be zero in a surface and 255 around the boundaries of it */
+					vfi[3] = 255-foundValue;
+
+
+					if (firstInChunk)
+					{
+						ZARRWriteN_c128i1b8(vfz,z+VOL_OFFSET_Z,y+VOL_OFFSET_Y,x+VOL_OFFSET_X,0,4,vfi);
+						firstInChunk = false;
+					}
+					else
+					{
+						ZARRNoCheckWriteN_c128i1b8(vfz,z+VOL_OFFSET_Z,y+VOL_OFFSET_Y,x+VOL_OFFSET_X,0,4,vfi);
+					}
+				}
+				
 			}
 		}
 	}}

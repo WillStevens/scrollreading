@@ -3,12 +3,17 @@ from time import sleep
 import tkinter as tk
 import sys
 from PIL import Image
+import pickle
+import random
 
 import parameters
 
 iterationCount = 0
 
-patchIndexLookup = {}
+patches = {}
+patchVel = {}
+patchAcc = {}
+connections = {}
 
 transformLookup = {}
 
@@ -20,7 +25,7 @@ ANGLE_FRICTION_CONSTANT = 0.60
 # Factor for converting interations into approximate patch radius
 RADIUS_FACTOR = parameters.QUADMESH_SIZE/2.0
 
-MAX_CORRECTABLE_DISTANCE = 2000
+MAX_CORRECTABLE_DISTANCE = 3500
 
 def ComposeTransforms(t1,t2):
   a = t1[0]*t2[0]+t1[1]*t2[3]
@@ -63,115 +68,112 @@ def LoadPatchImage(patchNum):
   rgba = Image.merge("RGBA",(image,image,image,mask))
   
   rgba.save(parameters.OUTPUT_DIR+"/patch_%d.png" % patchNum)
-  
-def LoadPatches(patchLimit,renderPatches):
-  global patches, patchVel, patchAcc,connections, patchIndexLookup
-  patchNums = set()
-  patches = []
-  patchVel = []
-  patchAcc = []
-  connections = []
 
-  f = open(parameters.OUTPUT_DIR+"/patchCoords.txt")
+def SelectNext(next):
+  minNew = next[0][1]
+  i = 0
+  ri = 0
+  for i in range(0,len(next)):
+    if next[i][1]<minNew:
+      minNew = next[i][1]
+      ri = i
+      
+  return (next[:ri]+next[ri+1:],next[ri][0],next[ri][1])
   
-  badPatch = False
-  newPatch = True
-  for l in f.readlines():
+def GeneratePatchOrder(neighbourMap,transformMap,size):
+  global badPatches
+  
+  current = 0
+  order = [current]
+  transforms = []
+  visited = set([current])
+  next = [(current,x) for x in set(neighbourMap[current])-badPatches-visited]
+  visited.update(set([y for (x,y) in next]))
+  print(next)
+  while len(next)>0 and len(order)<size:
+    (next,current,newOne) = SelectNext(next)
+    # Find transform from current to newOne - there should only be one
+    possibleTransforms = [(x,y) for (x,y) in transformMap.keys() if x==current and y==newOne or y==current and x==newOne]
+    transforms += [random.choice(possibleTransforms)]
+    order += [newOne]
+    current = newOne
+    next += [(current,x) for x in set(neighbourMap[current])-badPatches-visited]
+    visited.update(set([y for (x,y) in next]))
+          
+  return (order,transforms,transformMap)
+  
+def AddPatch(order,transfoms,transformMap,flipState,index):
+  global patches,patchVel,patchAcc,connections
+  
+  patchNum = order[index]
+
+  if index==0:
+    radius = 254.0 # This will be wrong - TODO fix it
+    x,y,a = 0.0,0.0,0.0
+    patches[patchNum]= (x,y,a,radius,0.0,flipState[patchNum])
+    patchVel[patchNum] = (0,0,0)
+    patchAcc[patchNum] = (0,0,0)
+    transformLookup[patchNum] = (1,0,0,0,1,0)
+  else:
+    (other,patchNum) = transforms[index-1]
+    l = transformMap[transforms[index-1]]
+    print((other,patchNum))
+    #print(l)
     spl = l.split(" ")
-    if spl[0]=='ABS':
-      patchNum = int(spl[1])
-      if renderPatches:
-        LoadPatchImage(patchNum)
-      radius = int(spl[3])*RADIUS_FACTOR
-      patchIndexLookup[patchNum] = len(patches)
-      x,y,a = float(spl[4]),float(spl[5]),float(spl[6])
-      patches += [(x,y,a,radius,0)]
-      patchVel += [(0,0,0)]
-      patchAcc += [(0,0,0)]
-      transformLookup[patchNum] = (1,0,0,0,1,0)
-    elif spl[0]=='REL':
-      if int(spl[1]) != patchNum:
-        badPatch = False
-        newPatch = True
-        if renderPatches:
-          LoadPatchImage(patchNum)
-      else:
-        newPatch = False
-      if badPatch:
-        continue
-        
-      patchNum = int(spl[1])
-      if patchNum not in patchNums and len(patchNums)==patchLimit:
-        print("Stopped loading when %d encountered" % patchNum)
-        return
-      radius = int(spl[3])*RADIUS_FACTOR
-      other = int(float(spl[4]))
-      ta = float(spl[11])
-      tb = float(spl[12])
-      tc = float(spl[13])
-      td = float(spl[14])
-      te = float(spl[15])
-      tf = float(spl[16])
 
+    radius = int(spl[3])*RADIUS_FACTOR  
+    flip = flipState[patchNum]
+    ta = float(spl[11])
+    tb = float(spl[12])
+    tc = float(spl[13])
+    td = float(spl[14])
+    te = float(spl[15])
+    tf = float(spl[16])
       
-      if other in patchIndexLookup.keys() and other in transformLookup.keys():
-        otherTransform = transformLookup[other]
-
-        transform = ComposeTransforms(otherTransform,(ta,tb,tc,td,te,tf))
-                
-        #print((transform[2],transform[5]))        
+    if other in transformLookup.keys():
+      otherTransform = transformLookup[other]
+   
+      transform = ComposeTransforms(otherTransform,(ta,tb,tc,td,te,tf))
+                        
+      (offsetX,offsetY) = (transform[2]-otherTransform[2],transform[5]-otherTransform[5])
         
-        (offsetX,offsetY) = (transform[2]-otherTransform[2],transform[5]-otherTransform[5])
+      locationAngle = atan2(offsetX,offsetY)
+      angle = atan2(transform[0],transform[3]) # global orientation of this patch
+      distance = sqrt(offsetX*offsetX+offsetY*offsetY)
+
+      if patchNum not in patches.keys():
+        transformLookup[patchNum] = transform
+        patches[patchNum]= (transform[2],transform[5],0.0,radius,angle,flip)
+        patchVel[patchNum] = (0,0,0)
+        patchAcc[patchNum] = (0,0,0)
         
-        locationAngle = atan2(offsetX,offsetY)
-        angle = atan2(transform[0],transform[3]) # global orientation of this patch
-        distance = sqrt(offsetX*offsetX+offsetY*offsetY)
+    elif patchNum in transformLookup.keys():
+      patchNumTransform = transformLookup[patchNum]
+   
+      transform = ComposeTransforms(patchNumTransform,InvertTransform((ta,tb,tc,td,te,tf)))
+                        
+      (offsetX,offsetY) = (transform[2]-patchNumTransform[2],transform[5]-patchNumTransform[5])
+        
+      locationAngle = atan2(offsetX,offsetY)
+      angle = atan2(transform[0],transform[3]) # global orientation of this patch
+      distance = sqrt(offsetX*offsetX+offsetY*offsetY)
 
-        #print("Location angle is %f (%f degress)" % (locationAngle,locationAngle*360/(2.0*pi)))
-        #print("Angle is %f (%f degress)" % (angle,angle*360/(2.0*pi)))
-        #print("Distance is %f" % distance)
-      
-        #print(str(other))
-        #print(patchIndexLookup)
-        otherIndex = patchIndexLookup[other]
-        #print("len patches="+str(len(patches))+" otherIndex="+str(otherIndex))
-
-        if patchNum not in patchNums:
-          transformLookup[patchNum] = transform # this had previous been before the if statement, which could have led to inconsistent results
-          patchNums.add(patchNum)
-          patchIndexLookup[patchNum] = len(patches)
-          patches += [(transform[2],transform[5],0.0,radius,angle)]
-          patchVel += [(0,0,0)]
-          patchAcc += [(0,0,0)]
-        else:
-          if Distance(patches[-1][0],patches[-1][1],transform[2],transform[5])>MAX_CORRECTABLE_DISTANCE:
-            print("Patch %d is a bad patch\n" % patchNum)
-            badPatch = True
-            while connections[-1][0]==len(patches)-1:
-              connections = connections[:-1]
-            patches = patches[:-1]
-            del patchIndexLookup[patchNum]
-        if not badPatch:
-          connections += [(len(patches)-1,otherIndex,distance,
-                           AddAngle(pi,locationAngle),
-                           locationAngle)] 
-      else:
-        print("Patch %d can't find other patch %d (perhaps other was a bad patch)" % (patchNum,other))
-       
+      if other not in patches.keys():
+        transformLookup[other] = transform
+        patches[other]= (transform[2],transform[5],0.0,radius,angle,flip)
+        patchVel[other] = (0,0,0)
+        patchAcc[other] = (0,0,0)
+    
     else:
-      printf("Unexpected tokan in LoadPatches:"+str(spl[0]))
+      print("Neither patch had transform:"+str(other)+" "+str(patchNum))
       exit(0)
-      
-  print(patches)
-  f.close()
-  
+    
 def SavePatches():
   print("Saving positions...")
   f = open(parameters.OUTPUT_DIR+"/patchPositions.txt","w")
   
   if f:
-    for (patchNum,patchIndex) in patchIndexLookup.items():
-      (x,y,a,r,ga) = patches[patchIndex]
+    for (patchNum,(x,y,a,r,ga,flip)) in patches.items():
       f.write("%d %f %f %f\n" % (patchNum,x,y,AddAngle(a,ga)))
 
   f.close()
@@ -215,12 +217,12 @@ def ConnectionForces():
 def Move():
   global patches,patchVel,patchAcc,connections
 
-  for i in range(0,len(patches)):
-    patches[i] = (patches[i][0]+patchVel[i][0],patches[i][1]+patchVel[i][1],patches[i][2]+patchVel[i][2],patches[i][3],patches[i][4])
+  for i in patches.keys():
+    patches[i] = (patches[i][0]+patchVel[i][0],patches[i][1]+patchVel[i][1],patches[i][2]+patchVel[i][2],patches[i][3],patches[i][4],patches[i][5])
     patchVel[i] = (patchAcc[i][0]+patchVel[i][0],patchAcc[i][1]+patchVel[i][1],patchAcc[i][2]+patchVel[i][2])
     patchVel[i] = (patchVel[i][0]*FRICTION_CONSTANT,patchVel[i][1]*FRICTION_CONSTANT,patchVel[i][2]*ANGLE_FRICTION_CONSTANT)
     patchAcc[i] = (0.0,0.0,0.0)
-  patchAcc[0] = (0.0,0.0,0.0)
+
   
 def from_rgb(rgb):
     """translates an rgb tuple of int to a tkinter friendly color code
@@ -236,11 +238,11 @@ def truncate(x):
 
 def Show(links=True):
   canvas.delete('all')
-  offset=(750,300)
-  scale=0.15
+  offset=(850,300)
+  scale=0.1
   patchi = 0
   patchesLen = len(patches)
-  for (x,y,a,rad,ga) in patches:
+  for (patchNum,(x,y,a,rad,ga,flip)) in patches.items():
     patchif = pi*float(patchi)/float(patchesLen)
     
     red = 1.0+cos(patchif)
@@ -274,33 +276,37 @@ def RunIteration():
   Show()    
   window.after(10,RunIteration)
 
-def RunGrowShow():
-  global patchesToShow,filenameIndex
-  LoadPatches(patchesToShow,False)
+def CallAddPatch():
+  global order,transforms,transformMap,addPatchIndex
+  
+  for i in range(0,10):
+    AddPatch(order,transforms,transformMap,flipState,addPatchIndex)
+  
+    addPatchIndex += 1
+  Show()
+  window.after(10,CallAddPatch)
+  
 
-  for i in range(0,50):  
-    ConnectionForces()
-    Move()
   
-  Show(False)
-  filename = parameters.OUTPUT_DIR+"/patchgrowanim/patches_%06d"%filenameIndex
-  canvas.postscript(file=filename+".eps",colormode='color')
-  img = Image.open(filename + '.eps') 
-  img.save(filename + '.png', 'png') 
-  
-  filenameIndex += 1
-  if patchesToShow < patchLimit:
-    patchesToShow += 2
-  window.after(10,RunGrowShow)
-  
-if len(sys.argv) not in [2,3]:
-  print("Usage: patchsprings.py <number of patches> <patch detail? 0 or 1>")
+if len(sys.argv) not in [6]:
+  print("Usage: patchsprings.py <neighbourmap> <transformmap> <flipstate> <bad patches> <N>")
   exit(0)
-  
-if len(sys.argv)>1:
-  patchLimit = int(sys.argv[1])
 
-renderPatches = len(sys.argv)>2 and int(sys.argv[2])==1
+with open(sys.argv[1], 'rb') as inp:
+  neighbourMap = pickle.load(inp)  
+with open(sys.argv[2], 'rb') as inp:
+  transformMap = pickle.load(inp)
+with open(sys.argv[3], 'rb') as inp:
+  flipState = pickle.load(inp)
+
+badPatches = []
+with open(sys.argv[4]) as bpFile:
+  l=bpFile.readlines()
+  badPatches += [int(x) for x in l]
+
+badPatches = set(badPatches)
+  
+patchLimit = int(sys.argv[5])
   
 #exit(0)
 window = tk.Tk()
@@ -311,13 +317,21 @@ window.title('L paint')
 canvas = tk.Canvas(window, width=1350, height=700, bg='white')
 canvas.pack()
 
-if True:
-  LoadPatches(patchLimit,renderPatches)
-  window.after(50,RunIteration)
-else:
-  filenameIndex = 0
-  patchesToShow = 10
-  window.after(50,RunGrowShow)
+(order,transforms,transformMap) = GeneratePatchOrder(neighbourMap,transformMap,patchLimit)
+
+print(len(order))
+
+addPatchIndex = 0
+window.after(50,CallAddPatch)
 
 window.mainloop()
+
+#for j in range(0,len(order)):
+#  AddPatch(order,transforms,transformMap,flipState,j)
+
+#print(patches)
+
+#window.after(50,RunIteration)
+
+#window.mainloop()
     

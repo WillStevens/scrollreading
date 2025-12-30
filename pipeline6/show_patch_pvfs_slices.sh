@@ -1,8 +1,12 @@
-mkdir d:/temp/patches_$1
-./interpolate d:/pipelineOutput/patch_$1.bin d:/pipelineOutput/patch_$1_i.bin
-echo `./patch_extent d:/pipelineOutput/patch_$1_i.bin`
+WORKING_DIR=d:/s4_explore
+PIPELINE_DIR=d:/pipelineOutputS4_2025_12_16
+ZARR_DIR=d:/test2.zarr
 
-extent=`./patch_extent d:/pipelineOutput/patch_$1_i.bin`
+mkdir $WORKING_DIR/patches_$1
+./interpolate $PIPELINE_DIR/patch_$1.bin $PIPELINE_DIR/patch_$1_i.bin
+echo `./patch_extent $PIPELINE_DIR/patch_$1_i.bin`
+
+extent=`./patch_extent $PIPELINE_DIR/patch_$1_i.bin`
 arrext=(${extent//,/ })
 
 echo ${arrext[0]}
@@ -22,11 +26,8 @@ echo $((${arrext[4]} - ${arrext[1]}))
 for ((z=${arrext[2]}; z<${arrext[5]}; z+=10))
 do
   i=`printf "%05d" $(( ( $z - ${arrext[2]} ) / 10 ))` 
- ./zarr_show2_64 d:/vf_zarrs/s4/pvfs_2025_11_17.zarr ${arrext[0]} ${arrext[1]} $z $((${arrext[3]}-${arrext[0]})) $((${arrext[4]}-${arrext[1]})) d:/temp/patches_$1/tmp_pvfs_$i.tif d:/pipelineOutput/patch_$1_i.bin
+ ./zarr_show2_64 $ZARR_DIR ${arrext[0]} ${arrext[1]} $z $((${arrext[3]}-${arrext[0]})) $((${arrext[4]}-${arrext[1]})) $WORKING_DIR/patches_$1/tmp_pvfs_$i.tif $PIPELINE_DIR/patch_$1_i.bin
 done
 
-/cygdrive/c/users/will/downloads/ffmpeg-master-latest-win64-gpl-shared/bin/ffmpeg -i d:/temp/patches_$1/tmp_pvfs_%05d.tif d:/temp/patches_$1/patch_$1.gif
+/cygdrive/c/users/will/downloads/ffmpeg-master-latest-win64-gpl-shared/bin/ffmpeg -i $WORKING_DIR/patches_$1/tmp_pvfs_%05d.tif $WORKING_DIR/patches_$1/patch_$1.gif
 
-SEED_X=1798
-SEED_Y=1161
-SEED_Z=5120

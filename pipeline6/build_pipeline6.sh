@@ -1,5 +1,8 @@
 #!/bin/sh
 
+# When running on linux may need to tell it where to find blosc2 shared library
+#export LD_LIBRARY_PATH=$LB_LIBRARY_PATH:/usr/local/lib64
+
 # This script builds all of the C/C++ programs needed to run the pipeline
 
 # e.g. to build and run the pipeline on a new EC2 instances:

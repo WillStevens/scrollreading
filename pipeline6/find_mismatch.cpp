@@ -8,7 +8,7 @@
 
 #include <string> 
 #include <vector>
-#include <map>
+#include <unordered_map>
 #include <set>
 
 #include <stdint.h>
@@ -20,6 +20,8 @@
 
 #include "parameters.h"
 
+#undef OUTPUT_DISTANCE_TIF
+
 #define ROUND(x) (((x)-(int)(x))<0.5?(int)(x):((int)(x))+1)
 
 typedef struct __attribute__((packed)) {float x,y,px,py,pz;} gridPointStruct;
@@ -28,7 +30,15 @@ std::vector<std::tuple<int,float,float,float,float,int>> patchPositions;
 
 // what resolution to use for points in rendered?
 #define RESCALE 4
-std::map<std::tuple<int,int>,std::tuple<int,float,float,float> > rendered;
+std::unordered_map<uint64_t,std::tuple<int,float,float,float> > rendered;
+
+#define R_ARRAY_SIZE 4000
+int rendered_i[R_ARRAY_SIZE][R_ARRAY_SIZE];
+int rendered_f[R_ARRAY_SIZE][R_ARRAY_SIZE][3];
+
+#define MAKE_KEY(x,y) ((((uint64_t)x)<<32)+(uint64_t)y)
+
+#ifdef OUTPUT_DISTANCE_TIF
 
 #define D_SIZE_X 2000
 #define D_SIZE_Y 2000
@@ -36,8 +46,10 @@ std::map<std::tuple<int,int>,std::tuple<int,float,float,float> > rendered;
 #define D_OFF_Y 1000
 uint8_t distances[D_SIZE_X][D_SIZE_Y];
 
-// If two apparentl overlapping points are further apart than this, something has gone wrong
-#define DISTANCE_THRESHHOLD 40
+#endif
+
+// If two apparently overlapping points are further apart than this, something has gone wrong
+int DISTANCE_THRESHHOLD = 40;
 
 std::set<std::tuple<int,int> > mismatches;
 
@@ -61,7 +73,7 @@ void render(char *dirname)
 		float sa = std::get<4>(patch);
 		int flip = std::get<5>(patch);
 				
-		gridPointStruct p;
+		gridPointStruct *p;
 
 		//if (patchNum != 1150 && patchNum != 5 && patchNum != 1511 && patchNum != 1508) continue;
 		
@@ -74,12 +86,19 @@ void render(char *dirname)
 			long fsize = ftell(f);
 			fseek(f,0,SEEK_SET);
   
+            gridPointStruct *allPoints = (gridPointStruct *)malloc(fsize);
+			
+			int numPoints = fsize/sizeof(gridPointStruct);
+			fread(allPoints,sizeof(gridPointStruct),numPoints,f);
+	
+            fprintf(stderr,"Loaded %d points for patch %d\n",numPoints,patchNum);	
 			// input in x,y,z order 
-			while(ftell(f)<fsize)
+			for(p=allPoints; p<allPoints+numPoints; p++)
 			{
-				fread(&p,sizeof(p),1,f);
 				float x,y,px,py,pz;
-				x=p.x;y=p.y;px=p.px;py=p.py;pz=p.pz;
+				x=p->x;y=p->y;px=p->px;py=p->py;pz=p->pz;
+				
+				//printf("%f %f %f %f %f\n",x,y,px,py,pz);
 				
 				x=x*QUADMESH_SIZE;
 				y=y*QUADMESH_SIZE;
@@ -93,24 +112,45 @@ void render(char *dirname)
 
 				int xrdi = ROUND(xrd/RESCALE);
 				int yrdi = ROUND(yrd/RESCALE);
-					  
-				if (rendered.count(std::tuple<int,int>(xrdi,yrdi))==0)
+#if 0					  
+				if (rendered.count(MAKE_KEY(xrdi,yrdi))==0)
 				{
-				  rendered[std::tuple<int,int>(xrdi,yrdi)] = std::tuple<int,float,float,float>(patchNum,px,py,pz);
+				  rendered[MAKE_KEY(xrdi,yrdi)] = std::tuple<int,float,float,float>(patchNum,px,py,pz);
 				}
                 else
 				{
-					int ePatchNum = std::get<0>(rendered[std::tuple<int,int>(xrdi,yrdi)]);
+					int ePatchNum = std::get<0>(rendered[MAKE_KEY(xrdi,yrdi)]);
 					
-					float ex = std::get<1>(rendered[std::tuple<int,int>(xrdi,yrdi)]);
-					float ey = std::get<2>(rendered[std::tuple<int,int>(xrdi,yrdi)]);
-					float ez = std::get<3>(rendered[std::tuple<int,int>(xrdi,yrdi)]);
+					float ex = std::get<1>(rendered[MAKE_KEY(xrdi,yrdi)]);
+					float ey = std::get<2>(rendered[MAKE_KEY(xrdi,yrdi)]);
+					float ez = std::get<3>(rendered[MAKE_KEY(xrdi,yrdi)]);
+#else
+				if (rendered_i[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2]==0)
+				{
+				  rendered_i[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2] = patchNum+1;
+				  rendered_f[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2][0] = px;
+				  rendered_f[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2][1] = py;
+				  rendered_f[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2][2] = pz;
+
+#ifdef OUTPUT_DISTANCE_TIF
+                  distances[xrdi+D_OFF_X][yrdi+D_OFF_Y] = 1; // don't use zero, because that means 'empty'
+#endif
+				}
+                else
+				{
+					int ePatchNum = rendered_i[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2]-1;
 					
+					float ex = rendered_f[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2][0];
+					float ey = rendered_f[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2][1];
+					float ez = rendered_f[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2][2];
+
+#endif	
 					float distance = Distance(ex-px,ey-py,ez-pz); 
 					
-                    distances[xrdi+D_OFF_X][yrdi+D_OFF_Y] = distance*7;
-					
-                     //printf("%d %d %f\n",patchNum,ePatchNum,distance);							
+#ifdef OUTPUT_DISTANCE_TIF
+                    distances[xrdi+D_OFF_X][yrdi+D_OFF_Y] = (distance*5)/6;
+#endif					
+                    //fprintf(stderr,"%d %d %f\n",patchNum,ePatchNum,distance);							
 					
 					if (distance > maxDistance) maxDistance = distance;
 					
@@ -125,16 +165,20 @@ void render(char *dirname)
 				}
 			}
 			
+			free(allPoints);
 			fclose(f);
 		}
+		else
+	      fprintf(stderr,"Unable to open file for patch %d\n",patchNum);
 	}			
 	
 	printf("Max distance:%f\n",maxDistance);
 }
 
+#ifdef OUTPUT_DISTANCE_TIF
 void RenderDistances(void)
 {
-		TIFF *tif = TIFFOpen("d:/temp/distances.tif","w");
+		TIFF *tif = TIFFOpen("d:/s4_explore/distances.tif","w");
 		
 		if (tif)
 		{
@@ -157,7 +201,10 @@ void RenderDistances(void)
 			{
 				for(int i=0; i<D_SIZE_X; i++)
 				{
-				   ((uint8_t *)buf)[i] = distances[i][row];
+				   if (distances[i][row]!=0)
+				     ((uint8_t *)buf)[i] = distances[i][row];
+				   else
+				     ((uint8_t *)buf)[i] = 255;
 				}
 				TIFFWriteScanline(tif,buf,row,0);
 			}
@@ -167,15 +214,18 @@ void RenderDistances(void)
 		TIFFClose(tif);
 
 }
+#endif
 
 int main(int argc, char *argv[])
 {
-	if (argc != 3)
+	if (argc != 4)
 	{
-		printf("Usage: find_mismatch <patch dir> <patch positions>\n");
+		printf("Usage: find_mismatch <patch dir> <patch positions> <distance threshhold>\n");
 		printf("Check for patches with similar quadmesh coords but different volume coords\n");
 		return -1;
 	}
+	
+	DISTANCE_THRESHHOLD = atoi(argv[3]);
 	
 	FILE * f = fopen(argv[2],"r");
 	
@@ -196,8 +246,9 @@ int main(int argc, char *argv[])
 	  fclose(f);
 	}
 	
+#ifdef OUTPUT_DISTANCE_TIF
 	RenderDistances();
-	
+#endif	
 	return 0;
 }
 

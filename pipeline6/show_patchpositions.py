@@ -45,20 +45,20 @@ def AddAngle(a,b):
     return r+2.0*pi
   return r
 
-def LoadPatchImage(patchNum):
+def LoadPatchImage(pipelineOutput,patchNum):
   global patchImages
   
-  if os.path.exists("d:/pipelineOutput/patch_%d.tif" % patchNum):
-    image = Image.open("d:/pipelineOutput/patch_%d.tif" % patchNum).convert("L")
-    mask = Image.open("d:/pipelineOutput/patch_%d.tifm" % patchNum).convert("L")
+  if os.path.exists(pipelineOutput+"/patch_%d.tif" % patchNum):
+    image = Image.open(pipelineOutput+"/patch_%d.tif" % patchNum).convert("L")
+    mask = Image.open(pipelineOutput+"/patch_%d.tifm" % patchNum).convert("L")
 
     # Turn image and mask into a single image with transparency
     rgba = Image.merge("RGBA",(image,image,image,mask))
   
-    rgba.save("d:/pipelineOutput/patch_%d.png" % patchNum)
+    rgba.save(pipelineOutput+"/patch_%d.png" % patchNum)
     patchImages[patchNum] = rgba
 
-def LoadPatches(fin):
+def LoadPatches(pipelineOutput,fin):
   f = open(fin)
   
   patches = []
@@ -73,7 +73,7 @@ def LoadPatches(fin):
     
     patches += [(patchNum,x,y,angle,flip)]
  
-    LoadPatchImage(patchNum)
+    LoadPatchImage(pipelineOutput,patchNum)
   f.close()
 
   return patches
@@ -115,8 +115,8 @@ def Show():
 def keydown(e):
   return
     
-if len(sys.argv) not in [2]:
-  print("Usage: show_patchpositions.py <patchPositions>")
+if len(sys.argv) not in [3]:
+  print("Usage: show_patchpositions.py <pipelineOutput> <patchPositions>")
   exit(0)
   
 
@@ -132,7 +132,7 @@ canvas.focus_set()
 canvas.pack()
 
 if True:
-  patches = LoadPatches(sys.argv[1])
+  patches = LoadPatches(sys.argv[1],sys.argv[2])
   Show()
   
 window.mainloop()

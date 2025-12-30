@@ -7,6 +7,7 @@ from random import randint,seed
 import csv
 import datetime
 import time
+import pickle
 
 # Run an external program, and return the output
 def CallOutput(arguments):
@@ -19,21 +20,26 @@ patchCounter = {}
 badPatchCounter = {}  
 pathsWithBad = []
 
-if len(sys.argv) != 3:
-  print("find_bad_patches <patchCoords> <working dir")
+if len(sys.argv) != 6:
+  print("find_bad_patches <pipelineOutput> <patchCoords> <working dir> <distance threshhold> <samples>")
   exit(0)
 
-neighbourMapFile = sys.argv[2]+"/neighbourmap.pkl"
-transformMapFile = sys.argv[2]+"/transformmap.pkl"
-flipstateFile = sys.argv[2]+"/flipstate.pkl"
+neighbourMapFile = sys.argv[3]+"/neighbourmap.pkl"
+transformMapFile = sys.argv[3]+"/transformmap.pkl"
+flipstateFile = sys.argv[3]+"/flipstate.pkl"
+badPatchFile = sys.argv[3]+"/badpatch.csv"
+badScoreFile = sys.argv[3]+"/badscore.csv"
 
-o = CallOutput(["python","make_neighbourmap.py",sys.argv[1],neighbourMapFile,transformMapFile,flipstateFile])
+DISTANCE_THRESHHOLD = int(sys.argv[4])
 
-N = 100
+
+o = CallOutput(["python","make_neighbourmap.py",sys.argv[2],neighbourMapFile,transformMapFile,flipstateFile])
+
+N = int(sys.argv[5])
 
 print("Generating random paths...")
-patchPosFilePrefix = sys.argv[2]+"/patchPositions"
-paths = CallOutput(["python","random_patch_path.py",patchPosFilePrefix,neighbourMapFile,transformMapFile,flipstateFile,str(N)]).splitlines()
+patchPosFilePrefix = sys.argv[3]+"/patchPositions"
+paths = CallOutput(["python","random_patch_path.py",patchPosFilePrefix,neighbourMapFile,transformMapFile,flipstateFile,badPatchFile,str(N)]).splitlines()
 print("Finished generating random paths...")
 print(len(paths))
 for i in range(0,N):
@@ -52,7 +58,7 @@ for i in range(0,N):
     patchCounter[pp] += 1
   
   patchPosFile = patchPosFilePrefix+"_"+str(i)+".txt"
-  o = CallOutput(["./find_mismatch","d:/pipelineOutput",patchPosFile])
+  o = CallOutput(["./find_mismatch",sys.argv[1],patchPosFile,str(DISTANCE_THRESHHOLD)])
   for l in o.splitlines():
     if l[0]!='M':
       print("Found one, iteration:"+str(i))
@@ -74,3 +80,22 @@ for i in range(0,N):
 print(pathsWithBad)
 print(patchCounter)
 print(badPatchCounter)
+
+badScore = []
+for a in sorted(patchCounter.keys()):
+  print(f"{a},{patchCounter[a]},{badPatchCounter[a] if a in badPatchCounter.keys() else ''},",end="")
+  tot = badPatchCounter[a]/patchCounter[a] if a in badPatchCounter.keys() else 0
+  print(tot)
+  badScore += [(tot,a)]
+ 
+#for (tot,a) in badScore:
+#  if tot>0:
+#    print(a)  
+badScore.sort()
+
+with open(badScoreFile,'wb') as f:
+  pickle.dump(badScore,f)
+
+for x in badScore[-30:]:
+  if x[0]>0:
+    print(x[1])

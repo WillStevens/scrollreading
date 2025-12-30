@@ -103,8 +103,14 @@ if not restart:
   os.makedirs(outputDir+"/surface.bp/surface")
   os.makedirs(outputDir+"/boundary.bp/surface")
 
+tooSmallCount = 0
+unalignedCount = 0
+acceptedCount = 0
+acceptedWithSomeBadVariance = 0
+ 
 while True:
   print("Patch number "+str(patchNum))
+  print("Too small:%d Unaligned:%d Accepted:%d (of which %d had some misaligned neighbours)" % (tooSmallCount,unalignedCount,acceptedCount,acceptedWithSomeBadVariance))
 
   patch = outputDir+"/patch_"+str(patchNum)+".bin"
   boundary = outputDir+"/boundary_"+str(patchNum)+".bin"
@@ -131,12 +137,15 @@ while True:
     Call(["./addtobigpatch",currentSurface,patchi,str(patchNum)])
     Call(["./addtobigpatch",currentBoundary,boundary,str(patchNum)])
     StartPatchCoordFile(patchNum,False,iterations,(0,0,0))
+    acceptedCount += 1
   elif iterations < parameters.MIN_PATCH_ITERS:
     print("Not enough iterations")
+    tooSmallCount += 1
   else:
     # Merge this patch into the current surface
     Step("align_patches")
     alignList = CallAlignMulti(currentSurface,patchi)
+    goodAlignList = []
   
     doMerge = False
     
@@ -150,16 +159,19 @@ while True:
         
         if not VarianceTest(variance):
           badVarianceCount += 1
+        else:
+          goodAlignList += [align]
       print("Bad variance count:%d" % badVarianceCount)
       
-      if badVarianceCount > 0:
+      if badVarianceCount > 0 and len(goodAlignList)==0:
         print("Flipping patch")
         Step("flip_patch and boundary")
         Call(["./flip_patch2",patchi,patchif])
         Call(["./flip_patch2",boundary,boundaryf])
         Step("align_patches")
         alignList = CallAlignMulti(currentSurface,patchif)
-
+        goodAlignList = []
+        
         if len(alignList)>0:
           badVarianceCount = 0
           for align in alignList:
@@ -170,8 +182,11 @@ while True:
         
             if not VarianceTest(variance):
               badVarianceCount += 1
+            else:
+              goodAlignList += [align]
+
           print("Bad variance count:%d" % badVarianceCount)
-          if badVarianceCount == 0:
+          if len(goodAlignList)>0:
             doMerge = True
             flipped = True
             patchToAdd = patchif
@@ -185,7 +200,11 @@ while True:
         boundaryToAdd = boundary
         
     if doMerge:
-      AddToPatchCoordFile(patchNum,flipped,iterations,alignList)
+      acceptedCount += 1
+      if badVarianceCount>0:
+        acceptedWithSomeBadVariance += 1
+        
+      AddToPatchCoordFile(patchNum,flipped,iterations,goodAlignList)
 
       #print("currentBoundary")
       #print(len(CallOutput(["./listbigpatchpoints",currentBoundary]).split("\n")))
@@ -210,7 +229,8 @@ while True:
       Call(["./addtobigpatch",currentSurface,patchToAdd,str(patchNum)])      
     else:
       print("No alignment of patch could be done")
-
+      unalignedCount += 1
+      
   Call(["rm",patchi])        
   Call(["rm",patchif])
   Call(["rm",boundary])        

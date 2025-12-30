@@ -44,13 +44,8 @@ def AddAngle(a,b):
   return r
  
 def GeneratePatchOrder(neighbourMap,transformMap,size):
-  badPatches = [279,668,838]
-  badPatches += [676, 386, 351, 606, 460, 377, 597, 395, 589, 532, 545, 37, 734, 523, 282, 435, 389, 522, 651, 917, 832, 505, 381, 405, 907, 620, 345, 531, 308, 578]
-  badPatches += [553, 989, 536, 208, 581, 739, 25, 181, 541, 63, 252, 990, 1027, 65, 397, 773, 16, 259, 586, 684, 533, 759, 753, 355, 122, 38, 310, 540, 200, 879]
-  badPatches += [8, 76, 574, 463, 485, 0, 69, 30, 201, 1, 117, 584, 735, 847, 9, 183, 518, 338, 145, 154, 107, 175, 80, 517, 111, 352, 20, 4, 58, 3]
+  global badPatches
 
-
-  badPatches = set(badPatches)
   """
   f = open(fin)
   
@@ -112,7 +107,6 @@ def AddPatch(order,transfoms,transformMap,flipState,index):
     l = transformMap[transforms[index-1]]
     spl = l.split(" ")
   
-    flip = flipState[patchNum]
     ta = float(spl[11])
     tb = float(spl[12])
     tc = float(spl[13])
@@ -133,7 +127,7 @@ def AddPatch(order,transfoms,transformMap,flipState,index):
 
       if patchNum not in patches.keys():
         transformLookup[patchNum] = transform
-        patches[patchNum]= (transform[2],transform[5],0.0,angle,flip)
+        patches[patchNum]= (transform[2],transform[5],0.0,angle,flipState[patchNum])
     elif patchNum in transformLookup.keys():
       patchNumTransform = transformLookup[patchNum]
    
@@ -147,7 +141,7 @@ def AddPatch(order,transfoms,transformMap,flipState,index):
 
       if other not in patches.keys():
         transformLookup[other] = transform
-        patches[other]= (transform[2],transform[5],0.0,angle,flip)
+        patches[other]= (transform[2],transform[5],0.0,angle,flipState[other])
     
     else:
       print("Neither patch had transform:"+str(other)+" "+str(patchNum))
@@ -172,8 +166,8 @@ def truncate(x):
   return x
 
     
-if len(sys.argv) not in [6]:
-  print("Usage: random_patch_path <patch positions prefix> <neighbourmap> <transformmap> <flipstate> <N>")
+if len(sys.argv) not in [7]:
+  print("Usage: random_patch_path <patch positions prefix> <neighbourmap> <transformmap> <flipstate> <bad patches> <N>")
   exit(0)
 
 with open(sys.argv[2], 'rb') as inp:
@@ -183,11 +177,23 @@ with open(sys.argv[3], 'rb') as inp:
 with open(sys.argv[4], 'rb') as inp:
   flipState = pickle.load(inp)
 
-for i in range(0,int(sys.argv[5])):
+badPatches = []
+with open(sys.argv[5]) as bpFile:
+  l=bpFile.readlines()
+  badPatches += [int(x) for x in l]
+
+badPatches = set(badPatches)
+
+generatedOrders = []
+for i in range(0,int(sys.argv[6])):
+  generatedOrders += [GeneratePatchOrder(neighbourMap,transformMap,2)]
+  
+generatedOrders.sort()
+
+i = 0
+for (order,transforms,transformMap) in generatedOrders:
   patches = {}
   transformLookup = {}
-
-  (order,transforms,transformMap) = GeneratePatchOrder(neighbourMap,transformMap,5)
 
   print(order)
   #print(transforms)
@@ -199,3 +205,4 @@ for i in range(0,int(sys.argv[5])):
   #  print(p)
 
   SavePatches(i)
+  i += 1
