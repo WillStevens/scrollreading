@@ -53,3 +53,5 @@ g++ -O3 -Wall zarr_show2_u8.c -o zarr_show2_u8 -lblosc2 -ltiff -L/usr/local/lib 
 g++ -O3 -Wall papervectorfield_closest3.c -o papervectorfield_closest3 -lblosc2 -L/usr/local/lib -I/usr/local/include
 g++ -O3 -Wall vectorfield_smooth_64.c -o vectorfield_smooth_64 -lblosc2 -L/usr/local/lib -I/usr/local/include
 
+# Programs for finding bad patches
+g++ -O3 -Wall find_mismatch.cpp -o find_mismatch -lblosc2 -L/usr/local/lib -I/usr/local/include
