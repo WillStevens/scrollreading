@@ -145,21 +145,29 @@ void render(char *dirname)
 					float ez = rendered_f[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2][2];
 
 #endif	
-					float distance = Distance(ex-px,ey-py,ez-pz); 
+					if (ePatchNum != patchNum)
+					{
+						float distance = Distance(ex-px,ey-py,ez-pz); 
 					
 #ifdef OUTPUT_DISTANCE_TIF
-                    distances[xrdi+D_OFF_X][yrdi+D_OFF_Y] = (distance*5)/6;
+						distances[xrdi+D_OFF_X][yrdi+D_OFF_Y] = (distance*5)/6;
 #endif					
-                    //fprintf(stderr,"%d %d %f\n",patchNum,ePatchNum,distance);							
+//						fprintf(stderr,"%d %d %f\n",patchNum,ePatchNum,distance);							
+//						if (ez>=4090 && ez<=4096)
+//						{
+//							printf("%f,%f,%f\n",px,py,pz);
+//							printf("%f,%f,%f\n",ex,ey,ez);
+//						}
+						
+						if (distance > maxDistance) maxDistance = distance;
 					
-					if (distance > maxDistance) maxDistance = distance;
-					
-					if (distance > DISTANCE_THRESHHOLD)
-					{
-						if (mismatches.count(std::pair<int,int>(patchNum,ePatchNum))==0)
+						if (distance > DISTANCE_THRESHHOLD)
 						{
-							mismatches.insert(std::pair<int,int>(patchNum,ePatchNum));
-							printf("%d,%d : %f\n",patchNum,ePatchNum,distance);	
+							if (mismatches.count(std::pair<int,int>(patchNum,ePatchNum))==0)
+							{
+								mismatches.insert(std::pair<int,int>(patchNum,ePatchNum));
+								printf("%d,%d : %f\n",patchNum,ePatchNum,distance);	
+							}
 						}
 					}
 				}

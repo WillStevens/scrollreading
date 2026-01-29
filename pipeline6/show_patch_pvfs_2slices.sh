@@ -47,7 +47,8 @@ echo $((${arrext[4]} - ${arrext[1]}))
 for ((z=${arrext[2]}; z<${arrext[5]}; z+=10))
 do
   i=`printf "%05d" $(( ( $z - ${arrext[2]} ) / 10 ))` 
- ./zarr_show2_64 $ZARR_DIR ${arrext[0]} ${arrext[1]} $z $((${arrext[3]}-${arrext[0]})) $((${arrext[4]}-${arrext[1]})) $WORKING_DIR/patches_$1_$2/tmp_pvfs_$i.tif $PIPELINE_DIR/patch_$1_i.bin $PIPELINE_DIR/patch_$2_i.bin
+# ./zarr_show2_64 $ZARR_DIR ${arrext[0]} ${arrext[1]} $z $((${arrext[3]}-${arrext[0]})) $((${arrext[4]}-${arrext[1]})) $WORKING_DIR/patches_$1_$2/tmp_pvfs_$i.tif $PIPELINE_DIR/patch_$1_i.bin $PIPELINE_DIR/patch_$2_i.bin
+  ./zarr_show2_64 $ZARR_DIR ${arrext[0]} ${arrext[1]} $z $((${arrext[3]}-${arrext[0]})) $((${arrext[4]}-${arrext[1]})) $WORKING_DIR/patches_$1_$2/tmp_pvfs_$i.tif
 done
 
 /cygdrive/c/users/will/downloads/ffmpeg-master-latest-win64-gpl-shared/bin/ffmpeg -i $WORKING_DIR/patches_$1_$2/tmp_pvfs_%05d.tif $WORKING_DIR/patches_$1_$2/patch_$1_$2.gif

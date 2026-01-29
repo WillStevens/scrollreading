@@ -11,7 +11,7 @@ with open(sys.argv[1], 'rb') as inp:
 badPatches = []
 with open(sys.argv[2]) as bpFile:
   l=bpFile.readlines()
-  badPatches += [int(x) for x in l]
+  badPatches += [int(x.split(',')[0]) for x in l]
 
 badPatches = set(badPatches)
 
@@ -27,11 +27,12 @@ while len(unvisited)>0:
   visited.add(start)
   next = [start]
 
+  visitedAtStart = len(visited)
   while len(next)>0:
     neighbours = [x for x in neighbourMap[next[0]] if x not in visited]
     next += neighbours
     visited.update(neighbours)
     next = next[1:]
   
-  print(f"Visited: {len(visited)-len(badPatches)}")
+  print(f"Visited: {len(visited)-len(badPatches)}, Size: {len(visited)-visitedAtStart}")
   unvisited = unvisited - visited

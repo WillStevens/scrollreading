@@ -188,25 +188,47 @@ void FindMatches(std::set<gridPoint> &matchSet,int which, float radius)
 
 int main(int argc, char *argv[])
 {
-  if (argc != 5)
+  if (argc != 5 && argc != 7)
   {
 	printf("Usage: erasepoints <patch0> <patch1> <which> <radius>\n");
+	printf("Usage: erasepoints <patch0> x y z 0 <radius>  (where patch0 must be a bigpatch\n");
 	printf("patch0 is a bigpatch, patch1 is a binary small patch. Either erase patch0 points that are in patch1, or erase patch1 points that are in patch0. 'which' indicates which patch points should be erased from (0 or 1). 'radius' is the radius used for erasure.\n");
 	exit(-1);
   }
 
-  LoadPointSet(argv[2],1);
+  bool single = argc==7;
+
+  int which = atoi(argv[single?5:3]);
+  float radius = atof(argv[single?6:4]);
+  float px,py,pz;
+
+  
+  if (single && which != 0)
+  {
+	printf("If specifying a single point x,y,z then which must be 0\n");
+	exit(-2);
+  }
+
+  if (single)
+  {
+    px = atof(argv[2]);
+    py = atof(argv[3]);
+    pz = atof(argv[4]);
+	
+	gridPoints[1].push_back(gridPoint(0,0,px,py,pz,0));
+  }
+  else
+  {
+	LoadPointSet(argv[2],1);
+  }
   BigPatch *bp = OpenBigPatch(argv[1]);
-	
-  int which = atoi(argv[3]);
-  float radius = atof(argv[4]);
-	
+	  
   if (!bp)
   {
 	printf("Failed to open bigpatch:%s\n",argv[1]);
 	exit(-2);
   }
-	
+	    
   std::set<chunkIndex> chunks;
 	
   for(const gridPoint &gp : gridPoints[1])
@@ -214,20 +236,20 @@ int main(int argc, char *argv[])
 	// Which chunk is the point in?
 	chunks.insert(GetChunkIndex(std::get<2>(gp),std::get<3>(gp),std::get<4>(gp)));
   }
-
+  
   std::set<chunkIndex> expanded;
   for(const chunkIndex &chunk : chunks)
   {
 	for(int xo=-1; xo<=1; xo++)
 	for(int yo=-1; yo<=1; yo++)
 	for(int zo=-1; zo<=1; zo++)
-	{
-		expanded.insert(chunkIndex(std::get<0>(chunk)+xo,std::get<1>(chunk)+yo,std::get<2>(chunk)+zo));
+  	{
+	  expanded.insert(chunkIndex(std::get<0>(chunk)+xo,std::get<1>(chunk)+yo,std::get<2>(chunk)+zo));
 	}
   }
 	
   chunks.insert(expanded.begin(),expanded.end());
-
+  
   for(const chunkIndex &chunk : chunks)
   {
 	ReadPatchPoints(bp,chunk,gridPoints[0]);

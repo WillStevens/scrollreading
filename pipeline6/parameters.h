@@ -1,18 +1,18 @@
 /* Parameters shared by several programs */
 #define OUTPUT_DIR "d:/pipelineOutput"
-#define VOL_OFFSET_X 640
-#define VOL_OFFSET_Y 640
-#define VOL_OFFSET_Z 4096
-#define VOL_SIZE_X 2048
-#define VOL_SIZE_Y 2048
-#define VOL_SIZE_Z 2048
+#define VOL_OFFSET_X 0
+#define VOL_OFFSET_Y 0
+#define VOL_OFFSET_Z 0
+#define VOL_SIZE_X 3440
+#define VOL_SIZE_Y 3340
+#define VOL_SIZE_Z 11174
 #define QUADMESH_SIZE 4
 #define VOXEL_SIZE 7.91
 #define RANDOM_SEED 123
 #define VOLUME_ZARR "d:/zarrs/s4/20231117161658.zarr/0"
 #define SURFACE_ZARR "d:/zarrs/s4_059_medial_ome.zarr/0"
-#define VF_TEMP_XARR "d:/vf_zarrs/s4/pvf_2025_11_17.zarr"
-#define VECTORFIELD_ZARR "d:/vf_zarrs/s4/pvfs_2025_11_17.zarr"
+#define VF_TEMP_ZARR "d:/vf_zarrs/s4/pvf_2025_11_17.zarr"
+#define VECTORFIELD_ZARR "d:/vf_zarrs/s4/pvfs_2025_12_16.zarr"
 /* The initial seed point */
 #define SEED_X 1798
 #define SEED_Y 1161

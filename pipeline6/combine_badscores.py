@@ -1,10 +1,14 @@
 import pickle
 import os
 
-workingPaths = ["D:\workingS4_2025_12_27_05_50",
-                "D:\workingS4_2025_12_27_06_50",
-                "D:\workingS4_2025_12_27_07_50",
-                "D:\workingS4_2025_12_27_08_50",
+workingPaths = ["D:\workingS4_2026_01_24_01_30",
+                "D:\workingS4_2026_01_24_03_30",
+                "D:\workingS4_2026_01_24_05_30",
+                "D:\workingS4_2026_01_24_06_30",
+                "D:\workingS4_2026_01_24_07_30",
+                "D:\workingS4_2026_01_24_08_30",
+                "D:\workingS4_2026_01_24_09_30",
+                "D:\workingS4_2026_01_24_10_30",
 				]
 
 badScoreCounter = {}
@@ -51,5 +55,5 @@ for (patchNum,(count,bad)) in badScoreCounter.items():
 badScore.sort()
 print(badScore[-30:])
 
-with open("d:/s4_explore/bpscoretot_50.pkl",'wb') as f:
+with open("d:/s4_explore/bpscoretot_30_2026_01_24.pkl",'wb') as f:
   pickle.dump(badScore,f)

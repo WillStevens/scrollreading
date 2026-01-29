@@ -1,18 +1,18 @@
 # Parameters shared by several programs
 OUTPUT_DIR="d:/pipelineOutput"
-VOL_OFFSET_X=640
-VOL_OFFSET_Y=640
-VOL_OFFSET_Z=4096
-VOL_SIZE_X=2048
-VOL_SIZE_Y=2048
-VOL_SIZE_Z=2048
+VOL_OFFSET_X=0
+VOL_OFFSET_Y=0
+VOL_OFFSET_Z=0
+VOL_SIZE_X=3440
+VOL_SIZE_Y=3340
+VOL_SIZE_Z=11174
 QUADMESH_SIZE=4
 VOXEL_SIZE=7.91
 RANDOM_SEED=123
 VOLUME_ZARR="d:/zarrs/s4/20231117161658.zarr/0"
 SURFACE_ZARR="d:/zarrs/s4_059_medial_ome.zarr/0"
-VF_TEMP_XARR="d:/vf_zarrs/s4/pvf_2025_11_17.zarr"
-VECTORFIELD_ZARR="d:/vf_zarrs/s4/pvfs_2025_11_17.zarr"
+VF_TEMP_ZARR="d:/vf_zarrs/s4/pvf_2025_11_17.zarr"
+VECTORFIELD_ZARR="d:/vf_zarrs/s4/pvfs_2025_12_16.zarr"
 # The initial seed point
 SEED_X=1798
 SEED_Y=1161

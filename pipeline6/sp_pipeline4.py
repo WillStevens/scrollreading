@@ -7,8 +7,52 @@ from random import randint,seed
 import csv
 import datetime
 import time
+import fcntl
+import threading
 
 import parameters
+
+# Source - https://stackoverflow.com/a
+# Posted by Marco, modified by community. See post 'Timeline' for change history
+# Retrieved 2026-01-08, License - CC BY-SA 4.0
+class KeyboardThread(threading.Thread):
+
+    def __init__(self, input_cbk = None, name='keyboard-input-thread'):
+        self.input_cbk = input_cbk
+        super(KeyboardThread, self).__init__(name=name, daemon=True)
+        self.start()
+
+    def run(self):
+        while True:
+            self.input_cbk(input()) #waits to get input + Return
+
+StopFlag = False
+def KeyboardCallback(inp):
+    global StopFlag
+    #evaluate the keyboard input
+    if inp=='q':
+      StopFlag = True
+
+# Locker class for preventing different process accessing shared resources at the same time
+# Source - https://stackoverflow.com/a
+# Posted by Keeely, modified by community. See post 'Timeline' for change history
+# Retrieved 2026-01-05, License - CC BY-SA 4.0
+class Locker():
+    def __init__(self,lockName):
+      self.lockName = lockName
+      
+    def __enter__ (self):
+        print(f"Getting lock {self.lockName}")
+        self.fp = open(f"d:/lockfile_{self.lockName}.lck")
+        fcntl.flock(self.fp.fileno(), fcntl.LOCK_EX)
+        print(f"Got lock {self.lockName}")
+
+    def __exit__ (self, _type, value, tb):
+        print(f"Releasing lock {self.lockName}")
+        fcntl.flock(self.fp.fileno(), fcntl.LOCK_UN)
+        self.fp.close()
+        print(f"Released lock {self.lockName}")
+
 
 def StartPatchCoordFile(patch,flipped,iterations,coords):
   f = open(parameters.OUTPUT_DIR + "/patchCoords.txt","w")
@@ -75,6 +119,13 @@ def CallAlignMulti(p1,p2):
   else:
     return []
 
+if len(sys.argv) != 4:
+  print("Usage: sp_pipeline4.py <starting patch> <processes> <processNumber>")
+  print("If <starting patch> is 0 then the specified seed will be used, otherwise a boundary point will be chosen")
+  exit()
+
+#start the Keyboard thread
+#kthread = KeyboardThread(KeyboardCallback)
 
 seed(parameters.RANDOM_SEED)
     
@@ -90,13 +141,10 @@ areaLogFile = outputDir+"/area.txt"
 # A seed consists of x,y,z coords + coords of two vectors that give its orientation
 seed = (parameters.SEED_X,parameters.SEED_Y,parameters.SEED_Z,parameters.SEED_AXIS1_X,parameters.SEED_AXIS1_Y,parameters.SEED_AXIS1_Z,parameters.SEED_AXIS2_X,parameters.SEED_AXIS2_Y,parameters.SEED_AXIS2_Z)
 
-patchNum = 0
+patchNum = int(sys.argv[1])+int(sys.argv[3])
+patchNumIncrement = int(sys.argv[2])
 boundaryIter = 0
-restart = False
-
-#Restarting partway through
-#patchNum = 1138
-#restart = True
+restart = patchNum!=0
 
 if not restart:
   os.makedirs(outputDir)
@@ -107,8 +155,9 @@ tooSmallCount = 0
 unalignedCount = 0
 acceptedCount = 0
 acceptedWithSomeBadVariance = 0
- 
-while True:
+
+loopIterations = 0
+while not StopFlag and loopIterations < 10000:
   print("Patch number "+str(patchNum))
   print("Too small:%d Unaligned:%d Accepted:%d (of which %d had some misaligned neighbours)" % (tooSmallCount,unalignedCount,acceptedCount,acceptedWithSomeBadVariance))
 
@@ -118,8 +167,9 @@ while True:
   patchi = outputDir+"/patch_"+str(patchNum)+"_i.bin"
   patchif = outputDir+"/patch_"+str(patchNum)+"_if.bin"
 
-  if not restart:
 
+  # If on patch 0 or on second pass through this loop, generate a new patch
+  if not restart:
     # Call simpaper9 with current seed to produce a patch and boundary
     Step("simpaper9")
     iterations = Call(["./simpaper9"] + [str(x) for x in seed] + [parameters.VECTORFIELD_ZARR,patch,boundary])
@@ -129,48 +179,26 @@ while True:
       Step("interpolate")
       Call(["./interpolate",patch,patchi])
 
-  if patchNum==0:
-    if iterations < parameters.MIN_PATCH_ITERS:
-      print("First patch has too few iterations")
-      exit(0)
-    # Initialise current surface and current boundary
-    Call(["./addtobigpatch",currentSurface,patchi,str(patchNum)])
-    Call(["./addtobigpatch",currentBoundary,boundary,str(patchNum)])
-    StartPatchCoordFile(patchNum,False,iterations,(0,0,0))
-    acceptedCount += 1
-  elif iterations < parameters.MIN_PATCH_ITERS:
-    print("Not enough iterations")
-    tooSmallCount += 1
-  else:
-    # Merge this patch into the current surface
-    Step("align_patches")
-    alignList = CallAlignMulti(currentSurface,patchi)
-    goodAlignList = []
-  
-    doMerge = False
-    
-    if len(alignList)>0:
-      badVarianceCount = 0
-      for align in alignList:
-        print(align)
-        patch = align[0]
-        variance = (align[1],align[2],align[3],align[4],align[5],align[6])
-        transform = (align[7],align[8],align[9],align[10],align[11],align[12])
-        
-        if not VarianceTest(variance):
-          badVarianceCount += 1
-        else:
-          goodAlignList += [align]
-      print("Bad variance count:%d" % badVarianceCount)
-      
-      if badVarianceCount > 0 and len(goodAlignList)==0:
-        print("Flipping patch")
-        Step("flip_patch and boundary")
-        Call(["./flip_patch2",patchi,patchif])
-        Call(["./flip_patch2",boundary,boundaryf])
+    if patchNum==0:
+      if iterations < parameters.MIN_PATCH_ITERS:
+        print("First patch has too few iterations")
+        exit(0)
+      # Initialise current surface and current boundary
+      Call(["./addtobigpatch",currentSurface,patchi,str(patchNum)])
+      Call(["./addtobigpatch",currentBoundary,boundary,str(patchNum)])
+      StartPatchCoordFile(patchNum,False,iterations,(0,0,0))
+      acceptedCount += 1
+    elif iterations < parameters.MIN_PATCH_ITERS:
+      print("Not enough iterations")
+      tooSmallCount += 1
+    else:
+      with Locker("Mutex1"):    
+        # Merge this patch into the current surface
         Step("align_patches")
-        alignList = CallAlignMulti(currentSurface,patchif)
+        alignList = CallAlignMulti(currentSurface,patchi)
         goodAlignList = []
+      
+        doMerge = False
         
         if len(alignList)>0:
           badVarianceCount = 0
@@ -179,58 +207,83 @@ while True:
             patch = align[0]
             variance = (align[1],align[2],align[3],align[4],align[5],align[6])
             transform = (align[7],align[8],align[9],align[10],align[11],align[12])
-        
+            
             if not VarianceTest(variance):
               badVarianceCount += 1
             else:
               goodAlignList += [align]
-
           print("Bad variance count:%d" % badVarianceCount)
-          if len(goodAlignList)>0:
-            doMerge = True
-            flipped = True
-            patchToAdd = patchif
-            boundaryToAdd = boundaryf                
+          
+          if badVarianceCount > 0 and len(goodAlignList)==0:
+            print("Flipping patch")
+            Step("flip_patch and boundary")
+            Call(["./flip_patch2",patchi,patchif])
+            Call(["./flip_patch2",boundary,boundaryf])
+            Step("align_patches")
+            alignList = CallAlignMulti(currentSurface,patchif)
+            goodAlignList = []
+            
+            if len(alignList)>0:
+              badVarianceCount = 0
+              for align in alignList:
+                print(align)
+                patch = align[0]
+                variance = (align[1],align[2],align[3],align[4],align[5],align[6])
+                transform = (align[7],align[8],align[9],align[10],align[11],align[12])
+            
+                if not VarianceTest(variance):
+                  badVarianceCount += 1
+                else:
+                  goodAlignList += [align]
+
+              print("Bad variance count:%d" % badVarianceCount)
+              if len(goodAlignList)>0:
+                doMerge = True
+                flipped = True
+                patchToAdd = patchif
+                boundaryToAdd = boundaryf                
+              else:
+                print("Unable to align, even after flipping")
           else:
-            print("Unable to align, even after flipping")
-      else:
-        doMerge = True
-        flipped = False
-        patchToAdd = patchi
-        boundaryToAdd = boundary
-        
-    if doMerge:
-      acceptedCount += 1
-      if badVarianceCount>0:
-        acceptedWithSomeBadVariance += 1
-        
-      AddToPatchCoordFile(patchNum,flipped,iterations,goodAlignList)
+            doMerge = True
+            flipped = False
+            patchToAdd = patchi
+            boundaryToAdd = boundary
+            
+          if doMerge:
+            acceptedCount += 1
+            if badVarianceCount>0:
+              acceptedWithSomeBadVariance += 1
+            
+            AddToPatchCoordFile(patchNum,flipped,iterations,goodAlignList)
 
-      #print("currentBoundary")
-      #print(len(CallOutput(["./listbigpatchpoints",currentBoundary]).split("\n")))
-      #Call(["./listbigpatchpoints",currentBoundary],outputDir+"/boundary_"+str(boundaryIter)+".txt")
-      boundaryIter+=1
-      #print("boundaryToAdd")
-      #print(len(CallOutput(["./listpatchpoints",boundaryToAdd]).split("\n")))
-      
-      # For the boundary we need to work out:
-      # Given the new patch, which points from the current boundary should we delete?
-      Call(["./erasepoints",currentBoundary,patchToAdd,"0",str(parameters.CURRENT_BOUNDARY_ERASE_DISTANCE)])
-      # Given the current suface, which points of the new boundary should not be used
-      Call(["./erasepoints",currentSurface,boundaryToAdd,"1",str(parameters.NEW_BOUNDARY_ERASE_DISTANCE)])
+            #print("currentBoundary")
+            #print(len(CallOutput(["./listbigpatchpoints",currentBoundary]).split("\n")))
+            #Call(["./listbigpatchpoints",currentBoundary],outputDir+"/boundary_"+str(boundaryIter)+".txt")
+            boundaryIter+=1
+            #print("boundaryToAdd")
+            #print(len(CallOutput(["./listpatchpoints",boundaryToAdd]).split("\n")))
+          
+            # For the boundary we need to work out:
+            # Given the new patch, which points from the current boundary should we delete?
+            Call(["./erasepoints",currentBoundary,patchToAdd,"0",str(parameters.CURRENT_BOUNDARY_ERASE_DISTANCE)])
+            # Given the current suface, which points of the new boundary should not be used
+            Call(["./erasepoints",currentSurface,boundaryToAdd,"1",str(parameters.NEW_BOUNDARY_ERASE_DISTANCE)])
 
-      #print("currentBoundary")
-      #print(len(CallOutput(["./listbigpatchpoints",currentBoundary]).split("\n")))
-      #print("boundaryToAdd")
-      #print(len(CallOutput(["./listpatchpoints",boundaryToAdd]).split("\n")))
+            #print("currentBoundary")
+            #print(len(CallOutput(["./listbigpatchpoints",currentBoundary]).split("\n")))
+            #print("boundaryToAdd")
+            #print(len(CallOutput(["./listpatchpoints",boundaryToAdd]).split("\n")))
 
-      Call(["./addtobigpatch",currentBoundary,boundaryToAdd,str(patchNum)])
-        
-      Call(["./addtobigpatch",currentSurface,patchToAdd,str(patchNum)])      
-    else:
-      print("No alignment of patch could be done")
-      unalignedCount += 1
-      
+            Call(["./addtobigpatch",currentBoundary,boundaryToAdd,str(patchNum)])
+            
+            Call(["./addtobigpatch",currentSurface,patchToAdd,str(patchNum)])      
+          else:
+            print("No alignment of patch could be done")
+            unalignedCount += 1
+
+          # Mutex1 will now be released   
+    
   Call(["rm",patchi])        
   Call(["rm",patchif])
   Call(["rm",boundary])        
@@ -240,33 +293,39 @@ while True:
     
   Step("seeking next point")
   while True: 
-    # Pick a random boundary point
-    rb = CallOutput(["./randombigpatchpoint",currentBoundary,str(randint(0,1000000000)),str(randint(0,1000000000))])
-    print(rb)
-    rb = [float(x) for x in rb.split(" ")]
-    
-    print("Selected point is %f,%f,%f" % (rb[2],rb[3],rb[4]))
-  
-    # Open current surface and find the grid points within a radius of 5 of x,y,z on the same patch as x,y,z (the first returned will be the nearest)
-    Step("find_nearest4")
-    Call(["./find_nearest4",currentSurface,str(rb[2]),str(rb[3]),str(rb[4]),str(rb[5]),"5"],outputDir + "/nearest_tmp.csv")
-
-    points = []
-
-    with open(outputDir + "/nearest_tmp.csv") as csvfile:
-      print("Opened nearest point file")
-      pointreader = csv.reader(csvfile)
-      for row in pointreader:
-        points += [[float(row[0]),float(row[1]),float(row[2])]]
-
-    print("Found %d nearest points" % len(points))
- 
-    seed = (points[0][0],points[0][1],points[0][2])
-
-    # After all of that, if we find that the seed is near the edge of the volume, go back and pick another one  
-    if seed[0]-parameters.VOL_OFFSET_X>8 and seed[0]-parameters.VOL_OFFSET_X<parameters.VOL_SIZE_X-8 and seed[1]-parameters.VOL_OFFSET_Y>8 and seed[1]-parameters.VOL_OFFSET_Y<parameters.VOL_SIZE_Y-8 and seed[2]-parameters.VOL_OFFSET_Z>8 and seed[2]-parameters.VOL_OFFSET_Z<parameters.VOL_SIZE_Z-8:
-      break
+    with Locker("Mutex1"):      
+        # Pick a random boundary point
+        rb = CallOutput(["./randombigpatchpoint",currentBoundary,str(randint(0,1000000000)),str(randint(0,1000000000))])
+        print(rb)
+        rb = [float(x) for x in rb.split(" ")]
+        
+        print("Selected point is %f,%f,%f" % (rb[2],rb[3],rb[4]))
       
+        # Open current surface and find the grid points within a radius of 5 of x,y,z on the same patch as x,y,z (the first returned will be the nearest)
+        Step("find_nearest4")
+        Call(["./find_nearest4",currentSurface,str(rb[2]),str(rb[3]),str(rb[4]),str(rb[5]),"5"],outputDir + "/nearest_tmp.csv")
+
+        points = []
+
+        with open(outputDir + "/nearest_tmp.csv") as csvfile:
+          print("Opened nearest point file")
+          pointreader = csv.reader(csvfile)
+          for row in pointreader:
+            points += [[float(row[0]),float(row[1]),float(row[2])]]
+
+        print("Found %d nearest points" % len(points))
+     
+        seed = (points[0][0],points[0][1],points[0][2])
+
+	    # Erase the seed point from the boundary
+        Call(["./erasepoints",currentBoundary,str(seed[0]),str(seed[1]),str(seed[2]),"0",str(parameters.CURRENT_BOUNDARY_ERASE_DISTANCE)])
+
+        # After all of that, if we find that the seed is near the edge of the volume, go back and pick another one  
+        if seed[0]-parameters.VOL_OFFSET_X>8 and seed[0]-parameters.VOL_OFFSET_X<parameters.VOL_SIZE_X-8 and seed[1]-parameters.VOL_OFFSET_Y>8 and seed[1]-parameters.VOL_OFFSET_Y<parameters.VOL_SIZE_Y-8 and seed[2]-parameters.VOL_OFFSET_Z>8 and seed[2]-parameters.VOL_OFFSET_Z<parameters.VOL_SIZE_Z-8:
+          break
+        
+        # Mutex1 will now be released
+		
   points = np.array([[x[0] for x in points],[x[1] for x in points],[x[2] for x in points]])
   
   # Calculate SVD on these points to get the two plane axes for the seed
@@ -280,11 +339,11 @@ while True:
   print("Next seed:")
   print(seed)
   
+  # TODO - below is an unimplemented idea about prioritising low stress points first
   # Render the stress (needs to be RGBA)
-    
   # For each boundary point, find the stress
   # Find the boundary point with minimum stress - this will be the new seed (choose at random if more than one)
     
-  patchNum+=1
+  patchNum+=patchNumIncrement
   restart = False
-  
+  loopIterations += 1
