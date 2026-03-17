@@ -73,7 +73,7 @@
   "patch_align": {
     "__comment__" : "Parameters related to the alignment algorithm (align_patchesN.cpp)",
 	
-    "__comment__1" : "The minimum distance between a point in one patch and another that will be considered before assessing it as a match", "MATCH_MIN_DIST" : 2.0, 
+    "__comment__1" : "The minimum distance between a point in one patch and another that will be considered before assessing it as a match", "MATCH_MIN_DIST" : 8.0, 
 	
 	"__comment__2" : "The number of point-pair samples that will be take per-patch when looking for transformations",
     "NUM_POINT_SAMPLES" :  500, 

@@ -45,7 +45,7 @@ CURRENT_BOUNDARY_ERASE_DISTANCE=10
 NEW_BOUNDARY_ERASE_DISTANCE=5
 # Parameters related to the alignment algorithm (align_patchesN.cpp)
 # The minimum distance between a point in one patch and another that will be considered before assessing it as a match
-MATCH_MIN_DIST=2.0
+MATCH_MIN_DIST=8.0
 # The number of point-pair samples that will be take per-patch when looking for transformations
 NUM_POINT_SAMPLES=500
 # The min length line that will be used when looking for transformations

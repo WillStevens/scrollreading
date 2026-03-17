@@ -17,20 +17,25 @@
 
 # Make the various ZARR reader/writers that we need
 # 80 buffers for zarr_1 because this is used for rendering, and we want to fit a whole row/column of a scroll in memory
-python zarrgen.py zarr_meta_1.json 80 _1 > zarr_1.c 
-python zarrgen.py zarr_meta_c128i1.json 8 _c128i1b8 > zarr_c128i1b8.c
-python zarrgen.py zarr_meta_c128i1.json 16 _c128i1b16 > zarr_c128i1b16.c
-python zarrgen.py zarr_meta_c128i1.json 128 _c128i1b128 > zarr_c128i1b128.c
-python zarrgen.py zarr_meta_c64i1.json 1 _c64i1b1 > zarr_c64i1b1.c
-python zarrgen.py zarr_meta_c64i1.json 64 _c64i1b64 > zarr_c64i1b64.c
-python zarrgen.py zarr_meta_c64i1.json 256 _c64i1b256 > zarr_c64i1b256.c
-python zarrgen.py zarr_meta_c128.json 80 _c128 > zarr_c128.c 
+#python zarrgen.py zarr_meta_1.json 80 _1 > zarr_1.c 
+#python zarrgen.py zarr_meta_c128i1.json 8 _c128i1b8 > zarr_c128i1b8.c
+#python zarrgen.py zarr_meta_c128i1.json 16 _c128i1b16 > zarr_c128i1b16.c
+#python zarrgen.py zarr_meta_c128i1.json 128 _c128i1b128 > zarr_c128i1b128.c
+#python zarrgen.py zarr_meta_c64i1.json 1 _c64i1b1 > zarr_c64i1b1.c
+#python zarrgen.py zarr_meta_c64i1.json 64 _c64i1b64 > zarr_c64i1b64.c
+#python zarrgen.py zarr_meta_c64i1.json 256 _c64i1b256 > zarr_c64i1b256.c
+#python zarrgen.py zarr_meta_c128.json 80 _c128 > zarr_c128.c 
 
 
 # Generate parameters.h and parameters.py from parameters.json
-python parse_parameters.py
+#python parse_parameters.py
+
+g++ -O3 -Wall -c zarr_1.c
+g++ -O3 -Wall -c zarr_c64i1b256.c
 
 # Programs that make up the main part of the pipeline
 g++ -O3 -Wall -c common_types.cpp
+g++ -O3 -Wall -c patch_generator.cpp
+g++ -O3 -Wall -c bigpatch.cpp
 g++ -O3 -Wall -c simpaper10.cpp
-g++ simpaper10.o common_types.o -o simpaper10 -lblosc2 -L/usr/local/lib -I/usr/local/include
+g++ -O3 -Wall simpaper10.o patch_generator.o common_types.o zarr_c64i1b256.o zarr_1.o -o simpaper10 -lblosc2 -L/usr/local/lib -I/usr/local/include
