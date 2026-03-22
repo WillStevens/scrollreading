@@ -259,3 +259,38 @@ void AddToBigPatch(BigPatch *bp, Patch &p,int patchNum)
       WritePatchPoints(bp,item.first,item.second);
   }
 }
+
+void FindBigPatchPointNeighbours(BigPatch *z, gridPoint p,std::vector<gridPoint> &neighbours)
+{
+	chunkIndex ci = GetChunkIndex(std::get<2>(p),std::get<3>(p),std::get<4>(p));
+	std::vector<gridPoint> gps;
+	
+	float xp = std::get<0>(p);
+	float yp = std::get<1>(p);
+	
+	for(int xo=std::get<0>(ci)-1; xo<=std::get<0>(ci)+1; xo++)
+	for(int yo=std::get<1>(ci)-1; yo<=std::get<1>(ci)+1; yo++)
+	for(int zo=std::get<2>(ci)-1; zo<=std::get<2>(ci)+1; zo++)
+	{
+		ReadPatchPoints(z,chunkIndex(xo,yo,zo),gps);
+	}
+	
+	for(const auto &gp : gps)
+	{
+		if (std::get<5>(gp)==std::get<5>(p))
+		{
+			float xgp = std::get<0>(gp);
+			float ygp = std::get<1>(gp);
+			
+			float d = Distance(xp,yp,xgp,ygp);
+
+			//printf("Testing:%f,%f,%f,%f  -  %f,%f,%f,%d: %f\n",xp,yp,xgp,ygp,std::get<2>(gp),std::get<3>(gp),std::get<4>(gp),std::get<5>(gp),d);
+
+			if (d>0.99 && d<1.01)
+			{
+				neighbours.push_back(gp);
+				printf("Neighbour:%f,%f,%f\n",std::get<2>(gp),std::get<3>(gp),std::get<4>(gp));
+			}
+		}
+	}
+}

@@ -1,9 +1,88 @@
 #include <cstdio>
+#include <cstdlib>
+#include <tuple>
 
 #include "parameters.h"
 
 #include "bigpatch.h"
 #include "patch_generator.h"
+#include "align_patches.h"
+
+// TODO - need to handle case when no point can be found
+bool GetNewSeed(BigPatch *bp,BigPatch *bpb,float (&seed)[9])
+{
+	bool found = false;
+	gridPoint newSeed;
+	float dx01,dy01,dx02,dy02;
+	int seedAxis0,seedAxis1;
+	std::vector<gridPoint> neighbours;
+	
+	while(!found)
+	{
+		// Get a random point from the boundary
+		newSeed = SelectRandomPoint(bpb,rand(),rand());
+		printf("Selected %f,%f,%f\n",std::get<2>(newSeed),std::get<3>(newSeed),std::get<4>(newSeed));
+        // Find any neighbours it has to help work out seed orientation
+		neighbours.push_back(newSeed);
+		FindBigPatchPointNeighbours(bp,newSeed,neighbours);
+		
+		// If it only has one neighbour, look for neighbours of this neighbour
+		if (neighbours.size()==2)
+		{
+			gridPoint singleNeighbour = neighbours[1];
+			neighbours.clear();
+			neighbours.push_back(singleNeighbour);
+		    FindBigPatchPointNeighbours(bp,singleNeighbour,neighbours);
+		}
+				
+		// The neighbour[0] point should have neighbours in two different axis directions
+		// If not, don't use this point
+		if (neighbours.size()>=3)
+		{
+			seedAxis0 = 1; seedAxis1 = 2;
+			dx01 = std::get<0>(neighbours[0])-std::get<0>(neighbours[1]);
+			dy01 = std::get<1>(neighbours[0])-std::get<1>(neighbours[1]);
+			
+			dx02 = std::get<0>(neighbours[0])-std::get<0>(neighbours[2]);
+			dy02 = std::get<1>(neighbours[0])-std::get<1>(neighbours[2]);
+			
+			// If the dot product of these is not close to zero, try some other possibilities
+            if (DotProduct(dx01,dy01,dx02,dy02)<0.01)
+			  found = true;
+		  
+		    if (!found && neighbours.size()>=4)
+			{
+				seedAxis1 = 3;
+			    dx02 = std::get<0>(neighbours[0])-std::get<0>(neighbours[3]);
+			    dy02 = std::get<1>(neighbours[0])-std::get<1>(neighbours[3]);
+				
+				if (DotProduct(dx01,dy01,dx02,dy02)<0.01)
+				  found = true;
+
+			}
+		}
+		
+	}
+	seed[0] = std::get<2>(newSeed);
+	seed[1] = std::get<3>(newSeed);
+	seed[2] = std::get<4>(newSeed);
+	Vec3 v(std::get<2>(neighbours[0])-std::get<2>(neighbours[seedAxis0]),
+	       std::get<3>(neighbours[0])-std::get<3>(neighbours[seedAxis0]),
+	       std::get<4>(neighbours[0])-std::get<4>(neighbours[seedAxis0]));
+	Vec3 w(std::get<2>(neighbours[0])-std::get<2>(neighbours[seedAxis1]),
+	       std::get<3>(neighbours[0])-std::get<3>(neighbours[seedAxis1]),
+	       std::get<4>(neighbours[0])-std::get<4>(neighbours[seedAxis1]));
+	v = v.normalized();
+	w = w.normalized();
+	seed[3] = v.x;
+	seed[4] = v.y;
+	seed[5] = v.z;
+	seed[6] = w.x;
+	seed[7] = w.y;
+	seed[8] = w.z;
+	
+	return true;
+}
 
 int main(void)
 {
@@ -28,6 +107,7 @@ int main(void)
 	
 	for(int i=0; i<10; i++)
 	{
+		printf("Seed: %f,%f,%f,%f,%f,%f,%f,%f,%f,\n",seed[0],seed[1],seed[2],seed[3],seed[4],seed[5],seed[6],seed[7],seed[8]);
 		Patch patch,boundary;
 		
 		/*Remove seed from boundary*/
@@ -41,10 +121,37 @@ int main(void)
 		}			
 		else
 		{
+			Aligner *al = new Aligner();
+			
+			std::vector<alignment> alignments;
+			
+			al->AlignPatches(bp,patch,alignments);
+			
+			for(auto const &a : alignments)
+			{
+				printf("%d (%f,%f,%f,%f,%f,%f) (%f,%f,%f,%f,%f,%f)\n",
+				  std::get<0>(a),
+				  std::get<1>(a),
+				  std::get<2>(a),
+				  std::get<3>(a),
+				  std::get<4>(a),
+				  std::get<5>(a),
+				  std::get<6>(a),
+				  std::get<7>(a),
+				  std::get<8>(a),
+				  std::get<9>(a),
+				  std::get<10>(a),
+				  std::get<11>(a),
+				  std::get<12>(a));
+			}
 		}
+		
+		GetNewSeed(bp,bpb,seed);
 	}
 	
 	CloseBigPatch(bpb);
 	CloseBigPatch(bp);
+	
+	delete pg;
 }
 

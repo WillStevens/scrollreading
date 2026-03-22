@@ -8,7 +8,7 @@
 #include <algorithm>
 #include <set>
 
-#include "bigpatch.cpp"
+#include "bigpatch.h"
 
 #include "align_patches.h"
 
@@ -22,7 +22,7 @@ bool Aligner::AlignPatches(BigPatch *bp, Patch &p, std::vector<alignment> &align
 	
 	for(const patchPoint &pp : p.points)
 	{
-		gridPoints[1].push_back(gridPoint(pp.x,pp.y,pp.v.x,pp.v.x,pp.v.z,0));
+		gridPoints[1].push_back(gridPoint(pp.x,pp.y,pp.v.x,pp.v.y,pp.v.z,0));
 		// Which chunk is the point in?
 		chunks.insert(GetChunkIndex(pp.v.x,pp.v.y,pp.v.z));
 	}

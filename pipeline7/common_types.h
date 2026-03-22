@@ -58,3 +58,4 @@ affineTx AffineTxMultiply(const affineTx &m, const affineTx &n);
 
 float Distance(float x0, float y0, float z0, float x1, float y1, float z1);
 float Distance(float x0, float y0, float x1, float y1);
+float DotProduct(float x0, float y0, float x1, float y1);

@@ -458,8 +458,8 @@ void PatchGenerator::OutputBoundary(Patch &boundary, pointSet &boundaryPoints, p
   for(unsigned i = 0; i<boundaryPoints.size(); i++)
   {
 	boundary.points.push_back(patchPoint(
-		boundaryPointsPaper[i].x,
-		boundaryPointsPaper[i].y,
+		boundaryPointsPaper[i].x-SHEET_SIZE/2,
+		boundaryPointsPaper[i].y-SHEET_SIZE/2,
 		boundaryPoints[i].x,
 		boundaryPoints[i].y,
 		boundaryPoints[i].z));
@@ -483,6 +483,8 @@ void PatchGenerator::OutputPatch(Patch &patch)
 int PatchGenerator::GeneratePatch(float seed[9],Patch &patch, Patch &boundary)
 { 
   int totPointsAdded = 0;
+ 
+  activeListSize = 0;
   
   pointSet newPtsPaper;
   pointSet newPts;

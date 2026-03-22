@@ -62,4 +62,5 @@ void ReadPatchPoints(BigPatch *z, chunkIndex ci, std::vector<gridPoint> &gridPoi
 /* rn1,rn2 are randomly generated numbers to use for selecting the point */
 gridPoint SelectRandomPoint(BigPatch *z, unsigned rn1, unsigned rn2);
 void AddToBigPatch(BigPatch *z, Patch &p,int patchNum);
+void FindBigPatchPointNeighbours(BigPatch *z, gridPoint p,std::vector<gridPoint> &neighbours);
 

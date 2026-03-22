@@ -20,10 +20,10 @@ common_types.o: common_types.cpp common_types.h vec3.h
 patch_generator.o: patch_generator.cpp patch_generator.h common_types.h vec3.h zarr_c64i1b256.h zarr_1.h
 	$(CC) -c $< $(CFLAGS)
 
-simpaper10.o: simpaper10.cpp patch_generator.h common_types.h vec3.h parameters.h
+simpaper10.o: simpaper10.cpp align_patches.h patch_generator.h bigpatch.h common_types.h vec3.h parameters.h
 	$(CC) -c $< $(CFLAGS)
 	
-align_patches.o : align_patches.cpp common_types.h parameters.h
+align_patches.o : align_patches.cpp bigpatch.h common_types.h parameters.h
 	$(CC) -c $< $(CFLAGS)
 	
 parameters.h : parameters.json
