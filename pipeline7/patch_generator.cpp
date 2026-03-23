@@ -388,12 +388,8 @@ void PatchGenerator::AddNewPoints(pointSet &newPts, pointSet &newPtsPaper)
     }
 }
 
-PatchGenerator::PatchGenerator(const string &surfaceZarrName,const string &vectorFieldZarrName)
+PatchGenerator::PatchGenerator(const string &surfaceZarrName_,const string &vectorFieldZarrName_) : surfaceZarrName(surfaceZarrName_),vectorFieldZarrName(vectorFieldZarrName_)
 {
-	printf("Opening zarrs\n");
-	surfaceZarr = ZARROpen_1(surfaceZarrName.c_str());
-    vectorFieldZarr = ZARROpen_c64i1b256(vectorFieldZarrName.c_str());
-
 	printf("Init\n");
 
     InitExpectedDistanceLookup();
@@ -403,8 +399,6 @@ PatchGenerator::PatchGenerator(const string &surfaceZarrName,const string &vecto
 		
 PatchGenerator::~PatchGenerator(void)
 {
-	ZARRClose_c64i1b256(vectorFieldZarr);
-	ZARRClose_1(surfaceZarr);
 }
 
 bool PatchGenerator::SetSeed(float seed[9])
@@ -489,6 +483,10 @@ int PatchGenerator::GeneratePatch(float seed[9],Patch &patch, Patch &boundary)
   pointSet newPtsPaper;
   pointSet newPts;
 
+  // TODO - in future it would be better to keep the zarrs open, but have more efficient buffer lookup
+  printf("Opening zarrs\n");
+  surfaceZarr = ZARROpen_1(surfaceZarrName.c_str());
+  vectorFieldZarr = ZARROpen_c64i1b256(vectorFieldZarrName.c_str());
   
   if (!SetSeed(seed))
   {
@@ -535,6 +533,9 @@ int PatchGenerator::GeneratePatch(float seed[9],Patch &patch, Patch &boundary)
   
   OutputPatch(patch);
   OutputBoundary(boundary,newPts,newPtsPaper);
+
+  ZARRClose_c64i1b256(vectorFieldZarr);
+  ZARRClose_1(surfaceZarr);
   
   return i;
 }

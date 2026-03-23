@@ -7,6 +7,14 @@
 #include "bigpatch.h"
 #include "patch_generator.h"
 #include "align_patches.h"
+#include "erasepoints.h"
+
+typedef std::map<int,std::vector<alignment> > AlignmentMap;
+
+bool VarianceTest(float v0,float v1, float v2, float v3, float v4,float v5)
+{
+  return v0<=MAX_ROTATE_VARIANCE && v1<=MAX_ROTATE_VARIANCE && v2<=MAX_TRANSLATE_VARIANCE && v3<=MAX_ROTATE_VARIANCE && v4<=MAX_ROTATE_VARIANCE && v5<=MAX_TRANSLATE_VARIANCE;
+}
 
 // TODO - need to handle case when no point can be found
 bool GetNewSeed(BigPatch *bp,BigPatch *bpb,float (&seed)[9])
@@ -88,8 +96,11 @@ int main(void)
 {
 	printf("Started\n");
     fflush(stdout);
+
+    int acceptedCount=0,unalignedCount=0,acceptedWithSomeBadVariance=0;
 	
 	PatchGenerator *pg = new PatchGenerator(string(SURFACE_ZARR),string(VECTORFIELD_ZARR));
+	AlignmentMap *am = new AlignmentMap;
 	
 	float seed[9] = {
       SEED_X,
@@ -127,6 +138,7 @@ int main(void)
 			
 			al->AlignPatches(bp,patch,alignments);
 			
+			int numSuccessfulAlignments = 0, badVarianceCount = 9;
 			for(auto const &a : alignments)
 			{
 				printf("%d (%f,%f,%f,%f,%f,%f) (%f,%f,%f,%f,%f,%f)\n",
@@ -143,7 +155,34 @@ int main(void)
 				  std::get<10>(a),
 				  std::get<11>(a),
 				  std::get<12>(a));
+				  
+				if (VarianceTest(std::get<1>(a),std::get<2>(a),std::get<3>(a),std::get<4>(a),std::get<5>(a),std::get<6>(a)))
+				{
+					numSuccessfulAlignments++;
+					if (am->count(i)==0)
+						(*am)[i] = std::vector<alignment>();
+					(*am)[i].push_back(a);					
+				}
+				else
+					badVarianceCount++;
 			}
+			
+			if (numSuccessfulAlignments)
+			{
+				acceptedCount++;
+				if (badVarianceCount>0)
+					acceptedWithSomeBadVariance++;
+            
+				// For the boundary we need to work out:
+				// Given the new patch, which points from the current boundary should we delete?
+				ErasePoints(bpb,patch,0,CURRENT_BOUNDARY_ERASE_DISTANCE);
+				ErasePoints(bp,boundary,1,NEW_BOUNDARY_ERASE_DISTANCE);
+
+				AddToBigPatch(bpb,boundary,i);
+				AddToBigPatch(bp,patch,i);      
+			}
+			else
+				unalignedCount++;
 		}
 		
 		GetNewSeed(bp,bpb,seed);
@@ -152,6 +191,7 @@ int main(void)
 	CloseBigPatch(bpb);
 	CloseBigPatch(bp);
 	
+	delete am;
 	delete pg;
 }
 

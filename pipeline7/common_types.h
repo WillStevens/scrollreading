@@ -40,7 +40,7 @@ struct patchPoint {
 	point v;
 	
     constexpr patchPoint() : x(0), y(0) {}
-    constexpr patchPoint(int x_, int y_, float vx_, float vy_, float vz_) : x(x_), y(y_), v(vx_,vy_,vz_) {}
+    constexpr patchPoint(float x_, float y_, float vx_, float vy_, float vz_) : x(x_), y(y_), v(vx_,vy_,vz_) {}
 
 };
 

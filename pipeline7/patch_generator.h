@@ -16,7 +16,7 @@ using namespace std;
 class PatchGenerator
 {
 	public:
-        PatchGenerator(const string &surfaceZarrName,const string &vectorFieldZarrName);
+        PatchGenerator(const string &surfaceZarrName_,const string &vectorFieldZarrName_);
 		~PatchGenerator(void);
 
         void MakeActive(int x, int y);		
@@ -39,6 +39,7 @@ class PatchGenerator
 
         int GeneratePatch(float seed[9],Patch &patch, Patch &boundary);
 	private:
+		string surfaceZarrName,vectorFieldZarrName;
 	    ZARR_1 *surfaceZarr;
 		ZARR_c64i1b256 *vectorFieldZarr;
 
