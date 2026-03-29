@@ -288,7 +288,7 @@ bool Aligner::AlignMatches(std::map<int, std::vector<match>> &matchListMap, std:
 				
 			//printf("distance 0: %f, distance 1: %f\n",d0,d1);
 			
-			if (d1>MIN_LINE_LENGTH && d0/d1>(1.0-MAX_LINE_DIFF) && d0/d1<(1.0+MAX_LINE_DIFF))
+			if (d1*QUADMESH_SIZE>MIN_LINE_LENGTH && d0/d1>(1.0-MAX_LINE_DIFF) && d0/d1<(1.0+MAX_LINE_DIFF))
 			{						
 				// Now work out the angle
 				float dx1 = bx1-ax1, dy1 = by1-ay1;

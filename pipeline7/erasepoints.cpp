@@ -121,6 +121,11 @@ int ErasePoints(BigPatch *bp0, Patch &p1, int which, float radius)
 {
   // Either erase bp0 points that are in p1, or erase p1 points that are in bp0. 'which' indicates which patch points should be erased from (0 or 1). 'radius' is the radius used for erasure.
 	    
+  gridPoints[0].clear();
+  gridPoints[1].clear();
+  cellMap0.clear();
+  cellMap1.clear();
+  
   std::set<chunkIndex> chunks;
 	
   for(const patchPoint &pp : p1.points)
@@ -221,4 +226,13 @@ int ErasePoints(BigPatch *bp0, Patch &p1, int which, float radius)
   }
   
   return 0;
+}
+
+int ErasePoints(BigPatch *bp0, float x, float y, float z, int which, float radius)
+{
+	Patch p;
+	
+	p.points.push_back(patchPoint(0,0,x,y,z));
+	
+	return ErasePoints(bp0,p,which,radius);
 }

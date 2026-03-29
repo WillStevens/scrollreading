@@ -17,8 +17,6 @@ typedef std::tuple<int,int,int> gridCell;
 
 typedef std::map< gridCell, std::vector<gridPoint> >::iterator cellMapIterator;
 
-typedef std::tuple<int,float,float,float,float,float,float,float,float,float,float,float,float> alignment;
-
 class Aligner
 {
 	public:

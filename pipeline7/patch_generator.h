@@ -29,6 +29,7 @@ class PatchGenerator
 		void InitExpectedDistanceLookup(void);
 		float ForcesAndMove(void);
 		bool TryToFill(int xp, int yp, point &rp);
+		void ClearHighStress(void);
 		bool MarkHighStress(void);
 		bool HasHighStress(int x, int y, int z);
 		int MakeNewPoints(pointSet &newPts, pointSet &newPtsPaper);

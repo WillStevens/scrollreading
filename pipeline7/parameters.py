@@ -25,7 +25,7 @@ SEED_AXIS2_Y=0
 SEED_AXIS2_Z=1
 # Parameters used by the patch growing program
 MIN_PATCH_ITERS=45
-MAX_GROWTH_STEPS=225
+MAX_GROWTH_STEPS=125
 SPRING_FORCE_CONSTANT=0.05
 BEND_FORCE_CONSTANT=0.025
 # This is select so as to make the system critically damped

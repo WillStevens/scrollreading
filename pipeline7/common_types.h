@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vector>
+#include <map>
 
 using namespace std;
 
@@ -49,12 +50,20 @@ extern int dirVectorLookup[4][2];
 class Patch
 {
 	public:		
+		void Flip(void);
+		bool Write(const std::string &path, int i);
+		bool Read(const std::string &path, int i);
+		
 	    vector<patchPoint> points;
 };
+
+typedef std::tuple<int,float,float,float,float,float,float,float,float,float,float,float,float> alignment;
+typedef std::map<int,std::vector<alignment> > AlignmentMap;
 
 typedef std::tuple<float,float,float,float,float,float> affineTx;
 
 affineTx AffineTxMultiply(const affineTx &m, const affineTx &n);
+void AffineTxApply(const affineTx &a, float &x, float &y);
 
 float Distance(float x0, float y0, float z0, float x1, float y1, float z1);
 float Distance(float x0, float y0, float x1, float y1);

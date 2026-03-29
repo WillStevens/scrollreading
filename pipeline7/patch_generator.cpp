@@ -247,6 +247,14 @@ bool PatchGenerator::TryToFill(int xp, int yp, Vec3 &rp)
   return false;
 }
 
+void PatchGenerator::ClearHighStress(void)
+{
+	for(int x = 0; x<VOL_SIZE_X/STRESS_BLOCK_SIZE; x++)
+	for(int y = 0; y<VOL_SIZE_Y/STRESS_BLOCK_SIZE; y++)
+	for(int z = 0; z<VOL_SIZE_Z/STRESS_BLOCK_SIZE; z++)
+		highStress[z][y][x] = 0;
+}
+
 bool PatchGenerator::MarkHighStress(void)
 {  
   bool r = false;
@@ -480,6 +488,8 @@ int PatchGenerator::GeneratePatch(float seed[9],Patch &patch, Patch &boundary)
  
   activeListSize = 0;
   
+  ClearHighStress();
+  
   pointSet newPtsPaper;
   pointSet newPts;
 
@@ -490,7 +500,9 @@ int PatchGenerator::GeneratePatch(float seed[9],Patch &patch, Patch &boundary)
   
   if (!SetSeed(seed))
   {
-	  printf("Seed point is not a surface point");
+	  printf("Seed point is not a surface point\n");
+      ZARRClose_c64i1b256(vectorFieldZarr);
+      ZARRClose_1(surfaceZarr);
 	  return 0;
   }
   

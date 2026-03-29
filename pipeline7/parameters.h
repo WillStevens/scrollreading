@@ -25,7 +25,7 @@
 #define SEED_AXIS2_Z 1
 /* Parameters used by the patch growing program */
 #define MIN_PATCH_ITERS 45
-#define MAX_GROWTH_STEPS 225
+#define MAX_GROWTH_STEPS 125
 #define SPRING_FORCE_CONSTANT 0.05
 #define BEND_FORCE_CONSTANT 0.025
 /* This is select so as to make the system critically damped */

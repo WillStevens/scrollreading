@@ -7,3 +7,4 @@
 #include "bigpatch.h"
 
 int ErasePoints(BigPatch *bp0, Patch &p1, int which, float radius);
+int ErasePoints(BigPatch *bp0, float x, float y, float z, int which, float radius);
