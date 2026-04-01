@@ -2,13 +2,19 @@ CC=g++
 CFLAGS=-O3 -Wall
 LFLAGS=-lblosc2 -ltiff -L/usr/local/lib -I/usr/local/include
 
-simpaper10: common_types.o patch_generator.o simpaper10.o zarr_1.o zarr_c64i1b256.o bigpatch.o align_patches.o erasepoints.o badpatchfinder.o
+simpaper10: common_types.o patch_generator.o simpaper10.o zarr_1.o zarr_c64i1b256.o bigpatch.o align_patches.o erasepoints.o badpatchfinder.o zarr_show2_u8.o sliceanimrender.o
 	$(CC) -o $@ $^ $(CFLAGS) $(LFLAGS)
 	
 zarr_1.o: zarr_1.c zarr_1.h
 	$(CC) -c $< $(CFLAGS)
 
 zarr_c64i1b256.o: zarr_c64i1b256.c zarr_c64i1b256.h
+	$(CC) -c $< $(CFLAGS)
+
+zarr_show2_u8.o : zarr_show2_u8.cpp zarr_show2_u8.h parameters.h common_types.h
+	$(CC) -c $< $(CFLAGS)
+
+sliceanimrender.o : sliceanimrender.cpp sliceanimrender.h zarr_show2_u8.h parameters.h common_types.h
 	$(CC) -c $< $(CFLAGS)
 
 bigpatch.o: bigpatch.cpp bigpatch.h

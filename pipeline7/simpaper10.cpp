@@ -12,6 +12,7 @@
 #include "align_patches.h"
 #include "erasepoints.h"
 #include "badpatchfinder.h"
+#include "sliceanimrender.h"
 
 void MemInfo(void)
 {
@@ -297,20 +298,16 @@ int main(void)
 	std::map<int,std::set<int> > neighbourList;
 	int minPatchInNeighbourList = -1;
 	
-	printf("A\n");
 	for(auto &a : *am)
 	{
 		int patch1 = a.first;
 	
 		if (badPatches.count(patch1)==0)
 		{
-			printf("B\n");
 			// Iterate over alignments
 			for(auto al : a.second)
 			{	
 				int patch2 = std::get<0>(al);
-
-				printf("C\n");
 
 				if (badPatches.count(patch2)==0)
 				{
@@ -319,8 +316,6 @@ int main(void)
 					if (neighbourList.count(patch2)==0)
 						neighbourList[patch2] = std::set<int>();
 					
-					printf("D\n");
-
 					neighbourList[patch1].insert(patch2);
 					neighbourList[patch2].insert(patch1);
 					
@@ -338,11 +333,8 @@ int main(void)
 	int currentVisit = minPatchInNeighbourList;
 	std::set<int> toVisitSet;
 	
-	printf("E\n");
-
 	while(true)
 	{
-		printf("CurrentVisit=%d\n",currentVisit);
 		visited.insert(currentVisit);
 
 		patchOrder.push_back(currentVisit);
@@ -352,13 +344,6 @@ int main(void)
 							visited.begin(),
 							visited.end(),
 							std::inserter(toVisitSet,toVisitSet.begin()));
-
-		for (auto i : toVisitSet)
-		{
-			printf("%d\n",i);
-		}
-
-		printf("H\n");
 		
 		if (toVisitSet.size()==0)
 			break;
@@ -371,7 +356,15 @@ int main(void)
 	{
 		printf("%d\n",i);
 	}
-	 
+
+	{
+		ZARR_1 *surfaceZarr = ZARROpen_1(SURFACE_ZARR);
+
+		SliceAnimRender(surfaceZarr,std::string("sliceanim"),5,40,1,patches,patchOrder);
+	
+		ZARRClose_1(surfaceZarr);
+	}
+	
 	delete patches;
 	delete am;
 	

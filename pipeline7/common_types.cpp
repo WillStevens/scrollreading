@@ -133,3 +133,42 @@ bool Patch::Read(const std::string &path, int i)
 	else
 		return false;
 }
+
+void Patch::CalcExtents(bool force)
+{
+	if (!force && minx != -1)
+		return;
+	
+	bool first=true;
+	
+	for(auto &point : points)
+	{
+		if (point.v.x<minx || first)
+			minx = point.v.x;
+		if (point.v.z>maxx || first)
+			maxx = point.v.x;
+		if (point.v.y<miny || first)
+			miny = point.v.y;
+		if (point.v.y>maxy || first)
+			maxz = point.v.y;
+		if (point.v.z<minz || first)
+			minz = point.v.z;
+		if (point.v.z>maxz || first)
+			maxz = point.v.z;
+		first = false;
+	}
+}
+
+void Patch::Interpolate(void)
+{
+	CalcExtents();
+	interpolatedPoints = new vector<patchPoints>();
+	
+	// Now do the interpolation....
+}
+
+void Patch::DiscardInterpolation(void)
+{
+	if (interpolatedPoints)
+		delete interpolatedPoints;
+}

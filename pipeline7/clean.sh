@@ -1,0 +1,15 @@
+cd temp.bp
+cd surface
+rm *.*.*
+cd ..
+cd ..
+cd tempb.bp
+cd surface
+rm *.*.*
+cd ..
+cd ..
+cd patches
+rm patch_*.bin
+cd ..
+cd sliceanim
+rm s_*.tif

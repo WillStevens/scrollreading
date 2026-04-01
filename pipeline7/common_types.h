@@ -53,8 +53,19 @@ class Patch
 		void Flip(void);
 		bool Write(const std::string &path, int i);
 		bool Read(const std::string &path, int i);
+		int MinZ(void) {CalcExtents(); return minz;}
+		int MaxZ(void) {CalcExtents(); return maxz;}
+		
+		void CalcExtents(bool force);
+		void Interpolate(void);
+		void DiscardInterpolation(void);
+		
+		Patch(void) {interpolatedPoints = NULL; minx=maxx=miny=maxy=minz=maxz=-1;}
+		~Patch(void) {DiscaredInterpolatedPoints();}
 		
 	    vector<patchPoint> points;
+		vector<patchPoints> *interpolatedPoints;
+		int minx,maxx,miny,maxy,minz,maxz;
 };
 
 typedef std::tuple<int,float,float,float,float,float,float,float,float,float,float,float,float> alignment;
