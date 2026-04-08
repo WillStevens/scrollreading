@@ -3,7 +3,9 @@
 #include <tuple>
 #include <fstream>
 #include <iostream>
+#include <sstream>
 #include <algorithm>
+#include <dirent.h>
 
 #include "parameters.h"
 
@@ -13,6 +15,7 @@
 #include "erasepoints.h"
 #include "badpatchfinder.h"
 #include "sliceanimrender.h"
+#include "position_patches.h"
 
 void MemInfo(void)
 {
@@ -125,8 +128,22 @@ bool GetNewSeed(BigPatch *bp,BigPatch *bpb,float (&seed)[9])
 	return true;
 }
 
-int main(void)
+int main(int argc, char *argv[])
 {
+	char mode='n';
+	if (argc!=1 && argc!=2)
+	{
+		fprintf(stderr,"Usage: %s [mode]\n",argv[0]);
+		fprintf(stderr,"Where optional mode can be:\n");
+		fprintf(stderr,"'skip' to skip patch generation and load patches from disk\n");
+		exit(-1);
+	}
+	else
+	{
+		if (argc==2)
+			mode = argv[1][0];
+	}
+	
 	printf("Started\n");
     fflush(stdout);
 
@@ -134,162 +151,241 @@ int main(void)
 	
 	AlignmentMap *am = new AlignmentMap;
 	std::map<int,Patch> *patches = new std::map<int,Patch>;
-	PatchGenerator *pg = new PatchGenerator(string(SURFACE_ZARR),string(VECTORFIELD_ZARR));
-
-	float seed[9] = {
-      SEED_X,
-	  SEED_Y,
-	  SEED_Z,
-	  SEED_AXIS1_X,
-	  SEED_AXIS1_Y,
-	  SEED_AXIS1_Z,
-	  SEED_AXIS2_X,
-	  SEED_AXIS2_Y,
-	  SEED_AXIS2_Z};
-
-	BigPatch *bp = OpenBigPatch("temp.bp");
-	BigPatch *bpb = OpenBigPatch("tempb.bp");
 	
-	for(int i=0; i<20; i++)
+	if (mode=='n')
 	{
-		MemInfo();
-	    printf("======== Patch %d ========\n",i);
+		PatchGenerator *pg = new PatchGenerator(string(SURFACE_ZARR),string(VECTORFIELD_ZARR));
+
+		float seed[9] = {
+		  SEED_X,
+		  SEED_Y,
+		  SEED_Z,
+		  SEED_AXIS1_X,
+		  SEED_AXIS1_Y,
+		  SEED_AXIS1_Z,
+		  SEED_AXIS2_X,
+		  SEED_AXIS2_Y,
+		  SEED_AXIS2_Z};
+
+		BigPatch *bp = OpenBigPatch("temp.bp");
+		BigPatch *bpb = OpenBigPatch("tempb.bp");
 		
-		printf("Seed: %f,%f,%f,%f,%f,%f,%f,%f,%f,\n",seed[0],seed[1],seed[2],seed[3],seed[4],seed[5],seed[6],seed[7],seed[8]);
-		Patch patch,boundary;
-		
-	    int steps = pg->GeneratePatch(seed,patch,boundary);
-	
-	    printf("%d growth steps\n",steps);
-		
-        if (i==0)
+		for(int i=0; i<200; i++)
 		{
-			if (steps < MIN_PATCH_ITERS)
+			MemInfo();
+			printf("======== Patch %d ========\n",i);
+			
+			printf("Seed: %f,%f,%f,%f,%f,%f,%f,%f,%f,\n",seed[0],seed[1],seed[2],seed[3],seed[4],seed[5],seed[6],seed[7],seed[8]);
+			Patch patch,boundary;
+			
+			int steps = pg->GeneratePatch(seed,patch,boundary);
+		
+			printf("%d growth steps\n",steps);
+			
+			if (i==0)
 			{
-				printf("Not enough growth steps (%d) on first seed\n",steps);
-				exit(1);
-			}
-			
-			AddToBigPatch(bp,patch,i);
-			AddToBigPatch(bpb,boundary,i);
-            (*patches)[i] = patch;									
-		}			
-		else if (steps >= MIN_PATCH_ITERS)
-		{
-			for(int alignAttempts = 0; alignAttempts<2; alignAttempts++)
-			{
-				Aligner *al = new Aligner();
-			
-				std::vector<alignment> alignments;
-			
-				al->AlignPatches(bp,patch,alignments);
-			
-				delete al;
-			
-				int numSuccessfulAlignments = 0, badVarianceCount = 9;
-				for(auto const &a : alignments)
+				if (steps < MIN_PATCH_ITERS)
 				{
-					printf("%d (%f,%f,%f,%f,%f,%f) (%f,%f,%f,%f,%f,%f)\n",
-						std::get<0>(a),
-						std::get<1>(a),
-						std::get<2>(a),
-						std::get<3>(a),
-						std::get<4>(a),
-						std::get<5>(a),
-						std::get<6>(a),
-						std::get<7>(a),
-						std::get<8>(a),
-						std::get<9>(a),
-						std::get<10>(a),
-						std::get<11>(a),
-						std::get<12>(a));
-				  
-					if (VarianceTest(std::get<1>(a),std::get<2>(a),std::get<3>(a),std::get<4>(a),std::get<5>(a),std::get<6>(a)))
+					printf("Not enough growth steps (%d) on first seed\n",steps);
+					exit(1);
+				}
+				
+				AddToBigPatch(bp,patch,i);
+				AddToBigPatch(bpb,boundary,i);
+				(*patches)[i] = patch;									
+			}			
+			else if (steps >= MIN_PATCH_ITERS)
+			{
+				for(int alignAttempts = 0; alignAttempts<2; alignAttempts++)
+				{
+					Aligner *al = new Aligner();
+				
+					std::vector<alignment> alignments;
+				
+					al->AlignPatches(bp,patch,alignments);
+				
+					delete al;
+				
+					int numSuccessfulAlignments = 0, badVarianceCount = 9;
+					for(auto const &a : alignments)
 					{
-						numSuccessfulAlignments++;
-						if (am->count(i)==0)
-							(*am)[i] = std::vector<alignment>();
-						(*am)[i].push_back(a);
-                        (*patches)[i] = patch;						
+						printf("%d (%f,%f,%f,%f,%f,%f) (%f,%f,%f,%f,%f,%f)\n",
+							std::get<0>(a),
+							std::get<1>(a),
+							std::get<2>(a),
+							std::get<3>(a),
+							std::get<4>(a),
+							std::get<5>(a),
+							std::get<6>(a),
+							std::get<7>(a),
+							std::get<8>(a),
+							std::get<9>(a),
+							std::get<10>(a),
+							std::get<11>(a),
+							std::get<12>(a));
+					  
+						if (VarianceTest(std::get<1>(a),std::get<2>(a),std::get<3>(a),std::get<4>(a),std::get<5>(a),std::get<6>(a)))
+						{
+							numSuccessfulAlignments++;
+							if (am->count(i)==0)
+								(*am)[i] = std::vector<alignment>();
+							(*am)[i].push_back(a);
+							(*patches)[i] = patch;						
+						}
+						else
+							badVarianceCount++;
+					}
+				
+					if (numSuccessfulAlignments)
+					{
+						acceptedCount++;
+						if (badVarianceCount>0)
+							acceptedWithSomeBadVariance++;
+				
+						// For the boundary we need to work out:
+						// Given the new patch, which points from the current boundary should we delete?
+						ErasePoints(bpb,patch,0,CURRENT_BOUNDARY_ERASE_DISTANCE);
+						ErasePoints(bp,boundary,1,NEW_BOUNDARY_ERASE_DISTANCE);
+
+						AddToBigPatch(bpb,boundary,i);
+						AddToBigPatch(bp,patch,i);
+
+						break;
+					}
+					else if (alignAttempts==0)
+					{
+						// Flip the patch and loop round for another try
+						patch.Flip();
 					}
 					else
-						badVarianceCount++;
+						unalignedCount++;
 				}
-			
-				if (numSuccessfulAlignments)
-				{
-					acceptedCount++;
-					if (badVarianceCount>0)
-						acceptedWithSomeBadVariance++;
-            
-					// For the boundary we need to work out:
-					// Given the new patch, which points from the current boundary should we delete?
-					ErasePoints(bpb,patch,0,CURRENT_BOUNDARY_ERASE_DISTANCE);
-					ErasePoints(bp,boundary,1,NEW_BOUNDARY_ERASE_DISTANCE);
-
-					AddToBigPatch(bpb,boundary,i);
-					AddToBigPatch(bp,patch,i);
-
-					break;
-				}
-				else if (alignAttempts==0)
-				{
-					// Flip the patch and loop round for another try
-					patch.Flip();
-				}
-				else
-					unalignedCount++;
 			}
-		}
-		else
-		{
-			printf("Not enough growth steps\n");
+			else
+			{
+				printf("Not enough growth steps\n");
+			}
+			
+			GetNewSeed(bp,bpb,seed);
 		}
 		
-		GetNewSeed(bp,bpb,seed);
-	}
-	
-	CloseBigPatch(bpb);
-	CloseBigPatch(bp);
+		CloseBigPatch(bpb);
+		CloseBigPatch(bp);
 
-	// Write patches and patch relationships to files
-	for(auto &p : *patches)
-	{
-		p.second.Write("patches",p.first);
-	}
-	
-	{
-		std::ofstream os("patches/rel.csv");
-		for(auto &a : *am)
+		// Write patches and patch relationships to files
+		for(auto &p : *patches)
 		{
-			for(auto &al : a.second)
+			p.second.Write("patches",p.first);
+		}
+		
+		{
+			std::ofstream os("patches/rel.csv");
+			for(auto &a : *am)
 			{
-				os << a.first 
-				   << "," << std::get<0>(al)
-				   << "," << std::get<1>(al)
-				   << "," << std::get<2>(al)
-				   << "," << std::get<3>(al)
-				   << "," << std::get<4>(al)
-				   << "," << std::get<5>(al)
-				   << "," << std::get<6>(al)
-				   << "," << std::get<7>(al)
-				   << "," << std::get<8>(al)
-				   << "," << std::get<9>(al)
-				   << "," << std::get<10>(al)
-				   << "," << std::get<11>(al)
-				   << "," << std::get<12>(al) << std::endl;
+				for(auto &al : a.second)
+				{
+					os << a.first 
+					   << "," << std::get<0>(al)
+					   << "," << std::get<1>(al)
+					   << "," << std::get<2>(al)
+					   << "," << std::get<3>(al)
+					   << "," << std::get<4>(al)
+					   << "," << std::get<5>(al)
+					   << "," << std::get<6>(al)
+					   << "," << std::get<7>(al)
+					   << "," << std::get<8>(al)
+					   << "," << std::get<9>(al)
+					   << "," << std::get<10>(al)
+					   << "," << std::get<11>(al)
+					   << "," << std::get<12>(al) << std::endl;
+				}
 			}
 		}
-	}
 
-	delete pg;
+		delete pg;
+	}
+	
+	if (mode=='s') // load patches and alignments
+	{
+		DIR *dir;
+		struct dirent *ent;
+	
+		// iterate through all patch files
+		if ((dir = opendir ("patches")) != NULL)
+		{
+			while ((ent = readdir (dir)) != NULL)
+			{
+				std::string file(ent->d_name);
+				
+				int patchNum=0;
+			
+				if (file.length()>=4 && ends_with(file,".bin"))
+				{			
+					for(auto c : file)
+					{
+						if (isdigit(c))
+							patchNum = patchNum*10+(c-'0');
+					}
+				
+					Patch p;
+		
+					p.Read("patches",patchNum);
+			
+					(*patches)[patchNum]=p;
+				}
+			}
+		}
+		
+		{
+			std::ifstream is("patches/rel.csv");
+			std::string line;
+			
+			while(std::getline(is,line))
+			{
+				std::stringstream ss(line);
+				std::vector<float> row;
+				std::string value;
+				
+				while(std::getline(ss,value,','))
+				{
+					row.push_back(std::stof(value));
+				}
+
+				if (am->count((int)row[0]) == 0)
+				{
+					(*am)[(int)row[0]] = std::vector<alignment>();
+				}
+				
+				(*am)[(int)row[0]].push_back(alignment((int)row[1],
+				                                            row[2],
+				                                            row[3],
+				                                            row[4],
+				                                            row[5],
+				                                            row[6],
+				                                            row[7],
+				                                            row[8],
+				                                            row[9],
+				                                            row[10],
+				                                            row[11],
+				                                            row[12],
+				                                            row[13]));
+			}
+		}
+
+	}
 	
 	std::set<int> badPatches;
 	
     BadPatchFinder *bpf = new BadPatchFinder();
 	bpf->FindBadPatches(*am,patches,badPatches);
 	delete bpf;
-
+	
+	printf("Bad patches are:\n");
+	for(auto i : badPatches)
+	{
+		printf("%d\n",i);
+	}
+	
 /* Having identified bad patches, now we want too...
    - Starting from patch 0, generate a neighbouring patch sequence (lowest numbered patch first)
    - Slice render to help spot any more bad patches:
@@ -351,18 +447,54 @@ int main(void)
 		auto nh = toVisitSet.extract(toVisitSet.begin());
 		currentVisit = nh.value();
 	}
-	 
+
+	printf("Patch order is:\n");	 
 	for (auto i : patchOrder)
 	{
 		printf("%d\n",i);
 	}
 
-	{
-		ZARR_1 *surfaceZarr = ZARROpen_1(SURFACE_ZARR);
+	std::map<int,affineTx> patchPositions;
+	std::vector<std::pair<int,alignment>> alignmentOrder;
+	AugmentAlignmentMap(*am);
+    PositionPatches(patches,*am,patchOrder,patchPositions,alignmentOrder);
 
-		SliceAnimRender(surfaceZarr,std::string("sliceanim"),5,40,1,patches,patchOrder);
+	{
+		ofstream os("alignmentorder.txt");
+		
+		for(auto &a : alignmentOrder)
+		{
+			os << a.first << " " << std::get<0>(a.second) << " "
+			   << std::get<7>(a.second) << " "
+			   << std::get<8>(a.second) << " "
+			   << std::get<9>(a.second) << " "
+			   << std::get<10>(a.second) << " "
+			   << std::get<11>(a.second) << " "
+			   << std::get<12>(a.second) << " "
+			   << endl;
+		}
+	}
+
+	{
+		ofstream os("patchPositions.txt");
+		
+		for(auto &pp : patchPositions)
+		{
+			float x,y,angle;
+			AffineTxToXYA(pp.second,x,y,angle);
+			os << pp.first << " " << x << " " << y << " " << angle << endl;
+		}
+	}
 	
-		ZARRClose_1(surfaceZarr);
+	exit(0);
+	
+	{
+		// Enough buffers that we can do several layers before reloading buffers
+		ZARR_1_b700 *surfaceZarr = ZARROpen_1_b700(SURFACE_ZARR);
+
+		SliceAnimRender(surfaceZarr,std::string("sliceanim"),20,30,1,patches,patchOrder);
+	
+		ZARRClose_1_b700(surfaceZarr);
 	}
 	
 	delete patches;

@@ -8,27 +8,27 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <blosc2.h>
-typedef uint8_t ZARRType_1;
+typedef uint8_t ZARRType_1_b700;
 
 typedef struct {
     int locationRootLength;
     char *location;
   
-    unsigned char compressedData[sizeof(ZARRType_1)*2097152+BLOSC2_MAX_OVERHEAD];
-    ZARRType_1 buffers[80][128][128][128];
-    int bufferIndex[80][3];
-    unsigned char written[80];
-    uint64_t bufferUsed[80];
-    ZARRType_1 (*buffer)[128][128][128];
+    unsigned char compressedData[sizeof(ZARRType_1_b700)*2097152+BLOSC2_MAX_OVERHEAD];
+    ZARRType_1_b700 buffers[730][128][128][128];
+    int bufferIndex[730][3];
+    unsigned char written[730];
+    uint64_t bufferUsed[730];
+    ZARRType_1_b700 (*buffer)[128][128][128];
 
     int index;
   
     uint64_t counter;
-} ZARR_1;
+} ZARR_1_b700;
 
-ZARR_1 *ZARROpen_1(const char *location)
+ZARR_1_b700 *ZARROpen_1_b700(const char *location)
 {
-	ZARR_1 *z = (ZARR_1 *)malloc(sizeof(ZARR_1));
+	ZARR_1_b700 *z = (ZARR_1_b700 *)malloc(sizeof(ZARR_1_b700));
 	
 	z->locationRootLength = strlen(location);
 	
@@ -37,7 +37,7 @@ ZARR_1 *ZARROpen_1(const char *location)
 	z->buffer = NULL;
 	z->index = -1;
 
-    for(int i = 0; i<80; i++)
+    for(int i = 0; i<730; i++)
 	{
 	  z->written[i] = 0;
       for(int j = 0; j<3; j++)
@@ -48,20 +48,20 @@ ZARR_1 *ZARROpen_1(const char *location)
 	
 	z->counter = 1;
 
-    for(int i = 0; i<80; i++)
+    for(int i = 0; i<730; i++)
       z->bufferUsed[i] = 0;
   
 	return z;
 }
 
-int ZARRFlushOne_1(ZARR_1 *z, int i)
+int ZARRFlushOne_1_b700(ZARR_1_b700 *z, int i)
 {
     if (z->written[i])
 	{
       sprintf(z->location+z->locationRootLength,"/%d/%d/%d",z->bufferIndex[i][0],z->bufferIndex[i][1],z->bufferIndex[i][2]);
 
       blosc1_set_compressor("zstd");
-	  int compressed_len = blosc2_compress(3,1,sizeof(ZARRType_1),z->buffers[i],sizeof(ZARRType_1)*2097152,z->compressedData,sizeof(ZARRType_1)*2097152+BLOSC2_MAX_OVERHEAD);
+	  int compressed_len = blosc2_compress(3,1,sizeof(ZARRType_1_b700),z->buffers[i],sizeof(ZARRType_1_b700)*2097152,z->compressedData,sizeof(ZARRType_1_b700)*2097152+BLOSC2_MAX_OVERHEAD);
 
       if (compressed_len <= 0) {
         return -1;
@@ -77,22 +77,22 @@ int ZARRFlushOne_1(ZARR_1 *z, int i)
 	return 0;
 }
 
-int ZARRFlush_1(ZARR_1 *z)
+int ZARRFlush_1_b700(ZARR_1_b700 *z)
 {
-	for(int i = 0; i<80; i++)
+	for(int i = 0; i<730; i++)
 	{
 		if (z->bufferIndex[i][0] != -1)
 		{
-			ZARRFlushOne_1(z,i);
+			ZARRFlushOne_1_b700(z,i);
 		}
 	}
 	
 	return 0;
 }
 
-int ZARRClose_1(ZARR_1 *z)
+int ZARRClose_1_b700(ZARR_1_b700 *z)
 {
-    ZARRFlush_1(z);
+    ZARRFlush_1_b700(z);
     free(z->location);
     free(z);
 	
@@ -100,12 +100,12 @@ int ZARRClose_1(ZARR_1 *z)
 }
 
 /* Make buffer point to the chunk and index contain the index*/
-int ZARRCheckChunk_1(ZARR_1 *z, int c[3])
+int ZARRCheckChunk_1_b700(ZARR_1_b700 *z, int c[3])
 {	
 	if (z->buffer && c[0] == z->bufferIndex[z->index][0] && c[1] == z->bufferIndex[z->index][1] && c[2] == z->bufferIndex[z->index][2])
 		return 0;
 
-	for(z->index = 0; z->index < 80; z->index++)
+	for(z->index = 0; z->index < 730; z->index++)
 	{
 		if (1  && c[0] == z->bufferIndex[z->index][0] && c[1] == z->bufferIndex[z->index][1] && c[2] == z->bufferIndex[z->index][2])
 		{
@@ -115,19 +115,19 @@ int ZARRCheckChunk_1(ZARR_1 *z, int c[3])
 		}
 	}
 		
-	for(z->index = 0; z->index < 80; z->index++)
+	for(z->index = 0; z->index < 730; z->index++)
 	{
 		if (z->bufferIndex[z->index][0]==-1)
 			break;
 	}
   	
-	if (z->index == 80)
+	if (z->index == 730)
 	{
 		/* Find the buffer that was least recently used and free it up */
 		//printf("Ran out of buffers - flushing oldest\n");
 		int oldestIndex = 0;
 		uint64_t oldestAge = z->bufferUsed[0];
-		for(int i = 1; i<80; i++)
+		for(int i = 1; i<730; i++)
 		{
 			if (z->bufferUsed[i]<oldestAge)
 			{
@@ -136,7 +136,7 @@ int ZARRCheckChunk_1(ZARR_1 *z, int c[3])
 			}
 		}
 		
-		ZARRFlushOne_1(z,oldestIndex);
+		ZARRFlushOne_1_b700(z,oldestIndex);
 		z->index = oldestIndex;
 	}
     z->bufferIndex[z->index][0] = c[0];
@@ -155,7 +155,7 @@ int ZARRCheckChunk_1(ZARR_1 *z, int c[3])
 	{
 		//printf("Did not find file:%s\n",z->location); // Useful to display this message because it often indicates a file naming problem
 
-		memset(z->buffer,0,sizeof(ZARRType_1)*2097152);
+		memset(z->buffer,0,sizeof(ZARRType_1_b700)*2097152);
 
 		//No need to count it as written to yet - if it remains empty then just leave the file as non-existent
 	    //z->written[z->index] = 1;
@@ -173,7 +173,7 @@ int ZARRCheckChunk_1(ZARR_1 *z, int c[3])
 		
 
         blosc1_set_compressor("zstd");
-        int decompressed_size = blosc2_decompress(z->compressedData, fsize, z->buffer, sizeof(ZARRType_1)*2097152);
+        int decompressed_size = blosc2_decompress(z->compressedData, fsize, z->buffer, sizeof(ZARRType_1_b700)*2097152);
         if (decompressed_size < 0) {
             return 0;
         }
@@ -182,7 +182,7 @@ int ZARRCheckChunk_1(ZARR_1 *z, int c[3])
 	
 	return 0;
 }
-ZARRType_1 ZARRRead_1(ZARR_1 *za,int x0,int x1,int x2)
+ZARRType_1_b700 ZARRRead_1_b700(ZARR_1_b700 *za,int x0,int x1,int x2)
 {
 	int c[3],m[3];
     c[0] = x0/128;
@@ -192,14 +192,14 @@ ZARRType_1 ZARRRead_1(ZARR_1 *za,int x0,int x1,int x2)
     c[2] = x2/128;
     m[2] = x2%128;
 	
-	ZARRCheckChunk_1(za,c);
+	ZARRCheckChunk_1_b700(za,c);
 	
     return (*za->buffer)[m[0]][m[1]][m[2]];	  	  	  	  
 }
 
 
 // Read several values from the last dimensions
-void ZARRReadN_1(ZARR_1 *za,int x0,int x1,int x2,int n,ZARRType_1 *v)
+void ZARRReadN_1_b700(ZARR_1_b700 *za,int x0,int x1,int x2,int n,ZARRType_1_b700 *v)
 {
 	int c[3],m[3];
     c[0] = x0/128;
@@ -209,12 +209,12 @@ void ZARRReadN_1(ZARR_1 *za,int x0,int x1,int x2,int n,ZARRType_1 *v)
     c[2] = x2/128;
     m[2] = x2%128;
 	
-	ZARRCheckChunk_1(za,c);
+	ZARRCheckChunk_1_b700(za,c);
 			  
-	memcpy(v,&(*za->buffer)[m[0]][m[1]][m[2]],n*sizeof(ZARRType_1));
+	memcpy(v,&(*za->buffer)[m[0]][m[1]][m[2]],n*sizeof(ZARRType_1_b700));
 }
 
-int ZARRWrite_1(ZARR_1 *za,int x0,int x1,int x2,ZARRType_1 value)
+int ZARRWrite_1_b700(ZARR_1_b700 *za,int x0,int x1,int x2,ZARRType_1_b700 value)
 {
 	int c[3],m[3];
     c[0] = x0/128;
@@ -224,7 +224,7 @@ int ZARRWrite_1(ZARR_1 *za,int x0,int x1,int x2,ZARRType_1 value)
     c[2] = x2/128;
     m[2] = x2%128;
 	
-	ZARRCheckChunk_1(za,c);
+	ZARRCheckChunk_1_b700(za,c);
 			  
 	(*za->buffer)[m[0]][m[1]][m[2]] = value;
 
@@ -234,7 +234,7 @@ int ZARRWrite_1(ZARR_1 *za,int x0,int x1,int x2,ZARRType_1 value)
 }
 
 
-void ZARRWriteN_1(ZARR_1 *za,int x0,int x1,int x2,int n, ZARRType_1 *v)
+void ZARRWriteN_1_b700(ZARR_1_b700 *za,int x0,int x1,int x2,int n, ZARRType_1_b700 *v)
 {
 	int c[3],m[3];
     c[0] = x0/128;
@@ -244,22 +244,22 @@ void ZARRWriteN_1(ZARR_1 *za,int x0,int x1,int x2,int n, ZARRType_1 *v)
     c[2] = x2/128;
     m[2] = x2%128;
 	
-	ZARRCheckChunk_1(za,c);
+	ZARRCheckChunk_1_b700(za,c);
 			  
-	memcpy(&(*za->buffer)[m[0]][m[1]][m[2]],v,n*sizeof(ZARRType_1));
+	memcpy(&(*za->buffer)[m[0]][m[1]][m[2]],v,n*sizeof(ZARRType_1_b700));
 
 	za->written[za->index] = 1;  
 }
 
 // Assumes that we have already written at least once to this chunk
-void ZARRNoCheckWriteN_1(ZARR_1 *za,int x0,int x1,int x2,int n, ZARRType_1 *v)
+void ZARRNoCheckWriteN_1_b700(ZARR_1_b700 *za,int x0,int x1,int x2,int n, ZARRType_1_b700 *v)
 {
 	int m[3];
     m[0] = x0%128;
     m[1] = x1%128;
     m[2] = x2%128;
 	
-	memcpy(&(*za->buffer)[m[0]][m[1]][m[2]],v,n*sizeof(ZARRType_1));
+	memcpy(&(*za->buffer)[m[0]][m[1]][m[2]],v,n*sizeof(ZARRType_1_b700));
 
 	za->written[za->index] = 1;  
 }

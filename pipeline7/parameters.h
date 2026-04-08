@@ -54,3 +54,5 @@
 #define MAX_LINE_DIFF 0.01
 /* Minimum number of transforms that must be found for transform and variance to be output */
 #define MIN_TRANSFORMS 25
+/* Max volume distance allowed for overlapping x,y points */
+#define BP_MAX_XYZ_DISTANCE 15

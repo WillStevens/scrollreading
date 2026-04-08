@@ -86,5 +86,10 @@
 
     "__comment__5" : "Minimum number of transforms that must be found for transform and variance to be output",
 	"MIN_TRANSFORMS" : 25
+  },
+  
+  "bad_patch": {
+    "__comment__" : "Max volume distance allowed for overlapping x,y points",
+	"BP_MAX_XYZ_DISTANCE" : 15
   }
 }

@@ -122,6 +122,8 @@ void BadPatchFinder::CollectDistanceStats(void)
 // and find patches with mismatch between 2D x,y and 3D x,y,z
 void BadPatchFinder::FindBadPatches(const AlignmentMap &am, std::map<int,Patch> *patches, std::set<int> &badPatches)
 {
+	std::list<std::pair<int,int>> badPatchPairs;
+		
 	// Iterate over patches
 	for(auto a : am)
 	{
@@ -141,9 +143,53 @@ void BadPatchFinder::FindBadPatches(const AlignmentMap &am, std::map<int,Patch> 
 			
 			printf("%d,%d : %f\n",patch2,patch1,maxDistance);
 			
+			if (maxDistance > BP_MAX_XYZ_DISTANCE)
+			{
+				badPatchPairs.push_back(std::pair<int,int>(patch1,patch2));
+			}
+			
 #ifdef OUTPUT_DISTANCE_TIF
 			RenderDistances();
 #endif
 		}
 	}
+	
+	while(badPatchPairs.size()>0)
+	{
+		std::map<int,int> freqCount;
+
+		int highestFreq = -1;
+		int highestPatch = -1;
+		for(auto &bpp : badPatchPairs)
+		{
+			if (freqCount.count(bpp.first) == 0)
+				freqCount[bpp.first] = 0;
+			if (freqCount.count(bpp.second) == 0)
+				freqCount[bpp.second] = 0;
+			freqCount[bpp.first]++;
+			freqCount[bpp.second]++;
+			
+			if (highestFreq==-1 || freqCount[bpp.first]>highestFreq)
+			{
+				highestFreq = freqCount[bpp.first];
+				highestPatch = bpp.first;
+			}
+			if (freqCount[bpp.second]>highestFreq)
+			{
+				highestFreq = freqCount[bpp.second];
+				highestPatch = bpp.second;
+			}
+		}
+		
+		printf("Bad patch found:%d\n",highestPatch);
+		badPatches.insert(highestPatch);
+		for(std::list<std::pair<int,int>>::iterator i = badPatchPairs.begin(); i != badPatchPairs.end();)
+		{
+			if (i->first==highestPatch || i->second==highestPatch)
+				i=badPatchPairs.erase(i);
+			else
+				i++;
+		}
+	}
+	
 }

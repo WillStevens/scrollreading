@@ -13,9 +13,11 @@
 
 #include "zarr_show2_u8.h"
 
-void ZarrShow2U8(ZARR_1 *za, int xcoord, int ycoord, int zcoord, int width, int height, const std::string &tifName, std::vector<Patch *> pNorm, std::vector<Patch *> pHighlight)
+void ZarrShow2U8(ZARR_1_b700 *za, int xcoord, int ycoord, int zcoord, int width, int height, const std::string &tifName, std::vector<Patch *> patches, int bgr, int bgg, int bgb)
 {
     unsigned char *pointBuffer;
+
+	printf("Allocating...\n");
 	
 	pointBuffer = (unsigned char *)malloc(width*height);
 	
@@ -32,17 +34,19 @@ void ZarrShow2U8(ZARR_1 *za, int xcoord, int ycoord, int zcoord, int width, int 
 	int i = istart;\
 	for(Patch *p : patches)\
 	{\
-		for(patchPoint &pt : p->points)\
+	    if (p->ContainsZ(zcoord))\
 		{\
-			if ((int)pt.v.z == zcoord && (int)pt.v.x>=xcoord && (int)pt.v.x<xcoord+width && (int)pt.v.y>=ycoord && (int)pt.v.y<ycoord+height)\
+		    p->Interpolate();\
+			for(patchPoint &pt : *(p->interpolatedPoints))\
 			{\
-				printf("Added %d,%d to pointBuffer\n",((int)pt.v.x-xcoord),((int)pt.v.y-ycoord));\
-				\
-				for(int xo=-1; xo<=1; xo++)\
-				for(int yo=-1; yo<=1; yo++)\
-			    if ((int)pt.v.x>=xcoord-xo && (int)pt.v.x<xcoord+width-xo && (int)pt.v.y>=ycoord-yo && (int)pt.v.y<ycoord+height-yo)\
+				if ((int)pt.v.z == zcoord && (int)pt.v.x>=xcoord && (int)pt.v.x<xcoord+width && (int)pt.v.y>=ycoord && (int)pt.v.y<ycoord+height)\
 				{\
-				  pointBuffer[((int)pt.v.x-xcoord+xo)+((int)pt.v.y-ycoord+yo)*width] = i;\
+					for(int xo=-1; xo<=1; xo++)\
+					for(int yo=-1; yo<=1; yo++)\
+						if ((int)pt.v.x>=xcoord-xo && (int)pt.v.x<xcoord+width-xo && (int)pt.v.y>=ycoord-yo && (int)pt.v.y<ycoord+height-yo)\
+						{\
+						pointBuffer[((int)pt.v.x-xcoord+xo)+((int)pt.v.y-ycoord+yo)*width] = i;\
+						}\
 				}\
 			}\
 		}\
@@ -50,9 +54,12 @@ void ZarrShow2U8(ZARR_1 *za, int xcoord, int ycoord, int zcoord, int width, int 
 		i++;\
 	}\
 	}
+
+	printf("Adding points...\n");
 	
-	PATCH_RENDER_LOOP(pNorm,0)
-	PATCH_RENDER_LOOP(pHighlight,0x40000000)
+	PATCH_RENDER_LOOP(patches,1)
+			
+	printf("Rendering...\n");
 			
 	{
 		TIFF *tif = TIFFOpen(tifName.c_str(),"w");
@@ -71,28 +78,36 @@ void ZarrShow2U8(ZARR_1 *za, int xcoord, int ycoord, int zcoord, int width, int 
 			TIFFSetField(tif, TIFFTAG_PLANARCONFIG, PLANARCONFIG_CONTIG);
 			TIFFSetField(tif, TIFFTAG_PHOTOMETRIC, PHOTOMETRIC_RGB);
 			TIFFSetField(tif, TIFFTAG_SAMPLEFORMAT, SAMPLEFORMAT_UINT);
-			TIFFSetField(tif, TIFFTAG_COMPRESSION, COMPRESSION_NONE);
+			TIFFSetField(tif, TIFFTAG_COMPRESSION, COMPRESSION_LZW);
 			
 			buf = _TIFFmalloc(width*3);
 			for(row=0; row<height;row++)
 			{
 				for(int i=0; i<width; i++)
 				{
-					unsigned char pixel = ZARRRead_1(za,zcoord,ycoord+row,xcoord+i);
-				   ((uint8_t *)buf)[3*i] = pixel/4;
-				   ((uint8_t *)buf)[3*i+1] = pixel/4;
-				   ((uint8_t *)buf)[3*i+2] = pixel/4;
-
+					unsigned char pixel = ZARRRead_1_b700(za,zcoord,ycoord+row,xcoord+i);
+					
+					if (pixel>0)
+					{
+						((uint8_t *)buf)[3*i] = pixel/4;
+						((uint8_t *)buf)[3*i+1] = pixel/4;
+						((uint8_t *)buf)[3*i+2] = pixel/4;
+					}
+					else
+					{
+						((uint8_t *)buf)[3*i] = bgr;
+						((uint8_t *)buf)[3*i+1] = bgg;
+						((uint8_t *)buf)[3*i+2] = bgb;
+					}
+					
                    //printf("%d ",(int)pixel);				   
 				   //overwrite if pointbuffer has something
 				   if (pointBuffer[i+row*width] != 0)
 				   {
-					   int ci = pointBuffer[i+row*width];
-					   int bright = (ci>0x40000000)?255:191;
-					   int brightDiv = (ci>0x40000000)?2:1;
-				       ((uint8_t *)buf)[3*i] = bright-(64*(ci%3))/brightDiv;
-				       ((uint8_t *)buf)[3*i+1] = bright-(25*((3*ci)%5))/brightDiv;
-				       ((uint8_t *)buf)[3*i+2] = bright-(18*((5*ci)%7))/brightDiv;
+					   int ci = pointBuffer[i+row*width]-1;
+				       ((uint8_t *)buf)[3*i] = 255-80*(ci%3)-(ci/105)%79;
+				       ((uint8_t *)buf)[3*i+1] = 255-40*((3*ci)%5)-(ci/105)%37;
+				       ((uint8_t *)buf)[3*i+2] = 255-26*((5*ci)%7)-(ci/105)%23;
 				   }
 				}
 				//printf("\n");
@@ -105,5 +120,8 @@ void ZarrShow2U8(ZARR_1 *za, int xcoord, int ycoord, int zcoord, int width, int 
 	}
 	
 	free(pointBuffer);
+	
+	printf("Done\n");
+
 }
 

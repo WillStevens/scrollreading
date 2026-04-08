@@ -53,18 +53,20 @@ class Patch
 		void Flip(void);
 		bool Write(const std::string &path, int i);
 		bool Read(const std::string &path, int i);
-		int MinZ(void) {CalcExtents(); return minz;}
-		int MaxZ(void) {CalcExtents(); return maxz;}
 		
 		void CalcExtents(bool force);
 		void Interpolate(void);
 		void DiscardInterpolation(void);
+
+		int MinZ(void); 
+		int MaxZ(void);
+		bool ContainsZ(int z);
 		
 		Patch(void) {interpolatedPoints = NULL; minx=maxx=miny=maxy=minz=maxz=-1;}
-		~Patch(void) {DiscaredInterpolatedPoints();}
+		~Patch(void) {DiscardInterpolation();}
 		
 	    vector<patchPoint> points;
-		vector<patchPoints> *interpolatedPoints;
+		vector<patchPoint> *interpolatedPoints;
 		int minx,maxx,miny,maxy,minz,maxz;
 };
 
@@ -73,8 +75,12 @@ typedef std::map<int,std::vector<alignment> > AlignmentMap;
 
 typedef std::tuple<float,float,float,float,float,float> affineTx;
 
+bool ends_with(std::string const &value, std::string const &ending);
+
 affineTx AffineTxMultiply(const affineTx &m, const affineTx &n);
+affineTx AffineTxInverse(const affineTx &aftx);
 void AffineTxApply(const affineTx &a, float &x, float &y);
+void AffineTxToXYA(const affineTx &aftx, float &x, float &y, float &angle);
 
 float Distance(float x0, float y0, float z0, float x1, float y1, float z1);
 float Distance(float x0, float y0, float x1, float y1);
