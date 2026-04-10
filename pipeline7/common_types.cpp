@@ -1,6 +1,7 @@
 #include <sstream>
 #include <string>
 #include <cmath>
+#include <cstring>
 
 #include "common_types.h"
 
@@ -73,7 +74,7 @@ affineTx AffineTxInverse(const affineTx &aftx)
 
 void AffineTxToXYA(const affineTx &aftx, float &x, float &y, float &angle)
 {
-    angle = std::atan2(std::get<0>(aftx),std::get<3>(aftx));
+    angle = std::atan2(std::get<3>(aftx),std::get<0>(aftx));
 	x = std::get<2>(aftx);
 	y = std::get<5>(aftx);
 }
@@ -156,10 +157,18 @@ bool Patch::Read(const std::string &path, int i)
 		{
 			fread(&p,sizeof(p),1,fi);
 			
-			points.push_back(patchPoint(p.x,p.y,p.px,p.py,p.pz));
+			points.push_back(patchPoint(p.x,p.y,p.px,p.py,p.pz));			
 		}
 		
 		fclose(fi);
+		
+		CalcExtents(true);
+		// Estimate the radius using minx,maxx,miny,maxy
+		// Currently radius is only used for visualisation in patchsprings, so it doesn't matter too much if it's wrong.
+		radius = abs(minux)>maxux ? abs(minux) : maxux;
+		if (maxuy>radius || abs(minuy>radius))
+			radius = abs(minuy)>maxuy ? abs(minuy) : maxuy;
+
 		return true;
 	}
 	else
@@ -175,6 +184,15 @@ void Patch::CalcExtents(bool force)
 	
 	for(auto &point : points)
 	{
+		if (point.x<minux || first)
+			minux = point.x;
+		if (point.x>maxux || first)
+			maxux = point.x;
+		if (point.y<minuy || first)
+			minuy = point.y;
+		if (point.y>maxuy || first)
+			maxuy = point.y;
+
 		if (point.v.x<minx || first)
 			minx = point.v.x;
 		if (point.v.z>maxx || first)
@@ -275,4 +293,197 @@ void Patch::DiscardInterpolation(void)
 		delete interpolatedPoints;
 		interpolatedPoints = NULL;
 	}
+}
+
+/*
+bool Patch::FindGlobalXY(float x, float y, Vec3 &v, float weight)
+{
+	if (positionSet)
+	{
+		// Inverse transform x,y using xpos,ypos,angle
+
+		float xd = (x-xpos)*cos(angle)+(y-ypos)*sin(angle);
+		float yd = -(x-xpos)*sin(angle)+(y-ypos)*cos(angle);
+		
+		//printf("xd,yd = %f,%f\n",xd,yd);
+		
+		float p1x = (int)xd, p1y = (int)yd;
+		if (xd<0) p1x -= 1;
+		if (yd<0) p1y -= 1;
+		
+		Vec3 corners[4];
+		int cornerCount = 0;
+		
+		for(auto &pt : points)
+		{
+			if (pt.x==p1x && pt.y==p1y)
+			{
+				corners[0] = pt.v;
+				cornerCount++;
+			}
+			else if (pt.x==p1x+1 && pt.y==p1y)
+			{
+				corners[1] = pt.v;
+				cornerCount++;
+			}
+			else if (pt.x==p1x && pt.y==p1y+1)
+			{
+				corners[2] = pt.v;
+				cornerCount++;
+			}
+			else if (pt.x==p1x+1 && pt.y==p1y+1)
+			{
+				corners[3] = pt.v;
+				cornerCount++;
+			}
+			
+			if (cornerCount==4)
+				break;
+		}
+		
+		//printf("cornercount %d\n",cornerCount);
+		
+		if (cornerCount==4)
+		{
+			// bilinear interpolation to get vx,vy,vz
+			float xf = xd-p1x;
+			
+			Vec3 i0 = corners[0] + (corners[1]-corners[0])*xf;
+			Vec3 i1 = corners[2] + (corners[3]-corners[2])*xf;
+			
+			float yf = yd-p1y;
+			
+			v = i0 + (i1-i0)*yf;
+
+			weight = 1.0;
+			
+			return true;
+		}
+		
+		return false;
+	}
+	
+	return false;
+}
+*/
+
+bool Patch::FindGlobalXY(float x, float y, Vec3 &v, float &weight)
+{
+	if (positionSet)
+	{
+		MakeGrid();
+		
+		// Inverse transform x,y using xpos,ypos,angle
+
+		float xd = (x-xpos)*cos(angle)+(y-ypos)*sin(angle);
+		float yd = -(x-xpos)*sin(angle)+(y-ypos)*cos(angle);
+		
+		//printf("x,y = %f,%f\n",x,y);
+		//printf("xd,yd = %f,%f\n",xd,yd);
+		//printf("tx,ty = %f,%f\n",xd*cos(angle)+yd*sin(angle)+xpos,yd*cos(angle)-xd*sin(angle)+ypos);
+		
+		int p1x = (int)xd, p1y = (int)yd;
+		if (xd<0) p1x -= 1;
+		if (yd<0) p1y -= 1;
+		
+		Vec3 corners[4];
+		int cornerCount = 0;
+		
+		if (p1x>=minux && p1x<maxux && p1y>=minuy && p1y<maxuy)
+		{
+			if (pointGrid[p1x-minux][p1y-minuy])
+			{
+				corners[0]=pointGrid[p1x-minux][p1y-minuy]->v;
+				cornerCount++;
+			}
+			if (pointGrid[p1x-minux+1][p1y-minuy])
+			{
+				corners[1]=pointGrid[p1x-minux+1][p1y-minuy]->v;
+				cornerCount++;
+			}
+			if (pointGrid[p1x-minux][p1y-minuy+1])
+			{
+				corners[2]=pointGrid[p1x-minux][p1y-minuy+1]->v;
+				cornerCount++;
+			}
+			if (pointGrid[p1x-minux+1][p1y-minuy+1])
+			{
+				corners[3]=pointGrid[p1x-minux+1][p1y-minuy+1]->v;
+				cornerCount++;
+			}
+		}
+				
+		//printf("cornercount %d\n",cornerCount);
+		
+		if (cornerCount==4)
+		{
+			// bilinear interpolation to get vx,vy,vz
+			float xf = xd-p1x;
+			
+			Vec3 i0 = corners[0] + (corners[1]-corners[0])*xf;
+			Vec3 i1 = corners[2] + (corners[3]-corners[2])*xf;
+			
+			float yf = yd-p1y;
+			
+			v = i0 + (i1-i0)*yf;
+
+			weight = 1.0;
+			
+			return true;
+		}
+		
+		return false;
+	}
+	
+	return false;
+}
+
+void Patch::TransformPoint(float x, float y, float &xo, float &yo)
+{
+	if (positionSet)
+	{
+		xo = x*cos(angle)-y*sin(angle)+xpos;
+		yo = y*cos(angle)+x*sin(angle)+ypos;
+	}
+	else
+	{
+		xo = x; yo = y;
+	}
+}
+
+// TODO - in future the grid representation will be the only one used.
+// both are used side by side for now until older code is rewritten
+void Patch::MakeGrid(void)
+{
+	CalcExtents(false);
+	
+	if (pointGrid!=NULL)
+		return;
+	
+	pointGrid = (patchPoint***)malloc(sizeof(patchPoint**)*(maxux-minux+1));
+	
+	for(int i = minux; i<=maxux; i++)
+	{
+		pointGrid[i-minux]=(patchPoint**)malloc(sizeof(patchPoint*)*(maxuy-minuy+1));
+		memset(pointGrid[i-minux],0,sizeof(patchPoint*)*(maxuy-minuy+1));
+	}
+	
+	for(auto &pt : points)
+	{
+		pointGrid[(int)pt.x-minux][(int)pt.y-minuy] = &pt;
+	}
+}
+
+void Patch::DestroyGrid(void)
+{
+	if (pointGrid==NULL)
+		return;
+		
+	for(int i = minux; i<=maxux; i++)
+	{
+		free(pointGrid[i-minux]);
+	}
+
+	free(pointGrid);
+	pointGrid=NULL;
 }

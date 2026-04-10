@@ -179,7 +179,8 @@ int main(int argc, char *argv[])
 			Patch patch,boundary;
 			
 			int steps = pg->GeneratePatch(seed,patch,boundary);
-		
+		    patch.radius = steps/2;
+			
 			printf("%d growth steps\n",steps);
 			
 			if (i==0)
@@ -464,7 +465,9 @@ int main(int argc, char *argv[])
 		
 		for(auto &a : alignmentOrder)
 		{
-			os << a.first << " " << std::get<0>(a.second) << " "
+			os << a.first << " "
+               << (*patches)[a.first].radius << " "			
+			   << std::get<0>(a.second) << " "
 			   << std::get<7>(a.second) << " "
 			   << std::get<8>(a.second) << " "
 			   << std::get<9>(a.second) << " "
@@ -475,6 +478,7 @@ int main(int argc, char *argv[])
 		}
 	}
 
+/*
 	{
 		ofstream os("patchPositions.txt");
 		
@@ -485,7 +489,119 @@ int main(int argc, char *argv[])
 			os << pp.first << " " << x << " " << y << " " << angle << endl;
 		}
 	}
+*/
+
+	printf("Enter any character then press return after patchsprings has run\n");
+	{ std::string tmp; std::cin >> tmp; }
+
+	{
+		ifstream is("patchPositions.txt");
+		
+		while(true)
+		{
+			int patchNum;
+			float x,y,angle;
+			if (is >> patchNum >> x >> y >> angle)
+				(*patches)[patchNum].SetPosition(x,y,angle);
+			else
+				break;
+		}
+	}
+
+	printf("Loaded patch positions\n");
 	
+	// Which patches could be in each x,y chunk?
+	std::map<std::pair<int,int>,std::set<int>> patchIndex;
+	int patchIndexScale = 16;
+	
+	{
+		for (auto i : patchOrder)
+		{
+			Patch &p = (*patches)[i];
+			for(auto &pt : p.points)
+			{
+				float x,y;
+				p.TransformPoint(pt.x,pt.y,x,y);
+				int xi = x/patchIndexScale;
+				int yi = y/patchIndexScale;
+				
+				for(int xo = xi-1; xo <= xi+1; xo++)
+				for(int yo = yi-1; yo <= yi+1; yo++)
+				{
+					if (patchIndex.count(std::pair<int,int>(xo,yo))==0)
+						patchIndex[std::pair<int,int>(xo,yo)] = std::set<int>();
+					
+					patchIndex[std::pair<int,int>(xo,yo)].insert(i);
+				}
+					
+			}
+		}
+	}
+	
+	printf("Finished indexing patches\n");
+	
+	for(auto &pi : patchIndex)
+	{
+		printf("%d,%d :",pi.first.first,pi.first.second);
+		
+		for(auto i : pi.second)
+		{
+			printf(" %d",i);
+		}
+		
+		printf("\n");
+	}
+	
+	// Now iterate over some coords...
+	{
+		Patch outputPatch;
+		
+		for(float x=-150; x<=150; x+=1)
+		{
+			printf("x=%f\n",x);
+			for(float y=-150; y<=150; y+=1)
+			{
+				int xi = x/patchIndexScale;
+				int yi = y/patchIndexScale;
+				
+				if (patchIndex.count(std::pair<int,int>(xi,yi))!=0)
+				{
+					Vec3 totalV;
+					float totalWeight = 0.0;
+								
+					//printf("{\n");
+					for(auto &i : patchIndex[std::pair<int,int>(xi,yi)])
+					{
+						Vec3 v;
+						float weight=0.0;
+						
+						(*patches)[i].FindGlobalXY(x,y,v,weight);
+					
+						if (weight>0.0)
+						{
+							//printf("patch=%d v=%f,%f,%f weight=%f\n",i,v.x,v.y,v.z,weight);
+							totalV += v*weight;
+							totalWeight += weight;
+						}
+					}
+					//printf("}\n");
+
+					if (totalWeight != 0.0)
+					{
+						totalV /= totalWeight;
+						outputPatch.points.push_back(patchPoint(x,y,totalV.x,totalV.y,totalV.z));
+					}
+
+					//printf("%f,%f has coords %f,%f,%f\n",x,y,totalV.x,totalV.y,totalV.z); 
+					
+				}
+				
+			}
+		}
+		
+		outputPatch.Write(".",0);
+	}
+
 	exit(0);
 	
 	{

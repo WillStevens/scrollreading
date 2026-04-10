@@ -62,12 +62,26 @@ class Patch
 		int MaxZ(void);
 		bool ContainsZ(int z);
 		
-		Patch(void) {interpolatedPoints = NULL; minx=maxx=miny=maxy=minz=maxz=-1;}
-		~Patch(void) {DiscardInterpolation();}
+		void SetPosition(float x, float y, float a) {xpos=x;ypos=y;angle=a;positionSet=true;}
+		bool FindGlobalXY(float x, float y, Vec3 &v, float &weight);
+		void TransformPoint(float x, float y, float &xo, float &yo);
+		
+		void MakeGrid(void);
+		void DestroyGrid(void);
+		
+		Patch(void) {interpolatedPoints = NULL; minux=maxux=minuy=maxuy=minx=maxx=miny=maxy=minz=maxz=-1; positionSet=false; pointGrid=NULL;}
+		~Patch(void) {DiscardInterpolation();DestroyGrid();}
 		
 	    vector<patchPoint> points;
 		vector<patchPoint> *interpolatedPoints;
+		int minux,maxux,minuy,maxuy;
 		int minx,maxx,miny,maxy,minz,maxz;
+		int radius;
+		
+		bool positionSet;
+		float xpos,ypos,angle;
+		
+		patchPoint ***pointGrid;
 };
 
 typedef std::tuple<int,float,float,float,float,float,float,float,float,float,float,float,float> alignment;
