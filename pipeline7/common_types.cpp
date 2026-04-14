@@ -427,7 +427,13 @@ bool Patch::FindGlobalXY(float x, float y, Vec3 &v, float &weight)
 			
 			v = i0 + (i1-i0)*yf;
 
-			weight = 1.0;
+			// Weight depends on xd,yd and radius : centre = 1.0, boundary = 0.0, linear ramp in between
+			// TODO - Could improve on this - it doesn't take account of patch holes, nor the fact that in an octagon the
+			// vertices are at radius distance from centre, but points along the edges aren't. This means that there will
+			// be step changes in weighting. Better to have a smooth function.
+			weight = 1-sqrt(xd*xd+yd*yd)/radius;
+			if (weight<0.0) weight=0.0;
+			else if (weight>1.0) weight=1.0;
 			
 			return true;
 		}

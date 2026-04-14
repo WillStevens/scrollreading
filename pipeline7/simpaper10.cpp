@@ -58,6 +58,7 @@ bool GetNewSeed(BigPatch *bp,BigPatch *bpb,float (&seed)[9])
 		neighbours.push_back(newSeed);
 		FindBigPatchPointNeighbours(bp,newSeed,neighbours);
 		
+
 		// If it only has one neighbour, look for neighbours of this neighbour
 		if (neighbours.size()==2)
 		{
@@ -66,7 +67,7 @@ bool GetNewSeed(BigPatch *bp,BigPatch *bpb,float (&seed)[9])
 			neighbours.push_back(singleNeighbour);
 		    FindBigPatchPointNeighbours(bp,singleNeighbour,neighbours);
 		}
-				
+			
 		// The neighbour[0] point should have neighbours in two different axis directions
 		// If not, don't use this point
 		if (neighbours.size()>=3)
@@ -107,6 +108,14 @@ bool GetNewSeed(BigPatch *bp,BigPatch *bpb,float (&seed)[9])
 			std::get<4>(newSeed)-VOL_OFFSET_Z>8 && std::get<4>(newSeed)-VOL_OFFSET_Z<VOL_SIZE_Z-8))
           found = false;
 	}
+
+	// Show what the neighbours are - useful fo debugging floating point exception error
+	printf("Neighbours\n");
+	for(auto &n : neighbours)
+	{
+		printf("%f,%f,%f,%f,%f,%d\n",std::get<0>(n),std::get<1>(n),std::get<2>(n),std::get<3>(n),std::get<4>(n),std::get<5>(n));
+	}
+	
 	seed[0] = std::get<2>(newSeed);
 	seed[1] = std::get<3>(newSeed);
 	seed[2] = std::get<4>(newSeed);
@@ -170,7 +179,7 @@ int main(int argc, char *argv[])
 		BigPatch *bp = OpenBigPatch("temp.bp");
 		BigPatch *bpb = OpenBigPatch("tempb.bp");
 		
-		for(int i=0; i<200; i++)
+		for(int i=0; i<2000; i++)
 		{
 			MemInfo();
 			printf("======== Patch %d ========\n",i);
@@ -335,6 +344,8 @@ int main(int argc, char *argv[])
 					(*patches)[patchNum]=p;
 				}
 			}
+			
+			closedir(dir);
 		}
 		
 		{
@@ -491,6 +502,8 @@ int main(int argc, char *argv[])
 	}
 */
 
+    if (0)
+	{
 	printf("Enter any character then press return after patchsprings has run\n");
 	{ std::string tmp; std::cin >> tmp; }
 
@@ -603,6 +616,7 @@ int main(int argc, char *argv[])
 	}
 
 	exit(0);
+	}
 	
 	{
 		// Enough buffers that we can do several layers before reloading buffers

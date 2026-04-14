@@ -203,7 +203,7 @@ int ErasePoints(BigPatch *bp0, Patch &p1, int which, float radius)
 		  {
 			  if (i)
 			  {
-				  //printf("Writing %d points to %s\n",(int)batch.size(),argv[1]);
+				  //printf("Writing %d points to %d.%d.%d\n",(int)batch.size(),std::get<2>(lastCi),std::get<1>(lastCi),std::get<0>(lastCi));
 	              if (batch.size() != 0)
 				    WritePatchPoints(bp0,lastCi,batch);
 			  }
@@ -220,7 +220,7 @@ int ErasePoints(BigPatch *bp0, Patch &p1, int which, float radius)
 	  }  
 
 	  // Last batch isn't written within the loop
-	  //printf("Writing %d points to %s\n",(int)batch.size(),argv[1]);
+	  //printf("Writing %d points to %d.%d.%d\n",(int)batch.size(),std::get<2>(lastCi),std::get<1>(lastCi),std::get<0>(lastCi));
 	  if (batch.size() != 0)
 	    WritePatchPoints(bp0,lastCi,batch);
   }

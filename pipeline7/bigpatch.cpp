@@ -96,6 +96,8 @@ std::vector<chunkIndex> GetAllPatchChunks(BigPatch *z)
 				ret.push_back(chunkIndex(x[2],x[1],x[0]));
 			}
 		}
+		
+		closedir(dir);
 	}
 	
 	return ret;
@@ -212,6 +214,7 @@ void ReadPatchPoints(BigPatch *z, chunkIndex ci, std::vector<gridPoint> &gridPoi
 	}
 	else
 	{
+		//printf("Failed to open chunk: %s\n",z->location);
 	}
 }	
 
@@ -226,6 +229,9 @@ gridPoint SelectRandomPoint(BigPatch *z, unsigned rn1, unsigned rn2)
 	
 	int n = allChunks.size();
 	
+	//printf("Selecting random bigpatch point\n");
+	//printf("Number of chunks:%d\n",n);
+
 	std::vector<gridPoint> gridPoints;
 
 //    printf("Chosen chunk %d,%d,%d\n",std::get<0>(allChunks[rn1%n]),std::get<1>(allChunks[rn1%n]),std::get<1>(allChunks[rn1%n]));
@@ -233,6 +239,8 @@ gridPoint SelectRandomPoint(BigPatch *z, unsigned rn1, unsigned rn2)
 	ReadPatchPoints(z,allChunks[rn1%n],gridPoints);
 	
 	n = gridPoints.size();
+
+	//printf("Number of points in chunk:%d\n",n);
 
 //    printf("Chosen point %d of %d in chunk:%f %f %f\n",rn2%n,n,std::get<2>(gridPoints[rn2%n]),std::get<3>(gridPoints[rn2%n]),std::get<4>(gridPoints[rn2%n]));	
 	return gridPoints[rn2%n];

@@ -489,6 +489,9 @@ int PatchGenerator::GeneratePatch(float seed[9],Patch &patch, Patch &boundary)
   activeListSize = 0;
   
   ClearHighStress();
+  ClearPointLookup();
+  distanceLookup.clear();
+  vectorFieldLookup.clear();
   
   pointSet newPtsPaper;
   pointSet newPts;
