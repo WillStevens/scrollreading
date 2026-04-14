@@ -6,17 +6,17 @@
 using namespace std;
 
 #include "zarr_1.h"
-#include "zarr_c64i1b256.h"
 
 #include "parameters.h"
 #include "common_types.h"
+#include "calcvectorfield.h"
 
 #define SHEET_SIZE (MAX_GROWTH_STEPS+5)
 
 class PatchGenerator
 {
 	public:
-        PatchGenerator(const string &surfaceZarrName_,const string &vectorFieldZarrName_);
+        PatchGenerator(const string &surfaceZarrName_);
 		~PatchGenerator(void);
 
         void MakeActive(int x, int y);		
@@ -40,10 +40,11 @@ class PatchGenerator
 
         int GeneratePatch(float seed[9],Patch &patch, Patch &boundary);
 	private:
-		string surfaceZarrName,vectorFieldZarrName;
+		string surfaceZarrName;
 	    ZARR_1 *surfaceZarr;
-		ZARR_c64i1b256 *vectorFieldZarr;
 
+		VectorFieldCalculator *vfc;
+		
         // Stored as x=0, y=1, z=2
         paperPoint paperSheet[SHEET_SIZE][SHEET_SIZE];
 				

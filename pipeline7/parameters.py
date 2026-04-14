@@ -11,8 +11,6 @@ VOXEL_SIZE=7.91
 RANDOM_SEED=123
 VOLUME_ZARR="d:/zarrs/s4/20231117161658.zarr/0"
 SURFACE_ZARR="d:/zarrs/s4_059_medial_ome.zarr/0"
-VF_TEMP_ZARR="d:/vf_zarrs/s4/pvf_2025_11_17.zarr"
-VECTORFIELD_ZARR="d:/vf_zarrs/s4/pvfs_2025_12_16.zarr"
 # The initial seed point
 SEED_X=1798
 SEED_Y=1161

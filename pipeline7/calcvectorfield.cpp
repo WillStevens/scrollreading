@@ -39,7 +39,7 @@ float kernel[5][5][5] = {
 };
 
 
-VectorFieldCalculator::VectorFieldCalculator(const std::string &zarrName)
+VectorFieldCalculator::VectorFieldCalculator(ZARR_1 *sf)
 {
     // Precompute nearest voxels and associated distance and direction vector
 	int i = 0;
@@ -78,19 +78,17 @@ VectorFieldCalculator::VectorFieldCalculator(const std::string &zarrName)
 			}
 		}
 	}
-
+/*
 	for(int i = 0; i<SORTED_DIST_SIZE; i++)
-	{
-		printf("%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n",sortedDistances[i][0],sortedDistances[i][1],sortedDistances[i][2],sortedDistances[i][3],sortedDistances[i][4],sortedDistances[i][5],sortedDistances[i][6]);
+	{	printf("%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n",sortedDistances[i][0],sortedDistances[i][1],sortedDistances[i][2],sortedDistances[i][3],sortedDistances[i][4],sortedDistances[i][5],sortedDistances[i][6]);
     }
+*/	
 	
-	
-  surfaceZarr = ZARROpen_1(zarrName.c_str());
+  surfaceZarr = sf;
 }
 
 VectorFieldCalculator::~VectorFieldCalculator()
 {
-	ZARRClose_1(surfaceZarr);
 }
 
 void VectorFieldCalculator::GetVectorField(int x, int y, int z, Vec3 &v)
@@ -114,8 +112,10 @@ void VectorFieldCalculator::GetVectorField(int x, int y, int z, Vec3 &v)
 						/* If we're in a surface voxel, then point the vector away from the edge of the surface, but
 						   if we're not in a surface voxel point it towards the surface */
                         v = (vf/minCount) * (foundValue==0?1.0f:-1.0f);
+						break;
 					}
         
+					vf.x=vf.y=vf.z=0.0;
 					lastDist = sortedDistances[i][0];
 				}
                 
@@ -158,12 +158,19 @@ void VectorFieldCalculator::GetSmoothedVectorField(int x, int y, int z, Vec3 &v)
 		  if (xo>VOL_SIZE_X-1) xod = 2*VOL_SIZE_X-xo-1;
 				
 		  Vec3 vf;
-		  GetVectorField(x,y,z,vf);
-				
+		  GetVectorField(xo,yo,zo,vf);
+		  //printf("%f,%f,%f\n",vf.z,vf.y,vf.z);
 		  v += kernel[zod-z+SMOOTH_WINDOW][yod-y+SMOOTH_WINDOW][xod-x+SMOOTH_WINDOW]*vf;
 	    }
 	  }
 	}
 							
 	v = v*GAUSS_SCALE;
+}
+
+void VectorFieldCalculator::GetSmoothedVectorFieldInt8(int x, int y, int z, Vec3 &v)
+{
+	GetSmoothedVectorField(x,y,z,v);
+
+    v = v * 127.0;
 }

@@ -60,7 +60,7 @@ float PatchGenerator::GetDistanceAtPoint(int xp, int yp, int zp)
 	
 	if (distanceLookup.count(p) == 0)
 	{
-		distanceLookup[p] = ZARRRead_c64i1b256(vectorFieldZarr,zp,yp,xp,3);
+		distanceLookup[p] = 255-ZARRRead_1(surfaceZarr,zp,yp,xp);
 	}
 	return distanceLookup[p];
 }
@@ -102,9 +102,12 @@ void PatchGenerator::SetVectorField(int x, int y)
 
     if (px-VOL_OFFSET_X>=0 && px-VOL_OFFSET_X<VOL_SIZE_X && py-VOL_OFFSET_Y>=0 && py-VOL_OFFSET_Y<VOL_SIZE_Y && pz-VOL_OFFSET_Z>=0 && pz-VOL_OFFSET_Z<VOL_SIZE_Z)
     {	
-		v.x = ZARRRead_c64i1b256(vectorFieldZarr,pz,py,px,0)*VECTORFIELD_CONSTANT;
+		
+		/*v.x = ZARRRead_c64i1b256(vectorFieldZarr,pz,py,px,0)*VECTORFIELD_CONSTANT;
 		v.y = ZARRRead_c64i1b256(vectorFieldZarr,pz,py,px,1)*VECTORFIELD_CONSTANT;
-		v.z = ZARRRead_c64i1b256(vectorFieldZarr,pz,py,px,2)*VECTORFIELD_CONSTANT;
+		v.z = ZARRRead_c64i1b256(vectorFieldZarr,pz,py,px,2)*VECTORFIELD_CONSTANT;*/
+		vfc->GetSmoothedVectorFieldInt8(px,py,pz,v);
+		v = v*VECTORFIELD_CONSTANT;
 	}
 
 	vectorFieldLookup[p] = paperSheet[x][y].vectorField = v;
@@ -396,12 +399,12 @@ void PatchGenerator::AddNewPoints(pointSet &newPts, pointSet &newPtsPaper)
     }
 }
 
-PatchGenerator::PatchGenerator(const string &surfaceZarrName_,const string &vectorFieldZarrName_) : surfaceZarrName(surfaceZarrName_),vectorFieldZarrName(vectorFieldZarrName_)
+PatchGenerator::PatchGenerator(const string &surfaceZarrName_) : surfaceZarrName(surfaceZarrName_), vfc(NULL)
 {
 	printf("Init\n");
 
     InitExpectedDistanceLookup();
-
+	
     activeListSize = 0;	
 }
 		
@@ -499,12 +502,13 @@ int PatchGenerator::GeneratePatch(float seed[9],Patch &patch, Patch &boundary)
   // TODO - in future it would be better to keep the zarrs open, but have more efficient buffer lookup
   printf("Opening zarrs\n");
   surfaceZarr = ZARROpen_1(surfaceZarrName.c_str());
-  vectorFieldZarr = ZARROpen_c64i1b256(vectorFieldZarrName.c_str());
+ 
+  vfc = new VectorFieldCalculator(surfaceZarr);
   
   if (!SetSeed(seed))
   {
 	  printf("Seed point is not a surface point\n");
-      ZARRClose_c64i1b256(vectorFieldZarr);
+	  delete vfc;
       ZARRClose_1(surfaceZarr);
 	  return 0;
   }
@@ -549,7 +553,7 @@ int PatchGenerator::GeneratePatch(float seed[9],Patch &patch, Patch &boundary)
   OutputPatch(patch);
   OutputBoundary(boundary,newPts,newPtsPaper);
 
-  ZARRClose_c64i1b256(vectorFieldZarr);
+  delete vfc;
   ZARRClose_1(surfaceZarr);
   
   return i;

@@ -18,11 +18,12 @@
 class VectorFieldCalculator
 {
 	public:
-		VectorFieldCalculator(const std::string &zarrName);
+		VectorFieldCalculator(ZARR_1 *sf);
 		~VectorFieldCalculator();
 		
 		void GetVectorField(int x, int y, int z, Vec3 &v);
         void GetSmoothedVectorField(int x, int y, int z, Vec3 &v);
+		void GetSmoothedVectorFieldInt8(int x, int y, int z, Vec3 &v);
 		
 
 		ZARR_1 *surfaceZarr;

@@ -163,7 +163,7 @@ int main(int argc, char *argv[])
 	
 	if (mode=='n')
 	{
-		PatchGenerator *pg = new PatchGenerator(string(SURFACE_ZARR),string(VECTORFIELD_ZARR));
+		PatchGenerator *pg = new PatchGenerator(string(SURFACE_ZARR));
 
 		float seed[9] = {
 		  SEED_X,
@@ -179,7 +179,7 @@ int main(int argc, char *argv[])
 		BigPatch *bp = OpenBigPatch("temp.bp");
 		BigPatch *bpb = OpenBigPatch("tempb.bp");
 		
-		for(int i=0; i<2000; i++)
+		for(int i=0; i<200; i++)
 		{
 			MemInfo();
 			printf("======== Patch %d ========\n",i);
