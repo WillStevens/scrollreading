@@ -265,7 +265,7 @@ int main(int argc, char *argv[])
 {
 	if (argc != 4 && argc != 5)
 	{
-		printf("Usage: render_from_zarr5 <zarr> <bigpatch or csv or bin> <patch positions> [1 if mask only]\n");
+		printf("Usage: render_from_zarr6 <zarr> <bigpatch or csv or bin> <patch positions> [1 if mask only]\n");
 		printf("Render from a zarr. If mak only then output a white dilated mask on black background");
 		return -1;
 	}

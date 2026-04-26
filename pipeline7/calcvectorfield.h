@@ -2,6 +2,7 @@
 
 #include <cstdio>
 #include <string>
+#include <unordered_map>
 
 #include "zarr_1.h"
 #include "vec3.h"
@@ -28,6 +29,8 @@ class VectorFieldCalculator
 
 		ZARR_1 *surfaceZarr;
 		float sortedDistances[SORTED_DIST_SIZE][7];
+
+		std::unordered_map< uint64_t, Vec3> vectorFieldLookup;
 
 };
 

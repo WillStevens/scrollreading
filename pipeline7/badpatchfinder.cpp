@@ -120,7 +120,7 @@ void BadPatchFinder::CollectDistanceStats(void)
 
 // Given an alignment map and the patches, iterate through all neighbouring patches
 // and find patches with mismatch between 2D x,y and 3D x,y,z
-void BadPatchFinder::FindBadPatches(const AlignmentMap &am, std::map<int,Patch> *patches, std::set<int> &badPatches)
+void BadPatchFinder::FindBadPatches(const AlignmentMap &am, std::map<int,Patch> *patches, std::set<int> &badPatches, std::vector<std::tuple<int,int,float>> &badPatchScores)
 {
 	std::list<std::pair<int,int>> badPatchPairs;
 		
@@ -142,6 +142,7 @@ void BadPatchFinder::FindBadPatches(const AlignmentMap &am, std::map<int,Patch> 
 			PlacePatch((*patches)[patch1],patch1,aftx);
 			
 			printf("%d,%d : %f\n",patch2,patch1,maxDistance);
+			badPatchScores.push_back(std::tuple<int,int,float>(patch2,patch1,maxDistance));
 			
 			if (maxDistance > BP_MAX_XYZ_DISTANCE)
 			{
@@ -192,4 +193,194 @@ void BadPatchFinder::FindBadPatches(const AlignmentMap &am, std::map<int,Patch> 
 		}
 	}
 	
+}
+
+// More general bad patch finder that works on sequence of patches of specified length, looking for distance mismatch between the first
+// and last members of the sequence (assuming that bad patches from smaller length sequences are already found)
+void BadPatchFinder::FindBadPatchesGeneral(AlignmentMap &am, std::map<int,Patch> *patches, int length, std::set<int> &badPatches, std::vector<std::tuple<int,int,float>> &badPatchScores)
+{
+	std::list<std::vector<int>> badPatchTuples;
+	
+	std::vector<int> indexedPatches;
+	
+	// Index patches, not including known bad patches
+	for(auto &p : *patches)
+		indexedPatches.push_back(p.first);
+	
+	std::vector<int> indices; // first index is index of patch, next are all index into alignment map vector
+	
+	for(int i = 0; i<length; i++)
+		indices.push_back(0);
+
+	indices[0] = indexedPatches.size()-1;
+	
+	printf("Initializing indices\n");
+	int currentPatch = indexedPatches[indices[0]];
+	printf("%d\n",currentPatch);
+	for(int i = 1; i<length; i++)
+	{
+		printf("l=%d\n",(int)am[currentPatch].size());
+		int p = std::get<0>(am[currentPatch][0]);
+		printf("p=%d\n",p);
+		indices[i] = 0;
+		currentPatch = p;
+		printf("%d\n",currentPatch);
+	}
+	printf("Done indices\n");
+
+	std::vector<std::vector<int>> patchSequences;
+	
+	bool done = false;
+	while(!done)
+	{
+		std::vector<int> currentSequence;
+		bool hasBadPatch = false;
+				
+		// output a patch sequence only if it contains no bad patches
+		int currentPatch = indexedPatches[indices[0]];
+		if (badPatches.count(currentPatch)!=0) hasBadPatch=true;
+		currentSequence.push_back(currentPatch);
+		for(int i = 1; i<length; i++)
+		{
+			if (indices[i]<am[currentPatch].size())
+			{
+				currentPatch = std::get<0>(am[currentPatch][indices[i]]);
+				if (badPatches.count(currentPatch)!=0) hasBadPatch=true;
+				currentSequence.push_back(currentPatch);
+			}
+			else
+			{
+				printf("Error in patch sequence\n");
+			}
+		}
+		
+		if (!hasBadPatch)
+			patchSequences.push_back(currentSequence);
+		printf("\n");
+		
+		// increment onto the next sequence of patches
+		bool advanceToNextIndex = true;
+		for(int indexToInc=length-1; indexToInc>=0 && advanceToNextIndex; indexToInc--)
+		{
+			advanceToNextIndex = false;
+			if (indexToInc==0)
+				indices[indexToInc]--;
+			else
+				indices[indexToInc]++;
+
+			if (indices[0]==0)
+			{
+				// finished incrementing
+				done = true;
+			}
+			else
+			{
+				int currentPatch = indexedPatches[indices[0]];
+				for(int i = 1; i<length; i++)
+				{
+					if (indices[i]<am[currentPatch].size())
+					{
+						currentPatch = std::get<0>(am[currentPatch][indices[i]]);
+					}
+					else
+					{
+						indices[indexToInc]=0;
+						advanceToNextIndex = true;
+						break;
+					}
+				}
+			}
+		}
+	}
+/*
+	for(auto &i : patchSequences)
+	{
+		for(auto &p : i)
+		{
+			printf("%d ",p);
+		}
+		
+		printf("\n");
+	}
+*/
+	for(auto &i : patchSequences)
+	{
+		ClearRendered();
+		int count = 0;
+		int lastPatch = -1;
+		affineTx aftx = affineTx(1,0,0,0,1,0);
+		for(auto &p : i)
+		{
+			if (count==0)
+			{
+				PlacePatch((*patches)[p],p,aftx);
+			}
+			else
+			{
+				for(auto &al : am[lastPatch])
+					if (std::get<0>(al)==p)
+					{
+						affineTx nextAftx(std::get<7>(al),std::get<8>(al),std::get<9>(al),std::get<10>(al),std::get<11>(al),std::get<12>(al));
+						
+						aftx = AffineTxMultiply(aftx,AffineTxInverse(nextAftx));
+					}
+					
+				if (count == i.size()-1)
+				{
+					PlacePatch((*patches)[p],p,aftx);
+					
+					badPatchScores.push_back(std::tuple<int,int,float>(i[0],p,maxDistance));
+					printf("%d,%d,%f\n",i[0],p,maxDistance);
+					
+					if (maxDistance > BP_MAX_XYZ_DISTANCE*(length-1))
+					{
+						badPatchTuples.push_back(i);
+					}
+				}
+			}
+			
+			count++;
+			lastPatch = p;
+		}
+	}
+	
+	
+	while(badPatchTuples.size()>0)
+	{
+		std::map<int,int> freqCount;
+
+		int highestFreq = -1;
+		int highestPatch = -1;
+		for(auto &bpt : badPatchTuples)
+		{
+			for(auto i : bpt)
+			{
+				if (freqCount.count(i) == 0)
+					freqCount[i] = 0;
+				freqCount[i]++;
+			
+				if (highestFreq==-1 || freqCount[i]>highestFreq)
+				{
+					highestFreq = freqCount[i];
+					highestPatch = i;
+				}
+			}
+		}
+		
+		printf("Bad patch found:%d\n",highestPatch);
+		badPatches.insert(highestPatch);
+		for(std::list<std::vector<int>>::iterator bpt = badPatchTuples.begin(); bpt != badPatchTuples.end();)
+		{
+			for(auto i : *bpt)
+			{
+				if (i==highestPatch)
+				{
+					bpt=badPatchTuples.erase(bpt);
+					break;
+				}
+			}
+			
+			bpt++;
+		}
+	}
 }

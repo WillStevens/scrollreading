@@ -99,6 +99,7 @@ def LoadPatches(alignmentOrder):
       patchNum = int(l[0])
       if patchNum not in patchNums and len(patchNums)==patchLimit:
         print("Stopped loading when %d encountered" % patchNum)
+        print(l)
         return
       
       if other in transformLookup.keys():
@@ -150,7 +151,7 @@ def LoadPatches(alignmentOrder):
     
 def SavePatches():
   print("Saving positions...")
-  f = open("patchPositions.txt","w")
+  f = open(parameters.OUTPUT_DIR+"/patchPositions.txt","w")
   
   if f:
     for patchNum,patchIndex in patchIndexLookup.items():
@@ -219,11 +220,16 @@ def truncate(x):
 
 def Show(links=True):
   canvas.delete('all')
-  offset=(600,400)
-  scale=0.8
+  offset=(1200,300)
+  scale=0.3
+  rotate=-1.2
   patchi = 0
   patchesLen = len(patches)
-  for (x,y,a,rad,ga) in patches:
+  for (xo,yo,a,rad,ga) in patches:
+    x=xo*cos(rotate)-yo*sin(rotate)
+    y=yo*cos(rotate)+xo*sin(rotate)
+    a+=rotate
+	
     patchif = pi*float(patchi)/float(patchesLen)
     
     red = 1.0+cos(patchif)
@@ -240,9 +246,15 @@ def Show(links=True):
     #canvas.create_line(offset[0]+x*scale[0],offset[1]+y*scale[1],offset[0]+x*scale[0]+rad*sin(a),offset[1]+y*scale[1]+rad*cos(a))
   if links:
     for (p0,p1,dist,a0,a1) in connections:
-      x,y,a,rad,ga = patches[p0]
+      xo,yo,a,rad,ga = patches[p0]
+      x=xo*cos(rotate)-yo*sin(rotate)
+      y=yo*cos(rotate)+xo*sin(rotate)
+      a+=rotate
       canvas.create_line(offset[0]+x*scale,offset[1]+y*scale,offset[0]+x*scale+rad*0.8*cos(a+a0)*scale,offset[1]+y*scale+rad*0.8*sin(a+a0)*scale)
-      x,y,a,rad,ga = patches[p1]
+      xo,yo,a,rad,ga = patches[p1]
+      x=xo*cos(rotate)-yo*sin(rotate)
+      y=yo*cos(rotate)+xo*sin(rotate)
+      a+=rotate
       canvas.create_line(offset[0]+x*scale,offset[1]+y*scale,offset[0]+x*scale+rad*0.8*cos(a+a1)*scale,offset[1]+y*scale+rad*0.8*sin(a+a1)*scale)
   
 def RunIteration():
@@ -281,7 +293,7 @@ canvas.pack()
 
 LoadPatches(alignmentOrder)
 
-print(patches)
+#print(patches)
 
 window.after(50,RunIteration)
 

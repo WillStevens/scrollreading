@@ -11,8 +11,6 @@
 #include <string.h>
 #include <dirent.h>
 
-#include "tiffio.h"
-
 #include "parameters.h"
 #include "common_types.h"
 
@@ -47,8 +45,10 @@ class BadPatchFinder
 
 		void CollectDistanceStats(void);
 
-		void FindBadPatches(const AlignmentMap &am, std::map<int,Patch> *patches, std::set<int> &badPatches);
+		void FindBadPatches(const AlignmentMap &am, std::map<int,Patch> *patches, std::set<int> &badPatches, std::vector<std::tuple<int,int,float>> &badPatchScores);
 	
+		void FindBadPatchesGeneral(AlignmentMap &am, std::map<int,Patch> *patches, int length, std::set<int> &badPatches, std::vector<std::tuple<int,int,float>> &badPatchScores);
+
 	private:
 		int rendered_i[R_ARRAY_SIZE][R_ARRAY_SIZE];
 		float rendered_f[R_ARRAY_SIZE][R_ARRAY_SIZE][3];

@@ -60,7 +60,7 @@ void ReadPatchPoints(BigPatch *z, chunkIndex ci, std::vector<gridPoint> &gridPoi
 /* But for some purposes this doesn't matter */
 /* This function was written for select a new seed from a boundary */
 /* rn1,rn2 are randomly generated numbers to use for selecting the point */
-gridPoint SelectRandomPoint(BigPatch *z, unsigned rn1, unsigned rn2);
+bool SelectRandomPoint(BigPatch *z, unsigned rn1, unsigned rn2, gridPoint &ret);
 void AddToBigPatch(BigPatch *z, Patch &p,int patchNum);
 void FindBigPatchPointNeighbours(BigPatch *z, gridPoint p,std::vector<gridPoint> &neighbours);
 

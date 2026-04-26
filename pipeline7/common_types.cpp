@@ -169,6 +169,7 @@ bool Patch::Read(const std::string &path, int i)
 		if (maxuy>radius || abs(minuy>radius))
 			radius = abs(minuy)>maxuy ? abs(minuy) : maxuy;
 
+		patchNum = i;
 		return true;
 	}
 	else
@@ -284,6 +285,65 @@ void Patch::Interpolate(void)
 			}
 		}
 	}
+}
+
+std::vector<patchPoint> Patch::InterpolateAtZ(int zcoord)
+{
+  std::vector<patchPoint> r;
+  
+#define SHEET_SIZE (MAX_GROWTH_STEPS+5)
+
+	float paperPos[SHEET_SIZE][SHEET_SIZE][3];
+	bool active[SHEET_SIZE][SHEET_SIZE];
+
+	for(int x = 0; x<SHEET_SIZE; x++)
+	for(int y = 0; y<SHEET_SIZE; y++)
+	  active[x][y] = false;
+
+	for(patchPoint &p : points)
+	{
+		paperPos[(int)p.x+SHEET_SIZE/2][(int)p.y+SHEET_SIZE/2][0]=p.v.x;
+		paperPos[(int)p.x+SHEET_SIZE/2][(int)p.y+SHEET_SIZE/2][1]=p.v.y;
+		paperPos[(int)p.x+SHEET_SIZE/2][(int)p.y+SHEET_SIZE/2][2]=p.v.z;
+		active[(int)p.x+SHEET_SIZE/2][(int)p.y+SHEET_SIZE/2] = true;
+    }
+	
+	float lower[3],upper[3],ox,oy,oz;
+  
+	for(int x = 0; x<SHEET_SIZE*QUADMESH_SIZE; x++)
+	for(int y = 0; y<SHEET_SIZE*QUADMESH_SIZE; y++)
+	{
+		int xs = x/QUADMESH_SIZE;
+		int ys = y/QUADMESH_SIZE;
+		int xm = x%QUADMESH_SIZE;
+		int ym = y%QUADMESH_SIZE;
+	  
+		// deal with the case where all 4 corners are present
+		if (xs+1<SHEET_SIZE && ys+1<SHEET_SIZE)
+		{
+			if (active[xs][ys] && active[xs+1][ys] && active[xs][ys+1] && active[xs+1][ys+1])
+			{
+				// bilinear interpolation
+			
+				lower[0] = (paperPos[xs][ys][0] * (QUADMESH_SIZE-xm) + paperPos[xs+1][ys][0] * xm)/QUADMESH_SIZE;
+				lower[1] = (paperPos[xs][ys][1] * (QUADMESH_SIZE-xm) + paperPos[xs+1][ys][1] * xm)/QUADMESH_SIZE;
+				lower[2] = (paperPos[xs][ys][2] * (QUADMESH_SIZE-xm) + paperPos[xs+1][ys][2] * xm)/QUADMESH_SIZE;
+
+				upper[0] = (paperPos[xs][ys+1][0] * (QUADMESH_SIZE-xm) + paperPos[xs+1][ys+1][0] * xm)/QUADMESH_SIZE;
+				upper[1] = (paperPos[xs][ys+1][1] * (QUADMESH_SIZE-xm) + paperPos[xs+1][ys+1][1] * xm)/QUADMESH_SIZE;
+				upper[2] = (paperPos[xs][ys+1][2] * (QUADMESH_SIZE-xm) + paperPos[xs+1][ys+1][2] * xm)/QUADMESH_SIZE;
+			
+				ox = (lower[0]*(QUADMESH_SIZE-ym)+upper[0]*ym)/QUADMESH_SIZE;
+				oy = (lower[1]*(QUADMESH_SIZE-ym)+upper[1]*ym)/QUADMESH_SIZE;
+				oz = (lower[2]*(QUADMESH_SIZE-ym)+upper[2]*ym)/QUADMESH_SIZE;
+			
+				if ((int)oz==zcoord)
+					r.push_back(patchPoint(x,y,ox,oy,oz));
+			}
+		}
+	}
+	
+	return r;
 }
 
 void Patch::DiscardInterpolation(void)

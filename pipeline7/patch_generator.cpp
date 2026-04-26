@@ -485,7 +485,7 @@ void PatchGenerator::OutputPatch(Patch &patch)
 	}
 }
 
-int PatchGenerator::GeneratePatch(float seed[9],Patch &patch, Patch &boundary)
+int PatchGenerator::GeneratePatch(float seed[9],Patch &patch, Patch &boundary, int iter)
 { 
   int totPointsAdded = 0;
  
@@ -494,7 +494,9 @@ int PatchGenerator::GeneratePatch(float seed[9],Patch &patch, Patch &boundary)
   ClearHighStress();
   ClearPointLookup();
   distanceLookup.clear();
-  vectorFieldLookup.clear();
+
+  if (iter%1000==0)
+      vectorFieldLookup.clear();
   
   pointSet newPtsPaper;
   pointSet newPts;
@@ -551,6 +553,8 @@ int PatchGenerator::GeneratePatch(float seed[9],Patch &patch, Patch &boundary)
   printf("Mean relaxation iterations:%f\n",((float)totIters)/(float)i);
   
   OutputPatch(patch);
+  patch.SetPatchNum(iter);
+  
   OutputBoundary(boundary,newPts,newPtsPaper);
 
   delete vfc;

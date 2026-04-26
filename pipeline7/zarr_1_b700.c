@@ -105,23 +105,33 @@ int ZARRCheckChunk_1_b700(ZARR_1_b700 *z, int c[3])
 	if (z->buffer && c[0] == z->bufferIndex[z->index][0] && c[1] == z->bufferIndex[z->index][1] && c[2] == z->bufferIndex[z->index][2])
 		return 0;
 
-	for(z->index = 0; z->index < 730; z->index++)
+	
+	for(int indexOffset = 0; indexOffset  < 730; indexOffset++)
 	{
-		if (1  && c[0] == z->bufferIndex[z->index][0] && c[1] == z->bufferIndex[z->index][1] && c[2] == z->bufferIndex[z->index][2])
+		/* If we start from index after current, then repeated access patterns should always result in finding the next one straight away */
+		int testIndex = (z->index+indexOffset+1)%730;
+		if (1  && c[0] == z->bufferIndex[testIndex][0] && c[1] == z->bufferIndex[testIndex][1] && c[2] == z->bufferIndex[testIndex][2])
 		{
+			z->index = testIndex;
 			z->buffer = &z->buffers[z->index];
 			z->bufferUsed[z->index] = z->counter++;
 			return 0;
 		}
 	}
 		
-	for(z->index = 0; z->index < 730; z->index++)
+	int indexOffset;
+	for(indexOffset = 0; indexOffset  < 730; indexOffset++)
 	{
-		if (z->bufferIndex[z->index][0]==-1)
+		/* If we start from index after current, then repeated access patterns should always result in finding the next one straight away */
+		int testIndex = (z->index+indexOffset+1)%730;
+		if (z->bufferIndex[testIndex][0]==-1)
+		{
+			z->index = testIndex;
 			break;
+		}
 	}
   	
-	if (z->index == 730)
+	if (indexOffset == 730)
 	{
 		/* Find the buffer that was least recently used and free it up */
 		//printf("Ran out of buffers - flushing oldest\n");

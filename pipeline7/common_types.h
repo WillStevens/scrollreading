@@ -56,6 +56,7 @@ class Patch
 		
 		void CalcExtents(bool force);
 		void Interpolate(void);
+		vector<patchPoint> InterpolateAtZ(int zcoord);
 		void DiscardInterpolation(void);
 
 		int MinZ(void); 
@@ -69,6 +70,9 @@ class Patch
 		void MakeGrid(void);
 		void DestroyGrid(void);
 		
+		void SetPatchNum(int n) {patchNum = n;}
+		int GetPatchNum(void) {return patchNum;}
+		
 		Patch(void) {interpolatedPoints = NULL; minux=maxux=minuy=maxuy=minx=maxx=miny=maxy=minz=maxz=-1; positionSet=false; pointGrid=NULL;}
 		~Patch(void) {DiscardInterpolation();DestroyGrid();}
 		
@@ -80,6 +84,7 @@ class Patch
 		
 		bool positionSet;
 		float xpos,ypos,angle;
+		int patchNum;
 		
 		patchPoint ***pointGrid;
 };

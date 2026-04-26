@@ -38,7 +38,7 @@ class PatchGenerator
 		void OutputBoundary(Patch &boundary, pointSet &boundaryPoints, pointSet &boundaryPointsPaper);
 		void OutputPatch(Patch &patch);
 
-        int GeneratePatch(float seed[9],Patch &patch, Patch &boundary);
+        int GeneratePatch(float seed[9],Patch &patch, Patch &boundary, int iter);
 	private:
 		string surfaceZarrName;
 	    ZARR_1 *surfaceZarr;

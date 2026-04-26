@@ -223,11 +223,13 @@ void ReadPatchPoints(BigPatch *z, chunkIndex ci, std::vector<gridPoint> &gridPoi
 /* But for some purposes this doesn't matter */
 /* This function was written for select a new seed from a boundary */
 /* rn1,rn2 are randomly generated numbers to use for selecting the point */
-gridPoint SelectRandomPoint(BigPatch *z, unsigned rn1, unsigned rn2)
+bool SelectRandomPoint(BigPatch *z, unsigned rn1, unsigned rn2, gridPoint &ret)
 {
 	std::vector<chunkIndex> allChunks = GetAllPatchChunks(z);
 	
 	int n = allChunks.size();
+	
+	if (n==0) return false;
 	
 	//printf("Selecting random bigpatch point\n");
 	//printf("Number of chunks:%d\n",n);
@@ -239,11 +241,17 @@ gridPoint SelectRandomPoint(BigPatch *z, unsigned rn1, unsigned rn2)
 	ReadPatchPoints(z,allChunks[rn1%n],gridPoints);
 	
 	n = gridPoints.size();
-
-	//printf("Number of points in chunk:%d\n",n);
+	
+	if (n==0)
+	{
+		printf("Fatal error : number of points in bigpatch chunk was zero\n");
+		exit(-1);
+	}
 
 //    printf("Chosen point %d of %d in chunk:%f %f %f\n",rn2%n,n,std::get<2>(gridPoints[rn2%n]),std::get<3>(gridPoints[rn2%n]),std::get<4>(gridPoints[rn2%n]));	
-	return gridPoints[rn2%n];
+	ret = gridPoints[rn2%n];
+	
+	return true;
 }
 
 void AddToBigPatch(BigPatch *bp, Patch &p,int patchNum)

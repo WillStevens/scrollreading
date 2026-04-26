@@ -93,6 +93,14 @@ VectorFieldCalculator::~VectorFieldCalculator()
 
 void VectorFieldCalculator::GetVectorField(int x, int y, int z, Vec3 &v)
 {
+	uint64_t p = (((uint64_t)x)<<32)+(((uint64_t)y)<<16)+(uint64_t)z;
+	
+	if (vectorFieldLookup.count(p) != 0)
+	{
+		v = vectorFieldLookup[p];
+		return;
+	}
+
     uint8_t foundValue = ZARRRead_1(surfaceZarr,z+VOL_OFFSET_Z,y+VOL_OFFSET_Y,x+VOL_OFFSET_X);
 	Vec3 vf;
 	
@@ -131,9 +139,10 @@ void VectorFieldCalculator::GetVectorField(int x, int y, int z, Vec3 &v)
 			/* If we're in a surface voxel, then point the vector away from the edge of the surface, but
 			   if we're not in a surface voxel point it towards the surface */
             v = (vf/minCount) * (foundValue==0?1.0f:-1.0f);
-    		/* we need value to be zero in a surface and 255 around the boundaries of it */
 		}
 	}
+	
+	vectorFieldLookup[p] = v;
 }
 
 void VectorFieldCalculator::GetSmoothedVectorField(int x, int y, int z, Vec3 &v)
