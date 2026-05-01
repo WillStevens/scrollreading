@@ -20,11 +20,11 @@ bool Aligner::AlignPatches(BigPatch *bp, Patch &p, std::vector<alignment> &align
 {	
 	std::set<chunkIndex> chunks;
 	
-	for(const patchPoint &pp : p.points)
+	for(PatchIterator pi = p.Begin(); p.Next(pi);)
 	{
-		gridPoints[1].push_back(gridPoint(pp.x,pp.y,pp.v.x,pp.v.y,pp.v.z,0));
+		gridPoints[1].push_back(gridPoint(pi.p->x,pi.p->y,pi.p->v.x,pi.p->v.y,pi.p->v.z,0));
 		// Which chunk is the point in?
-		chunks.insert(GetChunkIndex(pp.v.x,pp.v.y,pp.v.z));
+		chunks.insert(GetChunkIndex(pi.p->v.x,pi.p->v.y,pi.p->v.z));
 	}
 
 	std::set<chunkIndex> expanded;

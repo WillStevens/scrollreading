@@ -42,19 +42,31 @@ struct patchPoint {
 	
     constexpr patchPoint() : x(0), y(0) {}
     constexpr patchPoint(float x_, float y_, float vx_, float vy_, float vz_) : x(x_), y(y_), v(vx_,vy_,vz_) {}
-
+	constexpr patchPoint(const patchPoint &p) : x(p.x),y(p.y),v(p.v) {}
 };
 
 extern int dirVectorLookup[4][2];
+
+class PatchIterator
+{
+	public:
+		PatchIterator() : x(-1),y(-1),p(NULL) {}
+		int x,y;
+		patchPoint *p;
+};
 
 class Patch
 {
 	public:		
 		void Flip(void);
 		bool Write(const std::string &path, int i);
+		void BuildFromPoints(std::vector<patchPoint> &points);
 		bool Read(const std::string &path, int i);
+
+		PatchIterator Begin();
+		bool Next(PatchIterator &pi);
 		
-		void CalcExtents(bool force);
+		void CalcExtents(std::vector<patchPoint> &points);
 		void Interpolate(void);
 		vector<patchPoint> InterpolateAtZ(int zcoord);
 		void DiscardInterpolation(void);
@@ -66,18 +78,22 @@ class Patch
 		void SetPosition(float x, float y, float a) {xpos=x;ypos=y;angle=a;positionSet=true;}
 		bool FindGlobalXY(float x, float y, Vec3 &v, float &weight);
 		void TransformPoint(float x, float y, float &xo, float &yo);
+		bool GetNormal(int x, int y, Vec3 &v);
 		
-		void MakeGrid(void);
+		void MakeGrid(std::vector<patchPoint> &points);
 		void DestroyGrid(void);
+		void DestroyInterpolatedGrid(void);
 		
 		void SetPatchNum(int n) {patchNum = n;}
 		int GetPatchNum(void) {return patchNum;}
 		
-		Patch(void) {interpolatedPoints = NULL; minux=maxux=minuy=maxuy=minx=maxx=miny=maxy=minz=maxz=-1; positionSet=false; pointGrid=NULL;}
-		~Patch(void) {DiscardInterpolation();DestroyGrid();}
+		Patch(void) {interpolatedPointGrid = NULL; minux=maxux=minuy=maxuy=minx=maxx=miny=maxy=minz=maxz=-1; positionSet=false; pointGrid=NULL;}
 		
-	    vector<patchPoint> points;
-		vector<patchPoint> *interpolatedPoints;
+		~Patch(void) {DestroyInterpolatedGrid();DestroyGrid();}
+		void Clear(void) {DestroyInterpolatedGrid();DestroyGrid();interpolatedPointGrid = NULL; minux=maxux=minuy=maxuy=minx=maxx=miny=maxy=minz=maxz=-1; positionSet=false; pointGrid=NULL;}
+
+	public:
+		//vector<patchPoint> *interpolatedPoints;
 		int minux,maxux,minuy,maxuy;
 		int minx,maxx,miny,maxy,minz,maxz;
 		int radius;
@@ -87,6 +103,7 @@ class Patch
 		int patchNum;
 		
 		patchPoint ***pointGrid;
+		patchPoint ***interpolatedPointGrid;
 };
 
 typedef std::tuple<int,float,float,float,float,float,float,float,float,float,float,float,float> alignment;

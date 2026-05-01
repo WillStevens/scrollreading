@@ -9,12 +9,12 @@ void BadPatchFinder::ClearRendered(void)
 	maxDistance = 0.0;
 }
 
-void BadPatchFinder::PlacePatch(const Patch &p1, int patchNum,const affineTx &aftx)
+void BadPatchFinder::PlacePatch(Patch &p1, int patchNum,const affineTx &aftx)
 {
-	for(auto const &point : p1.points)
+	for(PatchIterator pi = p1.Begin(); p1.Next(pi);)
 	{
 		float x,y,px,py,pz;
-		x=point.x; y=point.y; px=point.v.x; py=point.v.y; pz=point.v.z;
+		x=pi.p->x; y=pi.p->y; px=pi.p->v.x; py=pi.p->v.y; pz=pi.p->v.z;
 								
 		//x=x*QUADMESH_SIZE;
 		//y=y*QUADMESH_SIZE;

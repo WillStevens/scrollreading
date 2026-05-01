@@ -37,7 +37,7 @@ class BadPatchFinder
 		}
 
 		void ClearRendered(void);
-		void PlacePatch(const Patch &p1, int patchNum, const affineTx &aftx);
+		void PlacePatch(Patch &p1, int patchNum, const affineTx &aftx);
 
 #ifdef OUTPUT_DISTANCE_TIF
 		void RenderDistances(void);

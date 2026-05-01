@@ -128,11 +128,11 @@ int ErasePoints(BigPatch *bp0, Patch &p1, int which, float radius)
   
   std::set<chunkIndex> chunks;
 	
-  for(const patchPoint &pp : p1.points)
+  for(PatchIterator pi = p1.Begin(); p1.Next(pi);)
   {
-	gridPoints[1].push_back(gridPoint(pp.x,pp.y,pp.v.x,pp.v.y,pp.v.z,1));
+	gridPoints[1].push_back(gridPoint(pi.p->x,pi.p->y,pi.p->v.x,pi.p->v.y,pi.p->v.z,1));
 	// Which chunk is the point in?
-	chunks.insert(GetChunkIndex(pp.v.x,pp.v.y,pp.v.z));
+	chunks.insert(GetChunkIndex(pi.p->v.x,pi.p->v.y,pi.p->v.z));
   }
   
   std::set<chunkIndex> expanded;
@@ -177,13 +177,15 @@ int ErasePoints(BigPatch *bp0, Patch &p1, int which, float radius)
   printf("Output points:%d\n",(int)gridPointsOutput.size());
   
   if (which==1)
-  {	  
-      // TODO - replace all points in the patch...
-	  p1.points.clear();
+  {
+	  std::vector<patchPoint> points;
+	  p1.Clear();
 	  for(auto &gp : gridPointsOutput)
 	  {
-		  p1.points.push_back(patchPoint(std::get<0>(gp),std::get<1>(gp),std::get<2>(gp),std::get<3>(gp),std::get<4>(gp)));
+		  points.push_back(patchPoint(std::get<0>(gp),std::get<1>(gp),std::get<2>(gp),std::get<3>(gp),std::get<4>(gp)));
 	  }
+	  
+	  p1.BuildFromPoints(points);
   }
   else
   {
@@ -231,8 +233,10 @@ int ErasePoints(BigPatch *bp0, Patch &p1, int which, float radius)
 int ErasePoints(BigPatch *bp0, float x, float y, float z, int which, float radius)
 {
 	Patch p;
+	std::vector<patchPoint> pts;
+	pts.push_back(patchPoint(0,0,x,y,z));
 	
-	p.points.push_back(patchPoint(0,0,x,y,z));
+	p.BuildFromPoints(pts);
 	
 	return ErasePoints(bp0,p,which,radius);
 }

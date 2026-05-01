@@ -98,11 +98,62 @@ float DotProduct(float x0, float y0, float x1, float y1)
 	return x0*x1+y0*y1;
 }
 
+// TODO - cache the begin and end positions
+// TODO - would be better to rename Begin to Init, because it isn't the beginning, it just initialises the iterator so that the beginning will be found next
+PatchIterator Patch::Begin()
+{
+	PatchIterator pi;
+	
+	pi.x = 0; pi.y = -1;
+	
+	pi.p = NULL;
+		
+	return pi;
+}
+
+bool Patch::Next(PatchIterator &pi)
+{
+	while(true)
+	{
+		pi.y++;
+		
+		if (pi.y>maxuy-minuy)
+		{
+			pi.y=0;
+			pi.x++;
+			
+			if (pi.x>maxux-minux)
+				return false;
+		}
+		
+		if (pointGrid[pi.x][pi.y])
+		{
+			pi.p = pointGrid[pi.x][pi.y];
+			return true;
+		}
+	}
+}
+
 void Patch::Flip(void)
 {
-	for(patchPoint &pp : points)
+	if (interpolatedPointGrid)
 	{
-		pp.x = -pp.x;
+		fprintf(stderr,"Error: called flip after interpolation\n");
+		exit(-1);
+	}
+	
+	for(int x=0; x<(maxux-minux+1)/2; x++)
+	{
+		for(int y = 0; y<maxuy-minuy+1; y++)
+		{
+			patchPoint *tmp;
+			tmp = pointGrid[x][y];
+			pointGrid[x][y] = pointGrid[maxux-minux-x][y];
+			pointGrid[maxux-minux-x][y] = tmp;
+			
+			if (pointGrid[x][y]) pointGrid[x][y]->x = x;
+			if (pointGrid[maxux-minux-x][y]) pointGrid[maxux-minux-x][y]->x = maxux-minux-x;
+		}
 	}
 }
 
@@ -114,19 +165,24 @@ bool Patch::Write(const std::string &path, int i)
 	
 	FILE *fo = fopen(fileName.str().c_str(),"w");
 
+	printf("Writing patches\n");
 	if(fo)
 	{
 		gridPointStruct p;
 	
-		for(auto &point : points)
+		for(int x = minux; x<=maxux; x++)
+		for(int y = minuy; y<=maxuy; y++)
 		{
-			p.x = point.x;
-			p.y = point.y;
-			p.px = point.v.x;
-			p.py = point.v.y;
-			p.pz = point.v.z;
+			if (pointGrid[x-minux][y-minuy])
+			{
+				p.x = pointGrid[x-minux][y-minuy]->x;
+				p.y = pointGrid[x-minux][y-minuy]->y;
+				p.px = pointGrid[x-minux][y-minuy]->v.x;
+				p.py = pointGrid[x-minux][y-minuy]->v.y;
+				p.pz = pointGrid[x-minux][y-minuy]->v.z;
 				
-            fwrite(&p,sizeof(p),1,fo);	
+				fwrite(&p,sizeof(p),1,fo);
+			}
 		}
 		
 		fclose(fo);
@@ -137,9 +193,20 @@ bool Patch::Write(const std::string &path, int i)
 
 }
 
+void Patch::BuildFromPoints(vector<patchPoint> &points)
+{
+	CalcExtents(points);
+	MakeGrid(points);
+	// Estimate the radius using minx,maxx,miny,maxy
+	// Currently radius is only used for visualisation in patchsprings, so it doesn't matter too much if it's wrong.
+	radius = abs(minux)>maxux ? abs(minux) : maxux;
+	if (maxuy>radius || abs(minuy>radius))
+		radius = abs(minuy)>maxuy ? abs(minuy) : maxuy;
+}
+
 bool Patch::Read(const std::string &path, int i)
 {
-	points.clear();
+    vector<patchPoint> points;
 	std::stringstream fileName;
 	
 	fileName << path << "/patch_" << i << ".bin";
@@ -162,24 +229,22 @@ bool Patch::Read(const std::string &path, int i)
 		
 		fclose(fi);
 		
-		CalcExtents(true);
-		// Estimate the radius using minx,maxx,miny,maxy
-		// Currently radius is only used for visualisation in patchsprings, so it doesn't matter too much if it's wrong.
-		radius = abs(minux)>maxux ? abs(minux) : maxux;
-		if (maxuy>radius || abs(minuy>radius))
-			radius = abs(minuy)>maxuy ? abs(minuy) : maxuy;
-
+		BuildFromPoints(points);
 		patchNum = i;
+		
 		return true;
 	}
 	else
 		return false;
 }
 
-void Patch::CalcExtents(bool force)
+void Patch::CalcExtents(vector<patchPoint> &points)
 {
-	if (!force && minx != -1)
-		return;
+	if (points.size()==0)
+	{
+		fprintf(stderr,"Error: Patch::CalcExtents called when points is empty\n");
+		exit(-1);
+	}
 	
 	bool first=true;
 	
@@ -212,50 +277,36 @@ void Patch::CalcExtents(bool force)
 
 int Patch::MinZ(void)
 {
-	CalcExtents(false);
 	return minz;
 }
 
 int Patch::MaxZ(void)
 {
-	CalcExtents(false);
 	return maxz;
 }
 
 bool Patch::ContainsZ(int z)
 {
-	CalcExtents(false);
 	return z>=minz && z<=maxz;
 }
 
 void Patch::Interpolate(void)
 {
-	if (interpolatedPoints != NULL)
+	if (interpolatedPointGrid != NULL)
 		return;
 	
-	interpolatedPoints = new vector<patchPoint>();
+	interpolatedPointGrid=(patchPoint***)malloc(sizeof(patchPoint**)*(maxux-minux+1)*QUADMESH_SIZE);
 	
-#define SHEET_SIZE (MAX_GROWTH_STEPS+5)
-
-	float paperPos[SHEET_SIZE][SHEET_SIZE][3];
-	bool active[SHEET_SIZE][SHEET_SIZE];
-
-	for(int x = 0; x<SHEET_SIZE; x++)
-	for(int y = 0; y<SHEET_SIZE; y++)
-	  active[x][y] = false;
-
-	for(patchPoint &p : points)
+	for(int i = minux*QUADMESH_SIZE; i<=maxux*QUADMESH_SIZE; i++)
 	{
-		paperPos[(int)p.x+SHEET_SIZE/2][(int)p.y+SHEET_SIZE/2][0]=p.v.x;
-		paperPos[(int)p.x+SHEET_SIZE/2][(int)p.y+SHEET_SIZE/2][1]=p.v.y;
-		paperPos[(int)p.x+SHEET_SIZE/2][(int)p.y+SHEET_SIZE/2][2]=p.v.z;
-		active[(int)p.x+SHEET_SIZE/2][(int)p.y+SHEET_SIZE/2] = true;
-    }
+		interpolatedPointGrid[i-minux*QUADMESH_SIZE]=(patchPoint**)malloc(sizeof(patchPoint*)*(maxuy-minuy+1)*QUADMESH_SIZE);
+		memset(interpolatedPointGrid[i-minux*QUADMESH_SIZE],0,sizeof(patchPoint*)*(maxuy-minuy+1)*QUADMESH_SIZE);
+	}
 	
-	float lower[3],upper[3],ox,oy,oz;
+	Vec3 lower,upper,o;
   
-	for(int x = 0; x<SHEET_SIZE*QUADMESH_SIZE; x++)
-	for(int y = 0; y<SHEET_SIZE*QUADMESH_SIZE; y++)
+	for(int x = 0; x<(maxux-minux+1)*QUADMESH_SIZE; x++)
+	for(int y = 0; y<(maxuy-minuy+1)*QUADMESH_SIZE; y++)
 	{
 		int xs = x/QUADMESH_SIZE;
 		int ys = y/QUADMESH_SIZE;
@@ -263,25 +314,19 @@ void Patch::Interpolate(void)
 		int ym = y%QUADMESH_SIZE;
 	  
 		// deal with the case where all 4 corners are present
-		if (xs+1<SHEET_SIZE && ys+1<SHEET_SIZE)
+		if (xs+1<maxux-minux-1 && ys+1<maxuy-minuy+1)
 		{
-			if (active[xs][ys] && active[xs+1][ys] && active[xs][ys+1] && active[xs+1][ys+1])
+			if (pointGrid[xs][ys] && pointGrid[xs+1][ys] && pointGrid[xs][ys+1] && pointGrid[xs+1][ys+1])
 			{
 				// bilinear interpolation
 			
-				lower[0] = (paperPos[xs][ys][0] * (QUADMESH_SIZE-xm) + paperPos[xs+1][ys][0] * xm)/QUADMESH_SIZE;
-				lower[1] = (paperPos[xs][ys][1] * (QUADMESH_SIZE-xm) + paperPos[xs+1][ys][1] * xm)/QUADMESH_SIZE;
-				lower[2] = (paperPos[xs][ys][2] * (QUADMESH_SIZE-xm) + paperPos[xs+1][ys][2] * xm)/QUADMESH_SIZE;
+				lower = (pointGrid[xs][ys]->v * (QUADMESH_SIZE-xm) + pointGrid[xs+1][ys]->v * xm)/QUADMESH_SIZE;
 
-				upper[0] = (paperPos[xs][ys+1][0] * (QUADMESH_SIZE-xm) + paperPos[xs+1][ys+1][0] * xm)/QUADMESH_SIZE;
-				upper[1] = (paperPos[xs][ys+1][1] * (QUADMESH_SIZE-xm) + paperPos[xs+1][ys+1][1] * xm)/QUADMESH_SIZE;
-				upper[2] = (paperPos[xs][ys+1][2] * (QUADMESH_SIZE-xm) + paperPos[xs+1][ys+1][2] * xm)/QUADMESH_SIZE;
+				upper = (pointGrid[xs][ys+1]->v * (QUADMESH_SIZE-xm) + pointGrid[xs+1][ys+1]->v * xm)/QUADMESH_SIZE;
 			
-				ox = (lower[0]*(QUADMESH_SIZE-ym)+upper[0]*ym)/QUADMESH_SIZE;
-				oy = (lower[1]*(QUADMESH_SIZE-ym)+upper[1]*ym)/QUADMESH_SIZE;
-				oz = (lower[2]*(QUADMESH_SIZE-ym)+upper[2]*ym)/QUADMESH_SIZE;
+				o = (lower*(QUADMESH_SIZE-ym)+upper*ym)/QUADMESH_SIZE;
 			
-				interpolatedPoints->push_back(patchPoint(x,y,ox,oy,oz));
+				interpolatedPointGrid[x][y] = new patchPoint(x,y,o.x,o.y,o.z);
 			}
 		}
 	}
@@ -289,29 +334,12 @@ void Patch::Interpolate(void)
 
 std::vector<patchPoint> Patch::InterpolateAtZ(int zcoord)
 {
-  std::vector<patchPoint> r;
+	std::vector<patchPoint> r;
+  	
+	Vec3 lower,upper,o;
   
-#define SHEET_SIZE (MAX_GROWTH_STEPS+5)
-
-	float paperPos[SHEET_SIZE][SHEET_SIZE][3];
-	bool active[SHEET_SIZE][SHEET_SIZE];
-
-	for(int x = 0; x<SHEET_SIZE; x++)
-	for(int y = 0; y<SHEET_SIZE; y++)
-	  active[x][y] = false;
-
-	for(patchPoint &p : points)
-	{
-		paperPos[(int)p.x+SHEET_SIZE/2][(int)p.y+SHEET_SIZE/2][0]=p.v.x;
-		paperPos[(int)p.x+SHEET_SIZE/2][(int)p.y+SHEET_SIZE/2][1]=p.v.y;
-		paperPos[(int)p.x+SHEET_SIZE/2][(int)p.y+SHEET_SIZE/2][2]=p.v.z;
-		active[(int)p.x+SHEET_SIZE/2][(int)p.y+SHEET_SIZE/2] = true;
-    }
-	
-	float lower[3],upper[3],ox,oy,oz;
-  
-	for(int x = 0; x<SHEET_SIZE*QUADMESH_SIZE; x++)
-	for(int y = 0; y<SHEET_SIZE*QUADMESH_SIZE; y++)
+	for(int x = 0; x<(maxux-minux+1)*QUADMESH_SIZE; x++)
+	for(int y = 0; y<(maxuy-minuy+1)*QUADMESH_SIZE; y++)
 	{
 		int xs = x/QUADMESH_SIZE;
 		int ys = y/QUADMESH_SIZE;
@@ -319,40 +347,26 @@ std::vector<patchPoint> Patch::InterpolateAtZ(int zcoord)
 		int ym = y%QUADMESH_SIZE;
 	  
 		// deal with the case where all 4 corners are present
-		if (xs+1<SHEET_SIZE && ys+1<SHEET_SIZE)
+		if (xs+1<maxux-minux-1 && ys+1<maxuy-minuy+1)
 		{
-			if (active[xs][ys] && active[xs+1][ys] && active[xs][ys+1] && active[xs+1][ys+1])
+			if (pointGrid[xs][ys] && pointGrid[xs+1][ys] && pointGrid[xs][ys+1] && pointGrid[xs+1][ys+1])
 			{
 				// bilinear interpolation
 			
-				lower[0] = (paperPos[xs][ys][0] * (QUADMESH_SIZE-xm) + paperPos[xs+1][ys][0] * xm)/QUADMESH_SIZE;
-				lower[1] = (paperPos[xs][ys][1] * (QUADMESH_SIZE-xm) + paperPos[xs+1][ys][1] * xm)/QUADMESH_SIZE;
-				lower[2] = (paperPos[xs][ys][2] * (QUADMESH_SIZE-xm) + paperPos[xs+1][ys][2] * xm)/QUADMESH_SIZE;
+				lower = (pointGrid[xs][ys]->v * (QUADMESH_SIZE-xm) + pointGrid[xs+1][ys]->v * xm)/QUADMESH_SIZE;
 
-				upper[0] = (paperPos[xs][ys+1][0] * (QUADMESH_SIZE-xm) + paperPos[xs+1][ys+1][0] * xm)/QUADMESH_SIZE;
-				upper[1] = (paperPos[xs][ys+1][1] * (QUADMESH_SIZE-xm) + paperPos[xs+1][ys+1][1] * xm)/QUADMESH_SIZE;
-				upper[2] = (paperPos[xs][ys+1][2] * (QUADMESH_SIZE-xm) + paperPos[xs+1][ys+1][2] * xm)/QUADMESH_SIZE;
+				upper = (pointGrid[xs][ys+1]->v * (QUADMESH_SIZE-xm) + pointGrid[xs+1][ys+1]->v * xm)/QUADMESH_SIZE;
 			
-				ox = (lower[0]*(QUADMESH_SIZE-ym)+upper[0]*ym)/QUADMESH_SIZE;
-				oy = (lower[1]*(QUADMESH_SIZE-ym)+upper[1]*ym)/QUADMESH_SIZE;
-				oz = (lower[2]*(QUADMESH_SIZE-ym)+upper[2]*ym)/QUADMESH_SIZE;
-			
-				if ((int)oz==zcoord)
-					r.push_back(patchPoint(x,y,ox,oy,oz));
+				o = (lower*(QUADMESH_SIZE-ym)+upper*ym)/QUADMESH_SIZE;
+
+				if ((int)o.z==zcoord)
+					r.push_back(patchPoint(x,y,o.x,o.y,o.z));
+				
 			}
 		}
 	}
 	
 	return r;
-}
-
-void Patch::DiscardInterpolation(void)
-{
-	if (interpolatedPoints)
-	{
-		delete interpolatedPoints;
-		interpolatedPoints = NULL;
-	}
 }
 
 /*
@@ -430,9 +444,7 @@ bool Patch::FindGlobalXY(float x, float y, Vec3 &v, float weight)
 bool Patch::FindGlobalXY(float x, float y, Vec3 &v, float &weight)
 {
 	if (positionSet)
-	{
-		MakeGrid();
-		
+	{		
 		// Inverse transform x,y using xpos,ypos,angle
 
 		float xd = (x-xpos)*cos(angle)+(y-ypos)*sin(angle);
@@ -517,15 +529,95 @@ void Patch::TransformPoint(float x, float y, float &xo, float &yo)
 	}
 }
 
+bool Patch::GetNormal(int x, int y, Vec3 &v)
+{
+	// Deal with a few cases:
+	// 1. if neighbours in 4 directions, calculate normal
+	// 2. if neighbours in 3 directions, calculate normal
+	// 3. if neighbours in 2 orthogonal directions, calculate normal
+	// 4. fail
+	
+	if (x>=minux && x<=maxux && y>=minuy && y<=maxuy)
+	{
+		x -= minux;
+		y -= minuy;
+	}
+	else
+		return false;
+	
+	if (pointGrid[x][y])
+	{
+		if (x>0 && y>0 && x<maxux-minux && y<maxuy-minuy && pointGrid[x-1][y] && pointGrid[x+1][y] && pointGrid[x][y-1] && pointGrid[x][y+1])
+		{
+			Vec3 v1 = pointGrid[x+1][y]->v - pointGrid[x-1][y]->v;
+			Vec3 v2 = pointGrid[x][y+1]->v - pointGrid[x][y-1]->v;
+			v = Vec3::cross(v1,v2).normalized();
+		}
+		else if (y>0 && x<maxux-minux && y<maxuy-minuy && pointGrid[x+1][y] && pointGrid[x][y-1] && pointGrid[x][y+1])
+		{
+			Vec3 v1 = pointGrid[x+1][y]->v - pointGrid[x][y]->v;
+			Vec3 v2 = pointGrid[x][y+1]->v - pointGrid[x][y-1]->v;
+			v = Vec3::cross(v1,v2).normalized();
+		}
+		else if (x>0 && y>0 && y<maxuy-minuy && pointGrid[x-1][y] && pointGrid[x][y-1] && pointGrid[x][y+1])
+		{
+			Vec3 v1 = pointGrid[x][y]->v - pointGrid[x-1][y]->v;
+			Vec3 v2 = pointGrid[x][y+1]->v - pointGrid[x][y-1]->v;
+			v = Vec3::cross(v1,v2).normalized();
+		}
+		else if (x>0 && x<maxux-minux && y<maxuy-minuy && pointGrid[x-1][y] && pointGrid[x+1][y] && pointGrid[x][y+1])
+		{
+			Vec3 v1 = pointGrid[x+1][y]->v - pointGrid[x-1][y]->v;
+			Vec3 v2 = pointGrid[x][y+1]->v - pointGrid[x][y]->v;
+			v = Vec3::cross(v1,v2).normalized();
+		}
+		else if (x>0 && y>0 && x<maxux-minux && pointGrid[x-1][y] && pointGrid[x+1][y] && pointGrid[x][y-1])
+		{
+			Vec3 v1 = pointGrid[x+1][y]->v - pointGrid[x-1][y]->v;
+			Vec3 v2 = pointGrid[x][y]->v - pointGrid[x][y-1]->v;
+			v = Vec3::cross(v1,v2).normalized();
+		}
+		else if (x<maxux-minux && y<maxuy-minuy && pointGrid[x+1][y] && pointGrid[x][y+1])
+		{
+			Vec3 v1 = pointGrid[x+1][y]->v - pointGrid[x][y]->v;
+			Vec3 v2 = pointGrid[x][y+1]->v - pointGrid[x][y]->v;
+			v = Vec3::cross(v1,v2).normalized();
+		}
+		else if (x>0 && y<maxuy-minuy && pointGrid[x-1][y] && pointGrid[x][y+1])
+		{
+			Vec3 v1 = pointGrid[x+1][y]->v - pointGrid[x][y]->v;
+			Vec3 v2 = pointGrid[x][y+1]->v - pointGrid[x][y]->v;
+			v = Vec3::cross(v1,v2).normalized();
+		}
+		else if (y>0 && x<maxux-minux && pointGrid[x+1][y] && pointGrid[x][y-1])
+		{
+			Vec3 v1 = pointGrid[x+1][y]->v - pointGrid[x][y]->v;
+			Vec3 v2 = pointGrid[x][y+1]->v - pointGrid[x][y]->v;
+			v = Vec3::cross(v1,v2).normalized();
+		}
+		else if (x>0 && y>0 && pointGrid[x-1][y] && pointGrid[x][y-1])
+		{
+			Vec3 v1 = pointGrid[x+1][y]->v - pointGrid[x][y]->v;
+			Vec3 v2 = pointGrid[x][y+1]->v - pointGrid[x][y]->v;
+			v = Vec3::cross(v1,v2).normalized();
+		}
+		else
+		{
+			return false;
+		}
+
+		return true;
+	}
+	else
+	{
+		return false;
+	}
+}
+
 // TODO - in future the grid representation will be the only one used.
 // both are used side by side for now until older code is rewritten
-void Patch::MakeGrid(void)
-{
-	CalcExtents(false);
-	
-	if (pointGrid!=NULL)
-		return;
-	
+void Patch::MakeGrid(std::vector<patchPoint> &points)
+{	
 	pointGrid = (patchPoint***)malloc(sizeof(patchPoint**)*(maxux-minux+1));
 	
 	for(int i = minux; i<=maxux; i++)
@@ -536,7 +628,7 @@ void Patch::MakeGrid(void)
 	
 	for(auto &pt : points)
 	{
-		pointGrid[(int)pt.x-minux][(int)pt.y-minuy] = &pt;
+		pointGrid[(int)pt.x-minux][(int)pt.y-minuy] = new patchPoint(pt);
 	}
 }
 
@@ -545,11 +637,31 @@ void Patch::DestroyGrid(void)
 	if (pointGrid==NULL)
 		return;
 		
-	for(int i = minux; i<=maxux; i++)
+	for(int x = minux; x<=maxux; x++)
 	{
-		free(pointGrid[i-minux]);
+		for(int y = minuy; y<=maxuy; y++)
+			free(pointGrid[x-minux][y-minuy]);
+			
+		free(pointGrid[x-minux]);
 	}
 
 	free(pointGrid);
 	pointGrid=NULL;
+}
+
+void Patch::DestroyInterpolatedGrid(void)
+{
+	if (interpolatedPointGrid==NULL)
+		return;
+		
+	for(int x = minux*QUADMESH_SIZE; x<=maxux*QUADMESH_SIZE; x++)
+	{
+		for(int y = minuy*QUADMESH_SIZE; y<=maxuy*QUADMESH_SIZE; y++)
+			free(interpolatedPointGrid[x-minux][y-minuy]);
+		
+		free(interpolatedPointGrid[x-minux]);
+	}
+
+	free(interpolatedPointGrid);
+	interpolatedPointGrid=NULL;
 }

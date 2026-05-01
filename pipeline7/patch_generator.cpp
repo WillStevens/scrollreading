@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <utility>
 
+#include <omp.h>
 #include <smmintrin.h>
 
 using namespace std;
@@ -145,7 +146,9 @@ void PatchGenerator::InitExpectedDistanceLookup(void)
 float PatchGenerator::ForcesAndMove(void)
 {  
   float largestForce = 0.0;
-    
+  
+// This makes it slower rather than faster  
+//#pragma omp parallel for reduction(max:largestForce)
   for(int ai = 0; ai<activeListSize; ai++)
   {
 	int x = activeList[ai][0], y = activeList[ai][1];
@@ -171,8 +174,7 @@ float PatchGenerator::ForcesAndMove(void)
 
     float forceMag = acc.lengthSquared();
 		
-    if (forceMag > largestForce)
-      largestForce = forceMag;
+    largestForce = std::max(forceMag,largestForce);
   
     paperSheet[x][y].vel *= FRICTION_CONSTANT;
 	
@@ -460,29 +462,46 @@ bool PatchGenerator::SetSeed(float seed[9])
 
 void PatchGenerator::OutputBoundary(Patch &boundary, pointSet &boundaryPoints, pointSet &boundaryPointsPaper)
 {
+  vector<patchPoint> points;
+
   for(unsigned i = 0; i<boundaryPoints.size(); i++)
   {
-	boundary.points.push_back(patchPoint(
+	points.push_back(patchPoint(
 		boundaryPointsPaper[i].x-SHEET_SIZE/2,
 		boundaryPointsPaper[i].y-SHEET_SIZE/2,
 		boundaryPoints[i].x,
 		boundaryPoints[i].y,
 		boundaryPoints[i].z));
   }
+  
+  boundary.BuildFromPoints(points);
 }
 
 void PatchGenerator::OutputPatch(Patch &patch)
-{  
+{ 
+  vector<patchPoint> points;
+ 
   for(int x = 0; x<SHEET_SIZE; x++)
   for(int y = 0; y<SHEET_SIZE; y++)
 	if (active[x][y])
     {
-		patch.points.push_back(patchPoint(x-SHEET_SIZE/2,
+		points.push_back(patchPoint(x-SHEET_SIZE/2,
 		                           y-SHEET_SIZE/2,
 		                           paperSheet[x][y].pos.x,
 		                           paperSheet[x][y].pos.y,
 								   paperSheet[x][y].pos.z));
 	}
+	
+  if (points.size()==0)
+  {
+	  printf("Error - PatchGenerator::OutputPatch has encountered points.size()==0\n");
+  }
+  else
+  {
+	  printf("PatchGenerator::OutputPatch generated %d points\n",(int)points.size());
+  }	  
+  
+  patch.BuildFromPoints(points);
 }
 
 int PatchGenerator::GeneratePatch(float seed[9],Patch &patch, Patch &boundary, int iter)

@@ -258,16 +258,16 @@ void AddToBigPatch(BigPatch *bp, Patch &p,int patchNum)
 {
   std::map<chunkIndex,std::vector<gridPoint>> chunkedPoints;
   
-  for(const patchPoint &pp : p.points)
+  for(PatchIterator pi = p.Begin(); p.Next(pi);)
   {
-	  chunkIndex ci = GetChunkIndex(pp.v.x,pp.v.y,pp.v.z);
+	  chunkIndex ci = GetChunkIndex(pi.p->v.x,pi.p->v.y,pi.p->v.z);
 	  
 	  if (chunkedPoints.count(ci)==0)
 	  {
 		  chunkedPoints[ci] = std::vector<gridPoint>();
 	  }
 	  
-	  chunkedPoints[ci].push_back(gridPoint(pp.x,pp.y,pp.v.x,pp.v.y,pp.v.z,patchNum));	  
+	  chunkedPoints[ci].push_back(gridPoint(pi.p->x,pi.p->y,pi.p->v.x,pi.p->v.y,pi.p->v.z,patchNum));	  
   }
   
   for(auto const &item : chunkedPoints)

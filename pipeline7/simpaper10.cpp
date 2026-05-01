@@ -183,10 +183,12 @@ void GeneratePatches(std::map<int,Patch> *patches,AlignmentMap *am)
 		printf("======== Patch %d ========\n",i);
 		
 		printf("Seed: %f,%f,%f,%f,%f,%f,%f,%f,%f,\n",seed[0],seed[1],seed[2],seed[3],seed[4],seed[5],seed[6],seed[7],seed[8]);
-		Patch patch,boundary;
+		Patch boundary;
 		
-		int steps = pg->GeneratePatch(seed,patch,boundary,i);
-		patch.radius = steps/2;
+		(*patches)[i] = Patch();
+		
+		int steps = pg->GeneratePatch(seed,(*patches)[i],boundary,i);
+		(*patches)[i].radius = steps/2;
 		
 		printf("%d growth steps\n",steps);
 		
@@ -198,9 +200,39 @@ void GeneratePatches(std::map<int,Patch> *patches,AlignmentMap *am)
 				exit(1);
 			}
 			
-			AddToBigPatch(bp,patch,i);
-			AddToBigPatch(bpb,boundary,i);
-			(*patches)[i] = patch;									
+			printf("Adding patch to bigpatch\n");
+			AddToBigPatch(bp,(*patches)[i],i);
+			printf("Adding boundary to bigpatch\n");
+			AddToBigPatch(bpb,boundary,i);	
+
+			printf("Added to bigpatch on first iteration");
+			
+			// Code for checking that iterating counts the same number of points as counting all points in pointGrid */
+			/*
+			{
+				int count = 0,count1 = 0;
+				for(PatchIterator pi = (*patches)[i].Begin(); (*patches)[i].Next(pi);)
+				{
+					count++;
+				}					
+				
+				for(int x=0; x<=(*patches)[i].maxux-(*patches)[i].minux; x++)
+				for(int y=0; y<=(*patches)[i].maxuy-(*patches)[i].minuy; y++)
+				{
+					if ((*patches)[i].pointGrid[x][y]) count1++;
+				}
+				
+				printf("%d %d\n",count,count1);
+				exit(0);
+			}
+			*/
+			// Code for checking that normal calculation looks plausible
+			/*{
+				Vec3 n;
+				(*patches)[i].GetNormal(0,0,n);
+				
+				printf("%f,%f,%f\n",n.x,n.y,n.z);
+			}*/
 		}			
 		else if (steps >= MIN_PATCH_ITERS)
 		{
@@ -210,7 +242,7 @@ void GeneratePatches(std::map<int,Patch> *patches,AlignmentMap *am)
 			
 				std::vector<alignment> alignments;
 			
-				al->AlignPatches(bp,patch,alignments);
+				al->AlignPatches(bp,(*patches)[i],alignments);
 			
 				delete al;
 			
@@ -238,7 +270,6 @@ void GeneratePatches(std::map<int,Patch> *patches,AlignmentMap *am)
 						if (am->count(i)==0)
 							(*am)[i] = std::vector<alignment>();
 						(*am)[i].push_back(a);
-						(*patches)[i] = patch;						
 					}
 					else
 						badVarianceCount++;
@@ -252,21 +283,24 @@ void GeneratePatches(std::map<int,Patch> *patches,AlignmentMap *am)
 			
 					// For the boundary we need to work out:
 					// Given the new patch, which points from the current boundary should we delete?
-					ErasePoints(bpb,patch,0,CURRENT_BOUNDARY_ERASE_DISTANCE);
+					ErasePoints(bpb,(*patches)[i],0,CURRENT_BOUNDARY_ERASE_DISTANCE);
 					ErasePoints(bp,boundary,1,NEW_BOUNDARY_ERASE_DISTANCE);
 
 					AddToBigPatch(bpb,boundary,i);
-					AddToBigPatch(bp,patch,i);
+					AddToBigPatch(bp,(*patches)[i],i);
 
 					break;
 				}
 				else if (alignAttempts==0)
 				{
 					// Flip the patch and loop round for another try
-					patch.Flip();
+					(*patches)[i].Flip();
 				}
 				else
+				{
 					unalignedCount++;
+					patches->erase(i);
+				}
 			}
 		}
 		else
@@ -716,10 +750,10 @@ int main(int argc, char *argv[])
 			for (auto i : patchOrder)
 			{
 				Patch &p = (*patches)[i];
-				for(auto &pt : p.points)
+				for(PatchIterator pi = p.Begin(); p.Next(pi);)
 				{
 					float x,y;
-					p.TransformPoint(pt.x,pt.y,x,y);
+					p.TransformPoint(pi.p->x,pi.p->y,x,y);
 					int xi = x/patchIndexScale;
 					int yi = y/patchIndexScale;
 					
@@ -753,6 +787,7 @@ int main(int argc, char *argv[])
 		// Now iterate over some coords...
 		{
 			Patch outputPatch;
+			std::vector<patchPoint> points;
 			
 			for(float x=-1600; x<=900; x+=1)
 			{
@@ -789,7 +824,7 @@ int main(int argc, char *argv[])
 						if (totalWeight != 0.0)
 						{
 							totalV /= totalWeight;
-							outputPatch.points.push_back(patchPoint(x,y,totalV.x,totalV.y,totalV.z));
+							points.push_back(patchPoint(x,y,totalV.x,totalV.y,totalV.z));
 						}
 
 						//printf("%f,%f has coords %f,%f,%f\n",x,y,totalV.x,totalV.y,totalV.z); 
@@ -830,6 +865,7 @@ int main(int argc, char *argv[])
 				}
 			}
 			
+			outputPatch.BuildFromPoints(points);
 			outputPatch.Write(OUTPUT_DIR,0);
 			
 			for(const auto &dd : distanceDistribution)
