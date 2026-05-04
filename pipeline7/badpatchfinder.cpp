@@ -1,21 +1,29 @@
+#include <algorithm>
+
 #include "badpatchfinder.h"
 
 void BadPatchFinder::ClearRendered(void)
 {
-	memset(rendered_i,0,R_ARRAY_SIZE*R_ARRAY_SIZE*sizeof(int));
-	memset(rendered_f,0,R_ARRAY_SIZE*R_ARRAY_SIZE*sizeof(float)*3);
+	memset(rendered_f,0,R_ARRAY_SIZE*R_ARRAY_SIZE*2*sizeof(float)*3);
 	memset(distances,0,D_SIZE_X*D_SIZE_Y*sizeof(float));
 	
 	maxDistance = 0.0;
 }
 
-void BadPatchFinder::PlacePatch(Patch &p1, int patchNum,const affineTx &aftx)
-{
+void BadPatchFinder::PlacePatch(Patch &p1, int patchNum,const affineTx &aftx, bool first)
+{	
 	for(PatchIterator pi = p1.Begin(); p1.Next(pi);)
 	{
 		float x,y,px,py,pz;
 		x=pi.p->x; y=pi.p->y; px=pi.p->v.x; py=pi.p->v.y; pz=pi.p->v.z;
-								
+			
+		Vec3 normal;
+		//printf("%f,%f : Calculating normal...\n",pi.p->x,pi.p->y);
+		bool gotNormal = p1.GetNormal(pi.p->x,pi.p->y,normal);
+		//printf("%d : %f,%f,%f\n",(int)gotNormal,normal.x,normal.y,normal.z);
+		if (!gotNormal)
+			normal=Vec3(0,0,0);
+		
 		//x=x*QUADMESH_SIZE;
 		//y=y*QUADMESH_SIZE;
 								
@@ -25,35 +33,56 @@ void BadPatchFinder::PlacePatch(Patch &p1, int patchNum,const affineTx &aftx)
 		int xrdi = ROUND(x/RESCALE);
 		int yrdi = ROUND(y/RESCALE);
 
-		if (rendered_i[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2]==0)
-		{
-			rendered_i[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2] = patchNum+1;
-			rendered_f[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2][0] = px;
-			rendered_f[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2][1] = py;
-			rendered_f[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2][2] = pz;
+		if (first)
+		{			
+			if (rendered_f[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2][0][0] != 0)
+			{
+				printf("Error - encountered more than one point per cell on first pass - expecting that aftx will be identity so that there is exactly one point per cell\n");
+				exit(-1);
+			}
+			
+			rendered_f[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2][0][0] = px;
+			rendered_f[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2][0][1] = py;
+			rendered_f[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2][0][2] = pz;
 
+			rendered_f[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2][1][0] = normal.x;
+			rendered_f[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2][1][1] = normal.y;
+			rendered_f[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2][1][2] = normal.z;
+			
 #ifdef COLLECT_DISTANCE_DISTRIB
             distances[xrdi+D_OFF_X][yrdi+D_OFF_Y] = 1; // don't use zero, because that means 'empty'
 #endif
 		}
         else
 		{
-			int ePatchNum = rendered_i[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2]-1;
-					
-			float ex = rendered_f[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2][0];
-			float ey = rendered_f[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2][1];
-			float ez = rendered_f[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2][2];
+			float cellMaxDistance = 0.0;
 
-			if (ePatchNum != patchNum)
+			if (rendered_f[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2][0][0] != 0)
 			{
-				//printf("%d,%d : %f,%f,%f vs %f,%f,%f\n",ePatchNum,patchNum,ex,ey,ez,px,py,pz);
-				float distance = Distance(ex,ey,ez,px,py,pz); 
-					
-#ifdef COLLECT_DISTANCE_DISTRIB
-				distances[xrdi+D_OFF_X][yrdi+D_OFF_Y] = distance+1;
-#endif					
+			Vec3 pPos(px,py,pz);
+			
+			Vec3 ePos(rendered_f[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2][0][0],
+					  rendered_f[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2][0][1],
+					  rendered_f[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2][0][2]);
+			
+			Vec3 eNormal(rendered_f[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2][1][0],
+						 rendered_f[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2][1][1],
+						 rendered_f[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2][1][2]);
+						 
+			// So long as we have at least 1 normal, we can work out a distance
+			// If a normal is missing it is set to zero, so the distance comes out as zero, so if both are missing the distance will be zero
+			float distance1 = fabs(Vec3::dot(ePos-pPos,eNormal));
+			float distance2 = fabs(Vec3::dot(ePos-pPos,normal));
+
+			// Use the worst of the distances calculated
+			float distance = distance1>distance2 ? distance1 : distance2;
 				
-				if (distance > maxDistance) maxDistance = distance;					
+			if (distance > maxDistance) maxDistance = distance;					
+			if (distance > cellMaxDistance) cellMaxDistance = distance;					
+
+#ifdef COLLECT_DISTANCE_DISTRIB
+			distances[xrdi+D_OFF_X][yrdi+D_OFF_Y] = cellMaxDistance+1;
+#endif		
 			}
 		}
 	}
@@ -138,8 +167,8 @@ void BadPatchFinder::FindBadPatches(const AlignmentMap &am, std::map<int,Patch> 
 			
 			affineTx aftx(std::get<7>(al),std::get<8>(al),std::get<9>(al),std::get<10>(al),std::get<11>(al),std::get<12>(al));
 			
-			PlacePatch((*patches)[patch2],patch2,affineTx(1,0,0,0,1,0));
-			PlacePatch((*patches)[patch1],patch1,aftx);
+			PlacePatch((*patches)[patch2],patch2,affineTx(1,0,0,0,1,0),true);
+			PlacePatch((*patches)[patch1],patch1,aftx,false);
 			
 			printf("%d,%d : %f\n",patch2,patch1,maxDistance);
 			badPatchScores.push_back(std::tuple<int,int,float>(patch2,patch1,maxDistance));
@@ -255,8 +284,10 @@ void BadPatchFinder::FindBadPatchesGeneral(AlignmentMap &am, std::map<int,Patch>
 		}
 		
 		if (!hasBadPatch)
+		{
+			std::reverse(currentSequence.begin(),currentSequence.end());
 			patchSequences.push_back(currentSequence);
-		printf("\n");
+		}
 		
 		// increment onto the next sequence of patches
 		bool advanceToNextIndex = true;
@@ -303,31 +334,40 @@ void BadPatchFinder::FindBadPatchesGeneral(AlignmentMap &am, std::map<int,Patch>
 		printf("\n");
 	}
 */
+    printf("Iterating over patch sequences\n");
+	
 	for(auto &i : patchSequences)
 	{
+		for(auto &p : i)
+		{
+			printf("%d ",p);
+		}
+		printf("\n");
+
 		ClearRendered();
 		int count = 0;
 		int lastPatch = -1;
 		affineTx aftx = affineTx(1,0,0,0,1,0);
 		for(auto &p : i)
-		{
+		{			
 			if (count==0)
 			{
-				PlacePatch((*patches)[p],p,aftx);
+				PlacePatch((*patches)[p],p,aftx,true);
 			}
 			else
 			{
-				for(auto &al : am[lastPatch])
-					if (std::get<0>(al)==p)
+				for(auto &al : am[p])
+					if (std::get<0>(al)==lastPatch)
 					{
 						affineTx nextAftx(std::get<7>(al),std::get<8>(al),std::get<9>(al),std::get<10>(al),std::get<11>(al),std::get<12>(al));
 						
-						aftx = AffineTxMultiply(aftx,AffineTxInverse(nextAftx));
+						//aftx = AffineTxMultiply(aftx,AffineTxInverse(nextAftx));
+						aftx = AffineTxMultiply(aftx,nextAftx);
 					}
 					
 				if (count == i.size()-1)
 				{
-					PlacePatch((*patches)[p],p,aftx);
+					PlacePatch((*patches)[p],p,aftx,false);
 					
 					badPatchScores.push_back(std::tuple<int,int,float>(i[0],p,maxDistance));
 					printf("%d,%d,%f\n",i[0],p,maxDistance);

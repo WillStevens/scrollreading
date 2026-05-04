@@ -140,12 +140,16 @@ bool GetNewSeed(BigPatch *bp,BigPatch *bpb,float (&seed)[9])
 	return true;
 }
 
+// Since most time is now taken by up patch generation, this could be made multithreaded by generating several seeds at a time,
+// and if they are spaced far enough apart then generate several patches at once.
+//
+// This can be done by having more than once instance of PatchGenerator
 void GeneratePatches(std::map<int,Patch> *patches,AlignmentMap *am)
 {
 	int acceptedCount=0,unalignedCount=0,acceptedWithSomeBadVariance=0;
 
 	PatchGenerator *pg = new PatchGenerator(string(SURFACE_ZARR));
-
+	
 	float seed[9] = {
 	  SEED_X,
 	  SEED_Y,
@@ -191,7 +195,27 @@ void GeneratePatches(std::map<int,Patch> *patches,AlignmentMap *am)
 		(*patches)[i].radius = steps/2;
 		
 		printf("%d growth steps\n",steps);
+
+/*
+	If this is the first iteration, generate only one patch
+	otherwise generate several at once:
+	int p = omp_get_max_threads();
+	int steps[4];
+	
+	#pragma omp parallel num_threads(p)
+	{
+		int thrd = omp_get_thread_num();
 		
+		steps[thrd] = pg[thrd]->GeneratePatch(seed[thrd],newPatch[thrd],boundary[thrd],i+thrd);
+		newPatch[thrd].radius = steps/2;
+	}
+	
+	for(int thrd = 0; thrd<p; thrd++)
+	{
+		printf("Patch %d had %d growth steps\n",i+thrd,steps[thrd]);
+	}
+	
+*/
 		if (i==0)
 		{
 			if (steps < MIN_PATCH_ITERS)
@@ -373,12 +397,11 @@ void LoadPatchesAndRelationships(std::map<int,Patch> *patches, 	AlignmentMap *am
 			
 				if (patchNum<=limit || limit==-1)
 				{
-					Patch p;
+					(*patches)[patchNum]=Patch();
 	
 					printf("Loading %d\n",patchNum);
-					p.Read(OUTPUT_DIR "/patches",patchNum);
+					(*patches)[patchNum].Read(OUTPUT_DIR "/patches",patchNum);
 		
-					(*patches)[patchNum]=p;
 				}
 			}
 		}
@@ -530,8 +553,8 @@ int main(int argc, char *argv[])
 		std::map<int,Patch> *patches = new std::map<int,Patch>;
 
 		printf("Loading patches and relationships...\n");
-		LoadPatchesAndRelationships(patches,am,2000);
-
+		LoadPatchesAndRelationships(patches,am,4000);
+		
 		std::set<int> badPatches;
 		std::vector<std::tuple<int,int,float>> badPatchScores;
 	
@@ -559,6 +582,26 @@ int main(int argc, char *argv[])
 		{
 			printf("%d\n",i);
 		}
+
+		{
+			std::ofstream os(OUTPUT_DIR "/badpatches.csv");
+			for(auto i : round1BadPatches)
+			{
+				os << i << std::endl;;
+			}
+			for(auto i : round2OnlyBadPatches)
+			{
+				os << i << std::endl;;
+			}
+		}
+		{
+			std::ofstream os(OUTPUT_DIR "/badpatchscores.csv");
+			for(auto i : badPatchScores)
+			{
+				os << std::get<0>(i) << "," << std::get<1>(i) << "," << std::get<2>(i) << std::endl;;
+			}
+		}
+
 		
 		delete bpf;
 		printf("Finished, cleaning up...\n");
@@ -572,7 +615,7 @@ int main(int argc, char *argv[])
 		std::map<int,Patch> *patches = new std::map<int,Patch>;
 
 		printf("Loading patches and relationships...\n");
-		LoadPatchesAndRelationships(patches,am);
+		LoadPatchesAndRelationships(patches,am,4000);
 		
 		std::set<int> badPatches;
 
@@ -713,7 +756,7 @@ int main(int argc, char *argv[])
 		std::map<int,Patch> *patches = new std::map<int,Patch>;
 
 		printf("Loading patches and relationships...\n");
-		LoadPatchesAndRelationships(patches,am);
+		LoadPatchesAndRelationships(patches,am,4000);
 
 		std::vector<int> patchOrder;
 		

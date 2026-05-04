@@ -224,7 +224,8 @@ bool Patch::Read(const std::string &path, int i)
 		{
 			fread(&p,sizeof(p),1,fi);
 			
-			points.push_back(patchPoint(p.x,p.y,p.px,p.py,p.pz));			
+			points.push_back(patchPoint(p.x,p.y,p.px,p.py,p.pz));	
+			//printf("Loaded: %f,%f,%f,%f,%f\n",points.back().x,points.back().y,points.back().v.x,points.back().v.y,points.back().v.z);
 		}
 		
 		fclose(fi);
@@ -585,20 +586,20 @@ bool Patch::GetNormal(int x, int y, Vec3 &v)
 		}
 		else if (x>0 && y<maxuy-minuy && pointGrid[x-1][y] && pointGrid[x][y+1])
 		{
-			Vec3 v1 = pointGrid[x+1][y]->v - pointGrid[x][y]->v;
+			Vec3 v1 = pointGrid[x][y]->v - pointGrid[x-1][y]->v;
 			Vec3 v2 = pointGrid[x][y+1]->v - pointGrid[x][y]->v;
 			v = Vec3::cross(v1,v2).normalized();
 		}
 		else if (y>0 && x<maxux-minux && pointGrid[x+1][y] && pointGrid[x][y-1])
 		{
 			Vec3 v1 = pointGrid[x+1][y]->v - pointGrid[x][y]->v;
-			Vec3 v2 = pointGrid[x][y+1]->v - pointGrid[x][y]->v;
+			Vec3 v2 = pointGrid[x][y]->v - pointGrid[x][y-1]->v;
 			v = Vec3::cross(v1,v2).normalized();
 		}
 		else if (x>0 && y>0 && pointGrid[x-1][y] && pointGrid[x][y-1])
 		{
-			Vec3 v1 = pointGrid[x+1][y]->v - pointGrid[x][y]->v;
-			Vec3 v2 = pointGrid[x][y+1]->v - pointGrid[x][y]->v;
+			Vec3 v1 = pointGrid[x][y]->v - pointGrid[x-1][y]->v;
+			Vec3 v2 = pointGrid[x][y]->v - pointGrid[x][y-1]->v;
 			v = Vec3::cross(v1,v2).normalized();
 		}
 		else
@@ -629,6 +630,9 @@ void Patch::MakeGrid(std::vector<patchPoint> &points)
 	for(auto &pt : points)
 	{
 		pointGrid[(int)pt.x-minux][(int)pt.y-minuy] = new patchPoint(pt);
+		
+		//patchPoint *p = pointGrid[(int)pt.x-minux][(int)pt.y-minuy];
+		//printf("%d,%d : %f,%f,%f,%f,%f\n",(int)pt.x-minux,(int)pt.y-minuy,p->x,p->y,p->v.x,p->v.y,p->v.z);
 	}
 }
 

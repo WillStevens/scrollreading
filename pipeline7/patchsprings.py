@@ -220,7 +220,7 @@ def truncate(x):
 
 def Show(links=True):
   canvas.delete('all')
-  offset=(1200,300)
+  offset=(600,300)
   scale=0.3
   rotate=-1.2
   patchi = 0

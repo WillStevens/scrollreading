@@ -22,8 +22,8 @@
 // what resolution to use for points in rendered?
 #define RESCALE 1
 
+// Must be large enough for 2*(max radius)*(1+max expected patch sequence length)
 #define R_ARRAY_SIZE 1000
-
 
 #define MAKE_KEY(x,y) ((((uint64_t)x)<<32)+(uint64_t)y)
 
@@ -37,7 +37,7 @@ class BadPatchFinder
 		}
 
 		void ClearRendered(void);
-		void PlacePatch(Patch &p1, int patchNum, const affineTx &aftx);
+		void PlacePatch(Patch &p1, int patchNum, const affineTx &aftx, bool first);
 
 #ifdef OUTPUT_DISTANCE_TIF
 		void RenderDistances(void);
@@ -50,8 +50,7 @@ class BadPatchFinder
 		void FindBadPatchesGeneral(AlignmentMap &am, std::map<int,Patch> *patches, int length, std::set<int> &badPatches, std::vector<std::tuple<int,int,float>> &badPatchScores);
 
 	private:
-		int rendered_i[R_ARRAY_SIZE][R_ARRAY_SIZE];
-		float rendered_f[R_ARRAY_SIZE][R_ARRAY_SIZE][3];
+		float rendered_f[R_ARRAY_SIZE][R_ARRAY_SIZE][2][3];
 
 		float maxDistance;
 		
