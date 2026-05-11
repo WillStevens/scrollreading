@@ -39,7 +39,7 @@ unsigned char **mask;
 
 std::unordered_map<int,std::tuple<float,float,float,float>> patchPosLookup; 
 
-void render(char *zname,char *fname, int maskOnly)
+void render(char *zname,char *fname, char *colourFile, int maskOnly)
 {
 	float xo,yo,zo;
 	int x,y,z;
@@ -84,6 +84,7 @@ void render(char *zname,char *fname, int maskOnly)
 		{
 			//printf("Pass: %d, chunk: %d.%d.%d\n",pass,std::get<2>(i),std::get<1>(i),std::get<0>(i));
 			std::vector<gridPoint> gridPoints;
+			std::vector<std::tuple<int,int,int>> colours;
 			if (isBP)
 			{
 				ReadPatchPoints(bp,i,gridPoints);
@@ -91,11 +92,24 @@ void render(char *zname,char *fname, int maskOnly)
 			else
 			{
 				FILE *f = fopen(fname,"r");
+				FILE *cf = NULL;
+			
+				int r,g,b;
+				
+				if (colourFile)
+					cf = fopen(colourFile,"r");
 				
 				if (isCSV)
 				{
 					while(fscanf(f,"%f,%f,%f,%f,%f\n",&xr,&yr,&xo,&yo,&zo)==5)
+					{
 						gridPoints.push_back(gridPoint(xr,yr,xo,yo,zo,0));
+						if (cf)
+						{
+							fscanf(cf,"%d,%d,%d\n",&r,&g,&b);
+							colours.push_back({r,g,b});
+						}
+					}
 				}
 				else
 				{
@@ -111,14 +125,22 @@ void render(char *zname,char *fname, int maskOnly)
 						float x,y,px,py,pz;
 						x=p.x;y=p.y;px=p.px;py=p.py;pz=p.pz;
 						gridPoints.push_back(gridPoint(x,y,px,py,pz,0));
+						
+						if (cf)
+						{
+							fscanf(cf,"%d,%d,%d\n",&r,&g,&b);
+							colours.push_back({r,g,b});
+						}
 					}
 				}
 				
+				fclose(cf);
 				fclose(f);
 			}
 
 	        printf("Here B\n");
 			
+			int index = 0;
 			for(auto const &gp : gridPoints)
 			{
 				xr = std::get<0>(gp);
@@ -167,7 +189,21 @@ void render(char *zname,char *fname, int maskOnly)
 							{
 								printf("x,y,z=%d,%d,%d is 0\n",x,y,z);
 							}
-							rendered[yo-miny][xo-minx] = maskOnly?255:((ZARRRead_4(volumeZarr,z,y,x)*2+72)/450);
+														
+							unsigned char value = (v>>8);
+							
+							unsigned char r=255,g=255,b=255;
+							
+							if (index<colours.size())
+							{
+								r = std::get<0>(colours[index]);
+								g = std::get<1>(colours[index]);
+								b = std::get<2>(colours[index]);
+							}
+							
+							rendered[yo-miny][(xo-minx)*3+0] = maskOnly?255:r*value/255;
+							rendered[yo-miny][(xo-minx)*3+1] = maskOnly?255:g*value/255;
+							rendered[yo-miny][(xo-minx)*3+2] = maskOnly?255:b*value/255;
 							mask[yo-miny][xo-minx] = 255;
 						}
 						else
@@ -180,6 +216,8 @@ void render(char *zname,char *fname, int maskOnly)
 						}							
 					}
 				}
+				
+				index++;
 			}
 		}
 		
@@ -193,10 +231,15 @@ void render(char *zname,char *fname, int maskOnly)
 			
 			for(int y=0; y<SHEET_SIZE_Y; y++)
 			{
-				rendered[y] = (unsigned char *)malloc(sizeof(unsigned char)*SHEET_SIZE_X);
+				rendered[y] = (unsigned char *)malloc(sizeof(unsigned char)*SHEET_SIZE_X*3);
 				mask[y] = (unsigned char *)malloc(sizeof(unsigned char)*SHEET_SIZE_X);
 				for(int x=0; x<SHEET_SIZE_X; x++)
-					rendered[y][x] = mask[y][x] = 0;
+				{
+					mask[y][x] = 0;
+					rendered[y][x*3+0] = 0;
+					rendered[y][x*3+1] = 0;
+					rendered[y][x*3+2] = 0;
+				}
 			}
 		}	
     }
@@ -236,20 +279,22 @@ void render(char *zname,char *fname, int maskOnly)
 			TIFFSetField(tif, TIFFTAG_IMAGEWIDTH, SHEET_SIZE_X); 
 			TIFFSetField(tif, TIFFTAG_IMAGELENGTH, SHEET_SIZE_Y); 
 			TIFFSetField(tif, TIFFTAG_BITSPERSAMPLE, 8); 
-			TIFFSetField(tif, TIFFTAG_SAMPLESPERPIXEL, 1); 
-			TIFFSetField(tif, TIFFTAG_ROWSPERSTRIP, 1);   
+			TIFFSetField(tif, TIFFTAG_SAMPLESPERPIXEL, 3); 
+			TIFFSetField(tif, TIFFTAG_ROWSPERSTRIP, SHEET_SIZE_Y);   
 			TIFFSetField(tif, TIFFTAG_ORIENTATION, ORIENTATION_TOPLEFT);
 			TIFFSetField(tif, TIFFTAG_PLANARCONFIG, PLANARCONFIG_CONTIG);
-			TIFFSetField(tif, TIFFTAG_PHOTOMETRIC, PHOTOMETRIC_MINISBLACK);
+			TIFFSetField(tif, TIFFTAG_PHOTOMETRIC, PHOTOMETRIC_RGB);
 			TIFFSetField(tif, TIFFTAG_SAMPLEFORMAT, SAMPLEFORMAT_UINT);
-			TIFFSetField(tif, TIFFTAG_COMPRESSION, COMPRESSION_NONE);
-			
-			buf = _TIFFmalloc(SHEET_SIZE_X);
+			TIFFSetField(tif, TIFFTAG_COMPRESSION, COMPRESSION_LZW);
+						
+			buf = _TIFFmalloc(SHEET_SIZE_X*3);
 			for(row=0; row<SHEET_SIZE_Y;row++)
 			{
 				for(int i=0; i<SHEET_SIZE_X; i++)
 				{
-				   ((uint8_t *)buf)[i] = (tiffout?mask:rendered)[row][i];
+				   ((uint8_t *)buf)[3*i+0] = (tiffout?mask:rendered)[row][3*i+0];
+				   ((uint8_t *)buf)[3*i+1] = (tiffout?mask:rendered)[row][3*i+1];
+				   ((uint8_t *)buf)[3*i+2] = (tiffout?mask:rendered)[row][3*i+2];
 				}
 				TIFFWriteScanline(tif,buf,row,0);
 			}
@@ -263,12 +308,17 @@ void render(char *zname,char *fname, int maskOnly)
 
 int main(int argc, char *argv[])
 {
-	if (argc != 4 && argc != 5)
+	if (argc != 4 && argc != 5 && argc != 6 && argc != 7 || (argc>=6 && (strlen(argv[4]) != 2 || strcmp(argv[4],"-c"))) )
 	{
-		printf("Usage: render_from_zarr6 <zarr> <bigpatch or csv or bin> <patch positions> [1 if mask only]\n");
+		printf("Usage: render_from_zarr6 <zarr> <bigpatch or csv or bin> <patch positions> [-c  <colours>] [1 if mask only]\n");
 		printf("Render from a zarr. If mak only then output a white dilated mask on black background");
 		return -1;
 	}
+
+	char *colourFile = NULL;
+	
+	if (argc>=6)
+		colourFile = argv[5];
 	
 	FILE * f = fopen(argv[3],"r");
 	
@@ -282,7 +332,7 @@ int main(int argc, char *argv[])
 		  patchPosLookup[patchNum] = std::tuple<float,float,float,float>(x,y,cos(angle),sin(angle));
 	  }
 	  
-	  render(argv[1],argv[2],argc==5 && argv[4][0]=='1');
+	  render(argv[1],argv[2],colourFile,(argc==5 || argc==7) && argv[argc-1][0]=='1');
 	
 	  fclose(f);
 	  printf("%d %d\n",minx,miny);
@@ -292,7 +342,7 @@ int main(int argc, char *argv[])
       patchPosLookup[0] = std::tuple<float,float,float,float>(0,0,1,0);
 	  printf("Here Z\n");
 
-	  render(argv[1],argv[2],argc==5 && argv[4][0]=='1');
+	  render(argv[1],argv[2],colourFile,(argc==5 || argc==7) && argv[argc-1][0]=='1');
 	
 	  printf("%d %d\n",minx,miny);
 	}

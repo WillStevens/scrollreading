@@ -1,4 +1,5 @@
 #include <sstream>
+#include <fstream>
 #include <string>
 #include <cmath>
 #include <cstring>
@@ -159,38 +160,61 @@ void Patch::Flip(void)
 
 bool Patch::Write(const std::string &path, int i)
 {
-	std::stringstream fileName;
-	
-	fileName << path << "/patch_" << i << ".bin";
-	
-	FILE *fo = fopen(fileName.str().c_str(),"w");
-
-	printf("Writing patches\n");
-	if(fo)
 	{
-		gridPointStruct p;
-	
+		std::stringstream fileName;
+		
+		fileName << path << "/patch_" << i << ".bin";
+		
+		FILE *fo = fopen(fileName.str().c_str(),"w");
+
+		printf("Writing patches\n");
+		if(fo)
+		{
+			gridPointStruct p;
+		
+			for(int x = minux; x<=maxux; x++)
+			for(int y = minuy; y<=maxuy; y++)
+			{
+				if (pointGrid[x-minux][y-minuy])
+				{
+					p.x = pointGrid[x-minux][y-minuy]->x;
+					p.y = pointGrid[x-minux][y-minuy]->y;
+					p.px = pointGrid[x-minux][y-minuy]->v.x;
+					p.py = pointGrid[x-minux][y-minuy]->v.y;
+					p.pz = pointGrid[x-minux][y-minuy]->v.z;
+					
+					fwrite(&p,sizeof(p),1,fo);
+				}
+			}
+			
+			fclose(fo);
+		}
+		else
+			return false;
+	}
+
+	if (colourGrid)
+	{
+		std::stringstream fileName;
+		
+		fileName << path << "/patch_" << i << "_colours.csv";
+		
+		std::ofstream os(fileName.str());
+		
+		printf("Writing colours\n");
 		for(int x = minux; x<=maxux; x++)
 		for(int y = minuy; y<=maxuy; y++)
 		{
 			if (pointGrid[x-minux][y-minuy])
 			{
-				p.x = pointGrid[x-minux][y-minuy]->x;
-				p.y = pointGrid[x-minux][y-minuy]->y;
-				p.px = pointGrid[x-minux][y-minuy]->v.x;
-				p.py = pointGrid[x-minux][y-minuy]->v.y;
-				p.pz = pointGrid[x-minux][y-minuy]->v.z;
-				
-				fwrite(&p,sizeof(p),1,fo);
+				os << ((colourGrid[x-minux][y-minuy]>>16)&0xff) << ",";
+				os << ((colourGrid[x-minux][y-minuy]>>8)&0xff) << ",";
+				os << ((colourGrid[x-minux][y-minuy])&0xff) << std::endl;
 			}
-		}
-		
-		fclose(fo);
-		return true;
+		}			
 	}
-	else
-		return false;
-
+	
+	return true;
 }
 
 void Patch::BuildFromPoints(vector<patchPoint> &points)
@@ -203,6 +227,12 @@ void Patch::BuildFromPoints(vector<patchPoint> &points)
 	if (maxuy>radius || abs(minuy>radius))
 		radius = abs(minuy)>maxuy ? abs(minuy) : maxuy;
 }
+
+void Patch::BuildFromPoints(std::vector<patchPoint> &points,std::vector<std::tuple<int,int,int>> &colours)
+{
+	BuildFromPoints(points);
+	MakeColourGrid(points,colours);
+}	
 
 bool Patch::Read(const std::string &path, int i)
 {
@@ -442,7 +472,7 @@ bool Patch::FindGlobalXY(float x, float y, Vec3 &v, float weight)
 }
 */
 
-bool Patch::FindGlobalXY(float x, float y, Vec3 &v, float &weight)
+bool Patch::FindGlobalXY(float x, float y, Vec3 &v, Vec3 &normal, float &weight)
 {
 	if (positionSet)
 	{		
@@ -460,28 +490,34 @@ bool Patch::FindGlobalXY(float x, float y, Vec3 &v, float &weight)
 		if (yd<0) p1y -= 1;
 		
 		Vec3 corners[4];
-		int cornerCount = 0;
+		Vec3 cornersNormal[4];
 		
+		int cornerCount = 0;
+		int normalCount = 0;
 		if (p1x>=minux && p1x<maxux && p1y>=minuy && p1y<maxuy)
 		{
 			if (pointGrid[p1x-minux][p1y-minuy])
 			{
 				corners[0]=pointGrid[p1x-minux][p1y-minuy]->v;
+				normalCount += GetNormal(p1x,p1y,cornersNormal[0]) ? 1 : 0;
 				cornerCount++;
 			}
 			if (pointGrid[p1x-minux+1][p1y-minuy])
 			{
 				corners[1]=pointGrid[p1x-minux+1][p1y-minuy]->v;
+				normalCount += GetNormal(p1x+1,p1y,cornersNormal[1]) ? 1 : 0;
 				cornerCount++;
 			}
 			if (pointGrid[p1x-minux][p1y-minuy+1])
 			{
 				corners[2]=pointGrid[p1x-minux][p1y-minuy+1]->v;
+				normalCount += GetNormal(p1x,p1y+1,cornersNormal[2]) ? 1 : 0;
 				cornerCount++;
 			}
 			if (pointGrid[p1x-minux+1][p1y-minuy+1])
 			{
 				corners[3]=pointGrid[p1x-minux+1][p1y-minuy+1]->v;
+				normalCount += GetNormal(p1x+1,p1y+1,cornersNormal[3]) ? 1 : 0;
 				cornerCount++;
 			}
 		}
@@ -500,6 +536,21 @@ bool Patch::FindGlobalXY(float x, float y, Vec3 &v, float &weight)
 			
 			v = i0 + (i1-i0)*yf;
 
+			if (normalCount==4)
+			{
+				Vec3 n0 = cornersNormal[0] + (cornersNormal[1]-cornersNormal[0])*xf;
+				Vec3 n1 = cornersNormal[2] + (cornersNormal[3]-cornersNormal[2])*xf;
+				normal = n0 + (n1-n0)*yf;
+			}
+			else
+			{
+				printf("Error - unexpectedly didn't find normal in FindGlobalXY: expecting that since every corner has two neighbours perpendicular to it, GetNormal should always return true when called from this function\n");
+				printf("normalCount=%d\n",normalCount);
+				for(int i=0; i<4; i++)
+					printf("%f,%f,%f\n",cornersNormal[i].x,cornersNormal[i].y,cornersNormal[i].z);
+				exit(-1);
+			}
+			
 			// Weight depends on xd,yd and radius : centre = 1.0, boundary = 0.0, linear ramp in between
 			// TODO - Could improve on this - it doesn't take account of patch holes, nor the fact that in an octagon the
 			// vertices are at radius distance from centre, but points along the edges aren't. This means that there will
@@ -615,8 +666,6 @@ bool Patch::GetNormal(int x, int y, Vec3 &v)
 	}
 }
 
-// TODO - in future the grid representation will be the only one used.
-// both are used side by side for now until older code is rewritten
 void Patch::MakeGrid(std::vector<patchPoint> &points)
 {	
 	pointGrid = (patchPoint***)malloc(sizeof(patchPoint**)*(maxux-minux+1));
@@ -653,6 +702,36 @@ void Patch::DestroyGrid(void)
 	pointGrid=NULL;
 }
 
+void Patch::MakeColourGrid(std::vector<patchPoint> &points,std::vector<std::tuple<int,int,int>> &colours)
+{	
+	colourGrid = (uint32_t**)malloc(sizeof(uint32_t*)*(maxux-minux+1));
+	
+	for(int i = minux; i<=maxux; i++)
+	{
+		colourGrid[i-minux]=(uint32_t*)malloc(sizeof(uint32_t)*(maxuy-minuy+1));
+		memset(colourGrid[i-minux],0,sizeof(uint32_t)*(maxuy-minuy+1));
+	}
+	
+	for(int i = 0; i<points.size(); i++)
+	{
+		colourGrid[(int)points[i].x-minux][(int)points[i].y-minuy] = (std::get<0>(colours[i])<<16)+(std::get<1>(colours[i])<<8)+std::get<2>(colours[i]);
+	}
+}
+
+void Patch::DestroyColourGrid(void)
+{
+	if (colourGrid==NULL)
+		return;
+		
+	for(int x = minux; x<=maxux; x++)
+	{			
+		free(colourGrid[x-minux]);
+	}
+
+	free(colourGrid);
+	colourGrid=NULL;
+}
+
 void Patch::DestroyInterpolatedGrid(void)
 {
 	if (interpolatedPointGrid==NULL)
@@ -668,4 +747,11 @@ void Patch::DestroyInterpolatedGrid(void)
 
 	free(interpolatedPointGrid);
 	interpolatedPointGrid=NULL;
+}
+
+void PatchNumberToColour(int c, int &r, int &g, int &b)
+{
+    r = 255-80*(c%3)-(c/105)%79;
+	g = 255-40*((3*c)%5)-(c/105)%37;
+	b = 255-26*((5*c)%7)-(c/105)%23;
 }

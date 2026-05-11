@@ -72,16 +72,16 @@ void PositionPatches(std::map<int,Patch> *patches, AlignmentMap &alignmentMap, s
 		{
 			if (alignmentMap.count(i) != 0)
 			{
-				printf("Found %d in alignmentMap\n",i);
+				//printf("Found %d in alignmentMap\n",i);
 				for(auto &aln : alignmentMap[i])
 				{
 					int p = std::get<0>(aln);
 
-					printf("Looking for %d in patchPositions\n",p);
+					//printf("Looking for %d in patchPositions\n",p);
 					
 					if (patchPositions.count(p) != 0)
 					{
-						printf("Found %d in alignment list for %d\n",p,i);
+						//printf("Found %d in alignment list for %d\n",p,i);
 
 						alignmentOrder.push_back(std::pair<int,alignment>(i,aln));
 						

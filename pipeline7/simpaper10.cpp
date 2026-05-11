@@ -1,6 +1,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <tuple>
+#include <set>
+#include <list>
+#include <queue>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -15,8 +18,11 @@
 #include "erasepoints.h"
 #include "badpatchfinder.h"
 #include "sliceanimrender.h"
+#include "patchcolourkey.h"
 #include "position_patches.h"
 #include "zarr_show2_u8.h"
+
+#define PATCH_LIMIT 6000
 
 void MemInfo(void)
 {
@@ -459,10 +465,57 @@ void LoadPatchesAndRelationships(std::map<int,Patch> *patches, 	AlignmentMap *am
 	
 }
 
+struct ComponentInfo {
+    int size;
+    int minVertex;
+};
+
+std::vector<ComponentInfo> getComponents(const std::map<int, std::set<int>>& neighbourList)
+{
+    std::vector<ComponentInfo> components;
+    std::set<int> globalVisited;
+
+    for (auto& [vertex, neighbours] : neighbourList)
+    {
+        if (globalVisited.count(vertex)) continue;
+
+        // BFS over this component
+        std::set<int> visited;
+        std::queue<int> toVisit;
+
+        toVisit.push(vertex);
+        visited.insert(vertex);
+
+        while (!toVisit.empty())
+        {
+            int current = toVisit.front();
+            toVisit.pop();
+
+            for (int neighbour : neighbourList.at(current))
+            {
+                if (!visited.count(neighbour))
+                {
+                    visited.insert(neighbour);
+                    toVisit.push(neighbour);
+                }
+            }
+        }
+
+        globalVisited.insert(visited.begin(), visited.end());
+
+        components.push_back({
+            (int)visited.size(),
+            *visited.begin()  // set is ordered, so begin() is the minimum
+        });
+    }
+
+    return components;
+}
+
 int main(int argc, char *argv[])
 {
 	char mode='g';
-	if (argc!=1 && argc!=2 && argc!=3)
+	if (false) // TODO parameter checking
 	{
 		fprintf(stderr,"Usage: %s [mode]\n",argv[0]);
 		fprintf(stderr,"Where optional mode can be:\n");
@@ -553,7 +606,7 @@ int main(int argc, char *argv[])
 		std::map<int,Patch> *patches = new std::map<int,Patch>;
 
 		printf("Loading patches and relationships...\n");
-		LoadPatchesAndRelationships(patches,am,4000);
+		LoadPatchesAndRelationships(patches,am,PATCH_LIMIT);
 		
 		std::set<int> badPatches;
 		std::vector<std::tuple<int,int,float>> badPatchScores;
@@ -615,7 +668,7 @@ int main(int argc, char *argv[])
 		std::map<int,Patch> *patches = new std::map<int,Patch>;
 
 		printf("Loading patches and relationships...\n");
-		LoadPatchesAndRelationships(patches,am,4000);
+		LoadPatchesAndRelationships(patches,am,PATCH_LIMIT);
 		
 		std::set<int> badPatches;
 
@@ -629,11 +682,21 @@ int main(int argc, char *argv[])
 			}
 		}
 
-		/* Having identified bad patches, now we want too...
-	   - Starting from patch 0, generate a neighbouring patch sequence (lowest numbered patch first)
-	   - Slice render to help spot any more bad patches:
-		 parameters for slice render are: slices at a time (slicesper), Z-step (zstep), downscale (downscale)
-		 */
+		std::set<std::pair<int,int>> manualBadRel;
+
+		{
+			std::ifstream is(OUTPUT_DIR "/manualBadRel.csv");
+			std::string line;
+			while(std::getline(is,line))
+			{
+				std::istringstream ss(line);
+				int a, b;
+				char comma;
+				if (ss >> a >> comma >> b)
+					manualBadRel.insert({a, b});
+			}
+		}
+
 		std::map<int,std::set<int> > neighbourList;
 		int minPatchInNeighbourList = -1;
 		
@@ -649,7 +712,7 @@ int main(int argc, char *argv[])
 				{	
 					int patch2 = std::get<0>(al);
 
-					if (badPatches.count(patch2)==0)
+					if (badPatches.count(patch2)==0 && manualBadRel.count(std::pair<int,int>(patch1,patch2))==0 && manualBadRel.count(std::pair<int,int>(patch2,patch1))==0)
 					{
 						if (neighbourList.count(patch1)==0)
 							neighbourList[patch1] = std::set<int>();
@@ -668,6 +731,15 @@ int main(int argc, char *argv[])
 			}
 		}
 
+		std::vector<ComponentInfo> components = getComponents(neighbourList);
+		
+		printf("Size and min vertex of components\n");
+		for(auto &ci : components)
+		{
+			printf("%d : %d\n",ci.size,ci.minVertex);
+		}
+
+		
 		printf("Calculating patch order...\n");
 		
 		std::vector<int> patchOrder;
@@ -726,6 +798,17 @@ int main(int argc, char *argv[])
 				   << endl;
 			}
 		}
+
+		{
+			ofstream os(OUTPUT_DIR "/neighbours.csv");
+			
+			for(auto &a : alignmentOrder)
+			{
+				os << a.first << ","
+				   << std::get<0>(a.second)
+				   << ",1" << endl;
+			}
+		}
 		
 		delete patches;
 		delete am;
@@ -747,8 +830,16 @@ int main(int argc, char *argv[])
 	{
 		int maxDistanceThresh = -1;
 		
-		if (argc==3)
+		if (argc>=3)
 			maxDistanceThresh = atoi(argv[2]);
+		
+		std::set<int> patchesToColour;
+		
+		if (argc>3)
+		{
+			for(int i = 3; i<argc; i++)
+				patchesToColour.insert(atoi(argv[i]));
+		}
 		
 		std::map<int,int> distanceDistribution;
 		
@@ -756,7 +847,7 @@ int main(int argc, char *argv[])
 		std::map<int,Patch> *patches = new std::map<int,Patch>;
 
 		printf("Loading patches and relationships...\n");
-		LoadPatchesAndRelationships(patches,am,4000);
+		LoadPatchesAndRelationships(patches,am,PATCH_LIMIT);
 
 		std::vector<int> patchOrder;
 		
@@ -831,12 +922,15 @@ int main(int argc, char *argv[])
 		{
 			Patch outputPatch;
 			std::vector<patchPoint> points;
+			std::vector<std::tuple<int,int,int>> colours;
+			
+			std::set<std::list<int> > mismatches;
 			
 			for(float x=-1600; x<=900; x+=1)
 			{
 				for(float y=-2600; y<=1400; y+=1)
 				{
-					std::vector<std::pair<int,Vec3>> contributions;
+					std::vector<std::tuple<int,Vec3,Vec3>> contributions;
 					
 					int xi = x/patchIndexScale;
 					int yi = y/patchIndexScale;
@@ -850,16 +944,17 @@ int main(int argc, char *argv[])
 						for(auto &i : patchIndex[std::pair<int,int>(xi,yi)])
 						{
 							Vec3 v;
+							Vec3 normal;
 							float weight=0.0;
 							
-							if ((*patches)[i].FindGlobalXY(x,y,v,weight))						
+							if ((*patches)[i].FindGlobalXY(x,y,v,normal,weight))						
 								if (weight>0.0)
 								{
 									//printf("patch=%d v=%f,%f,%f weight=%f\n",i,v.x,v.y,v.z,weight);
 									totalV += v*weight;
 									totalWeight += weight;
 								
-									contributions.push_back(std::pair<int,Vec3>(i,v));
+									contributions.push_back(std::tuple<int,Vec3,Vec3>(i,v,normal));
 								}
 						}
 						//printf("}\n");
@@ -868,17 +963,46 @@ int main(int argc, char *argv[])
 						{
 							totalV /= totalWeight;
 							points.push_back(patchPoint(x,y,totalV.x,totalV.y,totalV.z));
+							
+							int r=255,g=255,b=255;
+							
+							std::vector<int> colourableContribs;
+							
+							for(auto c : contributions)
+							{
+								int patch = std::get<0>(c);
+								if (patchesToColour.count(patch)!=0)
+									colourableContribs.push_back(patch);
+							}
+							
+							if (colourableContribs.size()>0)
+							{
+								int n = rand()%colourableContribs.size();
+
+								PatchNumberToColour(colourableContribs[n],r,g,b);
+							}
+							
+							colours.push_back({r,g,b});
 						}
 
 						//printf("%f,%f has coords %f,%f,%f\n",x,y,totalV.x,totalV.y,totalV.z); 
 					
-						// Look for the largest distance between pairs of contributions
+						// Look for the largest distance between pairs of contributions, in the direction of normals
 						float maxDistance = 0;
 						for(int i=0; i<contributions.size(); i++)
 						{
 							for(int j=i+1; j<contributions.size(); j++)
 							{
-								float distance = (contributions[i].second-contributions[j].second).length();
+								Vec3 posi = std::get<1>(contributions[i]);
+								Vec3 normali = std::get<2>(contributions[i]);
+								Vec3 posj = std::get<1>(contributions[j]);
+								Vec3 normalj = std::get<2>(contributions[j]);
+								
+								float distancei = fabs(Vec3::dot(normali,posi - posj));
+								float distancej = fabs(Vec3::dot(normalj,posi - posj));
+								
+								float distance = distancei>distancej ? distancei : distancej;
+
 								if (distance > maxDistance)
 								{
 									maxDistance = distance;
@@ -900,20 +1024,40 @@ int main(int argc, char *argv[])
 							printf("Distance violation (%f) when flattening at %f,%f\n",maxDistance,x,y);
 							for(auto &c : contributions)
 							{
-								printf("%d : %f,%f,%f\n",c.first,c.second.x,c.second.y,c.second.z);
+								printf("%d : %f,%f,%f\n",std::get<0>(c),std::get<1>(c).x,std::get<1>(c).y,std::get<1>(c).z);
 							}
+							
+							std::list<int> mismatch;
+							for(auto &c : contributions)
+							{
+								mismatch.push_back(std::get<0>(c));
+							}
+							
+							
+							mismatches.insert(mismatch);
 						}
 					}
 					
 				}
 			}
 			
-			outputPatch.BuildFromPoints(points);
+			outputPatch.BuildFromPoints(points,colours);
 			outputPatch.Write(OUTPUT_DIR,0);
 			
+			printf("Distance distribution\n");
 			for(const auto &dd : distanceDistribution)
 			{
 				printf("%d,%d\n",dd.first,dd.second);
+			}
+			
+			printf("Mismatches\n");
+			for(const auto &mm : mismatches)
+			{
+				for(const auto &m : mm)
+				{
+					printf("%d ",m);
+				}
+				printf("\n");
 			}
 		}
 		
@@ -960,21 +1104,22 @@ int main(int argc, char *argv[])
 		std::vector<int> patchesToShow;
 		
 		for(int i = 2; i<argc; i++)
-			patchesToShow.push_back(i);
+			patchesToShow.push_back(atoi(argv[i]));
 		
 		AlignmentMap *am = new AlignmentMap;
 		std::map<int,Patch> *patches = new std::map<int,Patch>;
 
 		printf("Loading patches and relationships...\n");
-		LoadPatchesAndRelationships(patches,am);
-		
+		LoadPatchesAndRelationships(patches,am,PATCH_LIMIT);
+
 		// Enough buffers that we can do several layers before reloading buffers,
 		ZARR_1_b700 *surfaceZarr = ZARROpen_1_b700(SURFACE_ZARR);
 
 		printf("Rendering...\n");
 
 		SliceAnimRender(surfaceZarr,std::string(OUTPUT_DIR "/sliceprobe"),patchesToShow.size(),20,1,-1,patches,patchesToShow);
-	
+		writePatchColourKey(patchesToShow,OUTPUT_DIR "/sliceprobe/key.tif");
+		
 		ZARRClose_1_b700(surfaceZarr);
 	}
 

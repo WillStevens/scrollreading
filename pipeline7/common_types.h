@@ -61,6 +61,7 @@ class Patch
 		void Flip(void);
 		bool Write(const std::string &path, int i);
 		void BuildFromPoints(std::vector<patchPoint> &points);
+		void BuildFromPoints(std::vector<patchPoint> &points,std::vector<std::tuple<int,int,int>> &colours);
 		bool Read(const std::string &path, int i);
 
 		PatchIterator Begin();
@@ -76,12 +77,14 @@ class Patch
 		bool ContainsZ(int z);
 		
 		void SetPosition(float x, float y, float a) {xpos=x;ypos=y;angle=a;positionSet=true;}
-		bool FindGlobalXY(float x, float y, Vec3 &v, float &weight);
+		bool FindGlobalXY(float x, float y, Vec3 &v, Vec3 &normal, float &weight);
 		void TransformPoint(float x, float y, float &xo, float &yo);
 		bool GetNormal(int x, int y, Vec3 &v);
 		
 		void MakeGrid(std::vector<patchPoint> &points);
+		void MakeColourGrid(std::vector<patchPoint> &points, std::vector<std::tuple<int,int,int>> &colours);
 		void DestroyGrid(void);
+		void DestroyColourGrid(void);
 		void DestroyInterpolatedGrid(void);
 		
 		void SetPatchNum(int n) {patchNum = n;}
@@ -89,8 +92,8 @@ class Patch
 		
 		Patch(void) {interpolatedPointGrid = NULL; minux=maxux=minuy=maxuy=minx=maxx=miny=maxy=minz=maxz=-1; positionSet=false; pointGrid=NULL;}
 		
-		~Patch(void) {DestroyInterpolatedGrid();DestroyGrid();}
-		void Clear(void) {DestroyInterpolatedGrid();DestroyGrid();interpolatedPointGrid = NULL; minux=maxux=minuy=maxuy=minx=maxx=miny=maxy=minz=maxz=-1; positionSet=false; pointGrid=NULL;}
+		~Patch(void) {DestroyInterpolatedGrid();DestroyGrid();DestroyColourGrid();}
+		void Clear(void) {DestroyInterpolatedGrid();DestroyGrid();interpolatedPointGrid = NULL; minux=maxux=minuy=maxuy=minx=maxx=miny=maxy=minz=maxz=-1; positionSet=false; pointGrid=NULL;colourGrid=NULL;}
 
 	public:
 		//vector<patchPoint> *interpolatedPoints;
@@ -103,6 +106,7 @@ class Patch
 		int patchNum;
 		
 		patchPoint ***pointGrid;
+		uint32_t **colourGrid;
 		patchPoint ***interpolatedPointGrid;
 };
 
@@ -121,3 +125,5 @@ void AffineTxToXYA(const affineTx &aftx, float &x, float &y, float &angle);
 float Distance(float x0, float y0, float z0, float x1, float y1, float z1);
 float Distance(float x0, float y0, float x1, float y1);
 float DotProduct(float x0, float y0, float x1, float y1);
+
+void PatchNumberToColour(int i, int &r, int &g, int &b);

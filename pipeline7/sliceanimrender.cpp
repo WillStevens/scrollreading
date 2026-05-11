@@ -60,6 +60,7 @@ void SliceAnimRender(ZARR_1_b700 *za,const std::string &path, int patchesper, in
 				// Output details about which patche are in this slice
 				{
 					std::ofstream os(fileNameRoot+".csv");
+					os << z << ":";
 					bool first=true;
 					for(auto &p : pShown)
 					{

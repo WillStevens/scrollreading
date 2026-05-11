@@ -132,7 +132,9 @@ def LoadPatches(alignmentOrder):
           patchVel += [(0,0,0)]
           patchAcc += [(0,0,0)]
         else:
-          if Distance(patches[-1][0],patches[-1][1],transform[2],transform[5])>MAX_CORRECTABLE_DISTANCE:
+          newDistance = Distance(patches[-1][0],patches[-1][1],transform[2],transform[5])
+          print("Patchnum %d, other %d, distance %f" % (patchNum,other,newDistance))
+          if newDistance>MAX_CORRECTABLE_DISTANCE:
             print("Patch %d is a bad patch\n" % patchNum)
             badPatch = True
             while connections[-1][0]==len(patches)-1:
@@ -221,7 +223,7 @@ def truncate(x):
 def Show(links=True):
   canvas.delete('all')
   offset=(600,300)
-  scale=0.3
+  scale=0.2
   rotate=-1.2
   patchi = 0
   patchesLen = len(patches)
