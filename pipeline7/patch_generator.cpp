@@ -350,23 +350,23 @@ int PatchGenerator::MakeNewPoints(pointSet &newPts, pointSet &newPtsPaper)
 			{
 			  if (HasHighStress(px,py,pz))
 			  {
-				  //printf("1\n");
+				  //printf("1");
 				  okayToFill = false;
 			  }
 			  else if ((dist=GetDistanceAtPoint(px,py,pz))>0)
 			  {
-				  //printf("2:%f\n",dist);
+				  //printf("2:%f:",dist);
 				  okayToFill = false;
 			  }
 			  else if (HasCloseNeighbour(np))
 			  {
-				  //printf("3\n");
+				  //printf("3");
 				  okayToFill = false;
 			  }
 			  
 			  if (okayToFill)
 			  {
-				//printf("New point at %d,%d\n",x,y);  
+				//printf(":New %d,%d:",x,y);  
 				newPtsPaper.push_back(point(x,y,0.0));
 				newPts.push_back(np);
 			  }
@@ -474,10 +474,10 @@ void PatchGenerator::OutputBoundary(Patch &boundary, pointSet &boundaryPoints, p
 		boundaryPoints[i].z));
   }
   
-  boundary.BuildFromPoints(points);
+  boundary.BuildFromPoints(points,0);
 }
 
-void PatchGenerator::OutputPatch(Patch &patch)
+void PatchGenerator::OutputPatch(Patch &patch, int iter)
 { 
   vector<patchPoint> points;
  
@@ -501,11 +501,26 @@ void PatchGenerator::OutputPatch(Patch &patch)
 	  printf("PatchGenerator::OutputPatch generated %d points\n",(int)points.size());
   }	  
   
-  patch.BuildFromPoints(points);
+  // Debug individual patch problem
+/*  if (iter==347)
+  {
+	  FILE *f = fopen("d:/pipelineOutput/debug.csv","w");
+	  for(auto &p : points)
+	  {
+		  fprintf(f,"%f,%f %f,%f,%f\n",p.x,p.y,p.v.x,p.v.y,p.v.z);
+	  }
+	  fclose(f);
+	  exit(-1);
+  }
+  */
+  patch.BuildFromPoints(points,iter);
+  
+  patch.SetPatchNum(iter);
 }
 
 int PatchGenerator::GeneratePatch(float seed[9],Patch &patch, Patch &boundary, int iter)
 { 
+  printf("Called GeneratePatch\n");
   int totPointsAdded = 0;
  
   activeListSize = 0;
@@ -571,10 +586,10 @@ int PatchGenerator::GeneratePatch(float seed[9],Patch &patch, Patch &boundary, i
   printf("Growth steps:%d\n",i);
   printf("Mean relaxation iterations:%f\n",((float)totIters)/(float)i);
   
-  OutputPatch(patch);
-  patch.SetPatchNum(iter);
+  OutputPatch(patch,iter);
   
-  OutputBoundary(boundary,newPts,newPtsPaper);
+  if (newPts.size()>0)
+	OutputBoundary(boundary,newPts,newPtsPaper);
 
   delete vfc;
   ZARRClose_1(surfaceZarr);

@@ -30,6 +30,7 @@ class Aligner
 
 
         bool AlignPatches(BigPatch *bp, Patch &p, std::vector<alignment> &alignments);
+		bool AlignPatches(Patch &p0, Patch &p1, std::vector<alignment> &alignments);
 
 		void FillCellMap(void);
 		void FindMatches(std::map<int,std::vector<match>> &matchList);

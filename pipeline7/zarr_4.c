@@ -15,10 +15,10 @@ typedef struct {
     char *location;
   
     unsigned char compressedData[sizeof(ZARRType_4)*2097152+BLOSC2_MAX_OVERHEAD];
-    ZARRType_4 buffers[80][128][128][128];
-    int bufferIndex[80][3];
-    unsigned char written[80];
-    uint64_t bufferUsed[80];
+    ZARRType_4 buffers[480][128][128][128];
+    int bufferIndex[480][3];
+    unsigned char written[480];
+    uint64_t bufferUsed[480];
     ZARRType_4 (*buffer)[128][128][128];
 
     int index;
@@ -37,7 +37,7 @@ ZARR_4 *ZARROpen_4(const char *location)
 	z->buffer = NULL;
 	z->index = -1;
 
-    for(int i = 0; i<80; i++)
+    for(int i = 0; i<480; i++)
 	{
 	  z->written[i] = 0;
       for(int j = 0; j<3; j++)
@@ -48,7 +48,7 @@ ZARR_4 *ZARROpen_4(const char *location)
 	
 	z->counter = 1;
 
-    for(int i = 0; i<80; i++)
+    for(int i = 0; i<480; i++)
       z->bufferUsed[i] = 0;
   
 	return z;
@@ -76,7 +76,7 @@ int ZARRFlushOne_4(ZARR_4 *z, int i)
 
 int ZARRFlush_4(ZARR_4 *z)
 {
-	for(int i = 0; i<80; i++)
+	for(int i = 0; i<480; i++)
 	{
 		if (z->bufferIndex[i][0] != -1)
 		{
@@ -102,7 +102,7 @@ int ZARRCheckChunk_4(ZARR_4 *z, int c[3])
 	if (z->buffer && c[0] == z->bufferIndex[z->index][0] && c[1] == z->bufferIndex[z->index][1] && c[2] == z->bufferIndex[z->index][2])
 		return 0;
 
-	for(z->index = 0; z->index < 80; z->index++)
+	for(z->index = 0; z->index < 480; z->index++)
 	{
 		if (1  && c[0] == z->bufferIndex[z->index][0] && c[1] == z->bufferIndex[z->index][1] && c[2] == z->bufferIndex[z->index][2])
 		{
@@ -112,19 +112,19 @@ int ZARRCheckChunk_4(ZARR_4 *z, int c[3])
 		}
 	}
 		
-	for(z->index = 0; z->index < 80; z->index++)
+	for(z->index = 0; z->index < 480; z->index++)
 	{
 		if (z->bufferIndex[z->index][0]==-1)
 			break;
 	}
   	
-	if (z->index == 80)
+	if (z->index == 480)
 	{
 		/* Find the buffer that was least recently used and free it up */
 		printf("Ran out of buffers - flushing oldest\n");
 		int oldestIndex = 0;
 		uint64_t oldestAge = z->bufferUsed[0];
-		for(int i = 1; i<80; i++)
+		for(int i = 1; i<480; i++)
 		{
 			if (z->bufferUsed[i]<oldestAge)
 			{

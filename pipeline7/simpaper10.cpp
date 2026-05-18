@@ -68,6 +68,7 @@ bool GetNewSeed(BigPatch *bp,BigPatch *bpb,float (&seed)[9])
 		FindBigPatchPointNeighbours(bp,newSeed,neighbours);
 		
 
+		printf("Seed neighbours:%d\n",neighbours.size());
 		// If it only has one neighbour, look for neighbours of this neighbour
 		if (neighbours.size()==2)
 		{
@@ -108,14 +109,17 @@ bool GetNewSeed(BigPatch *bp,BigPatch *bpb,float (&seed)[9])
 			}
 		}
 	
-		// Erase the selected point regardless of whether were going to use it, so that we don't select bad seeds again
+		// Erase the selected point regardless of whether we're going to use it, so that we don't select bad seeds again
         ErasePoints(bpb,std::get<2>(newSeed),std::get<3>(newSeed),std::get<4>(newSeed),0,CURRENT_BOUNDARY_ERASE_DISTANCE);
 
         // After all of that, if we find that the seed is near the edge of the volume, go back and pick another one  
         if (!(std::get<2>(newSeed)-VOL_OFFSET_X>8 && std::get<2>(newSeed)-VOL_OFFSET_X<VOL_SIZE_X-8 &&
   	        std::get<3>(newSeed)-VOL_OFFSET_Y>8 && std::get<3>(newSeed)-VOL_OFFSET_Y<VOL_SIZE_Y-8 &&
 			std::get<4>(newSeed)-VOL_OFFSET_Z>8 && std::get<4>(newSeed)-VOL_OFFSET_Z<VOL_SIZE_Z-8))
+		{
           found = false;
+		  printf("Seed was outside of volume\n");
+		}
 	}
 
 	// Show what the neighbours are - useful fo debugging floating point exception error
@@ -187,7 +191,7 @@ void GeneratePatches(std::map<int,Patch> *patches,AlignmentMap *am)
 			return;			
 	}
 	
-	for(int i=startingPatch; i<startingPatch+30; i++)
+	for(int i=startingPatch; i<=startingPatch+6000; i++)
 	{
 		MemInfo();
 		printf("======== Patch %d ========\n",i);
@@ -196,7 +200,8 @@ void GeneratePatches(std::map<int,Patch> *patches,AlignmentMap *am)
 		Patch boundary;
 		
 		(*patches)[i] = Patch();
-		
+	
+		printf("About to call GeneratePatch\n");
 		int steps = pg->GeneratePatch(seed,(*patches)[i],boundary,i);
 		(*patches)[i].radius = steps/2;
 		
@@ -316,7 +321,8 @@ void GeneratePatches(std::map<int,Patch> *patches,AlignmentMap *am)
 					ErasePoints(bpb,(*patches)[i],0,CURRENT_BOUNDARY_ERASE_DISTANCE);
 					ErasePoints(bp,boundary,1,NEW_BOUNDARY_ERASE_DISTANCE);
 
-					AddToBigPatch(bpb,boundary,i);
+					if (!boundary.Empty())
+						AddToBigPatch(bpb,boundary,i);
 					AddToBigPatch(bp,(*patches)[i],i);
 
 					break;
@@ -336,6 +342,7 @@ void GeneratePatches(std::map<int,Patch> *patches,AlignmentMap *am)
 		else
 		{
 			printf("Not enough growth steps\n");
+			patches->erase(i);
 		}
 		
 		GetNewSeed(bp,bpb,seed);
@@ -536,6 +543,68 @@ int main(int argc, char *argv[])
     fflush(stdout);
 
 	srand(RANDOM_SEED);
+
+	// eXamine alignment (x <patch>)
+	// examine alignment of patch x against patches in surface.bp
+	if (mode=='x')
+	{
+		if (argc!=6)
+		{
+			printf("x <patch0> <patch1> <flip 0 or 1> <seed>\n");
+			exit(-1);
+		}
+		
+		srand(atoi(argv[5]));
+		
+		Patch p0,p1;
+		
+		int patchNum0 = atoi(argv[2]);
+		int patchNum1 = atoi(argv[3]);
+
+		printf("Loading %d\n",patchNum0);		
+		p0.Read(OUTPUT_DIR "/patches",patchNum0);
+		printf("Loading %d\n",patchNum1);		
+		p1.Read(OUTPUT_DIR "/patches",patchNum1);
+
+		if (atoi(argv[4])==1)
+			p1.Flip();
+		
+		Aligner *al = new Aligner();
+			
+		std::vector<alignment> alignments;
+			
+		al->AlignPatches(p0,p1,alignments);
+		
+		delete al;
+			
+		int numSuccessfulAlignments = 0, badVarianceCount = 9;
+		for(auto const &a : alignments)
+		{
+			printf("%d (%f,%f,%f,%f,%f,%f) (%f,%f,%f,%f,%f,%f)\n",
+						std::get<0>(a),
+						std::get<1>(a),
+						std::get<2>(a),
+						std::get<3>(a),
+						std::get<4>(a),
+						std::get<5>(a),
+						std::get<6>(a),
+						std::get<7>(a),
+						std::get<8>(a),
+						std::get<9>(a),
+						std::get<10>(a),
+						std::get<11>(a),
+						std::get<12>(a));
+				  
+			if (VarianceTest(std::get<1>(a),std::get<2>(a),std::get<3>(a),std::get<4>(a),std::get<5>(a),std::get<6>(a)))
+			{
+				printf("Success\n");
+			}
+			else
+			{
+				printf("Fail\n");
+			}
+		}			
+	}
 	
 	if (mode=='g')
 	{
@@ -840,15 +909,13 @@ int main(int argc, char *argv[])
 			for(int i = 3; i<argc; i++)
 				patchesToColour.insert(atoi(argv[i]));
 		}
-		
-		std::map<int,int> distanceDistribution;
-		
+
 		AlignmentMap *am = new AlignmentMap;
 		std::map<int,Patch> *patches = new std::map<int,Patch>;
 
 		printf("Loading patches and relationships...\n");
 		LoadPatchesAndRelationships(patches,am,PATCH_LIMIT);
-
+		
 		std::vector<int> patchOrder;
 		
 		{
@@ -860,204 +927,233 @@ int main(int argc, char *argv[])
 			}
 		}
 
-		// This must come from patchsprings.py
-		// TODO - patchsprings will be rewritten in C++ soon
-		ifstream is(OUTPUT_DIR "/patchPositions.txt");
-		
 		while(true)
 		{
-			int patchNum;
-			float x,y,angle;
-			if (is >> patchNum >> x >> y >> angle)
-				(*patches)[patchNum].SetPosition(x,y,angle);
-			else
+			std::string s;
+			std::cout << "Enter q to quit, anything else for next iteration" << std::endl;
+			std::cin >> s;
+			
+			if (s==std::string("q"))
 				break;
-		}
+			{	
 
-		printf("Loaded patch positions\n");
-		
-		// Which patches could be in each x,y chunk?
-		std::map<std::pair<int,int>,std::set<int>> patchIndex;
-		int patchIndexScale = 16;
-		
-		{
-			for (auto i : patchOrder)
-			{
-				Patch &p = (*patches)[i];
-				for(PatchIterator pi = p.Begin(); p.Next(pi);)
+				std::map<int,int> distanceDistribution;
+
+				// This must come from patchsprings.py
+				// TODO - patchsprings will be rewritten in C++ soon
+				ifstream is(OUTPUT_DIR "/patchPositions.txt");
+				
+				while(true)
 				{
-					float x,y;
-					p.TransformPoint(pi.p->x,pi.p->y,x,y);
-					int xi = x/patchIndexScale;
-					int yi = y/patchIndexScale;
-					
-					for(int xo = xi-1; xo <= xi+1; xo++)
-					for(int yo = yi-1; yo <= yi+1; yo++)
-					{
-						if (patchIndex.count(std::pair<int,int>(xo,yo))==0)
-							patchIndex[std::pair<int,int>(xo,yo)] = std::set<int>();
-						
-						patchIndex[std::pair<int,int>(xo,yo)].insert(i);
-					}
-						
+					int patchNum;
+					float x,y,angle;
+					if (is >> patchNum >> x >> y >> angle)
+						(*patches)[patchNum].SetPosition(x,y,angle);
+					else
+						break;
 				}
-			}
-		}
-		
-		printf("Finished indexing patches\n");
-		
-		/*for(auto &pi : patchIndex)
-		{
-			printf("%d,%d :",pi.first.first,pi.first.second);
-			
-			for(auto i : pi.second)
-			{
-				printf(" %d",i);
-			}
-			
-			printf("\n");
-		}*/
-		
-		// Now iterate over some coords...
-		{
-			Patch outputPatch;
-			std::vector<patchPoint> points;
-			std::vector<std::tuple<int,int,int>> colours;
-			
-			std::set<std::list<int> > mismatches;
-			
-			for(float x=-1600; x<=900; x+=1)
-			{
-				for(float y=-2600; y<=1400; y+=1)
+
+				printf("Loaded patch positions\n");
+				
+				// Which patches could be in each x,y chunk?
+				std::map<std::pair<int,int>,std::set<int>> patchIndex;
+				int patchIndexScale = 16;
+				
 				{
-					std::vector<std::tuple<int,Vec3,Vec3>> contributions;
-					
-					int xi = x/patchIndexScale;
-					int yi = y/patchIndexScale;
-					
-					if (patchIndex.count(std::pair<int,int>(xi,yi))!=0)
+					for (auto i : patchOrder)
 					{
-						Vec3 totalV;
-						float totalWeight = 0.0;
+						Patch &p = (*patches)[i];
+						for(PatchIterator pi = p.Begin(); p.Next(pi);)
+						{
+							float x,y;
+							p.TransformPoint(pi.p->x,pi.p->y,x,y);
+							int xi = x/patchIndexScale;
+							int yi = y/patchIndexScale;
+							
+							for(int xo = xi-1; xo <= xi+1; xo++)
+							for(int yo = yi-1; yo <= yi+1; yo++)
+							{
+								if (patchIndex.count(std::pair<int,int>(xo,yo))==0)
+									patchIndex[std::pair<int,int>(xo,yo)] = std::set<int>();
+								
+								patchIndex[std::pair<int,int>(xo,yo)].insert(i);
+							}
+								
+						}
+					}
+				}
+				
+				printf("Finished indexing patches\n");
+				
+				/*for(auto &pi : patchIndex)
+				{
+					printf("%d,%d :",pi.first.first,pi.first.second);
+					
+					for(auto i : pi.second)
+					{
+						printf(" %d",i);
+					}
+					
+					printf("\n");
+				}*/
+
+				// Now iterate over some coords...
+				{		
+					Patch outputPatch;
+					std::vector<patchPoint> points;
+					std::vector<std::tuple<int,int,int>> colours;
+					
+					std::set<std::list<int> > mismatches;
+
+		/*			for(float x=-1600+719*2; x<=-1600+719*2+800; x+=1)
+					{
+						for(float y=-2600+1500*2; y<=-2600+1500*2+800; y+=1)
+						{
+		*/			
+					for(float x=-3000; x<=3000; x+=1)
+					{
+						for(float y=-3000; y<=3000; y+=1)
+						{
+							std::vector<std::tuple<int,Vec3,Vec3>> contributions;
+							
+							int xi = x/patchIndexScale;
+							int yi = y/patchIndexScale;
+							
+							if (patchIndex.count(std::pair<int,int>(xi,yi))!=0)
+							{
+								Vec3 totalV;
+								float totalWeight = 0.0;
+											
+								//printf("{\n");
+								for(auto &i : patchIndex[std::pair<int,int>(xi,yi)])
+								{
+									Vec3 v;
+									Vec3 normal;
+									float weight=0.0;
 									
-						//printf("{\n");
-						for(auto &i : patchIndex[std::pair<int,int>(xi,yi)])
-						{
-							Vec3 v;
-							Vec3 normal;
-							float weight=0.0;
-							
-							if ((*patches)[i].FindGlobalXY(x,y,v,normal,weight))						
-								if (weight>0.0)
-								{
-									//printf("patch=%d v=%f,%f,%f weight=%f\n",i,v.x,v.y,v.z,weight);
-									totalV += v*weight;
-									totalWeight += weight;
-								
-									contributions.push_back(std::tuple<int,Vec3,Vec3>(i,v,normal));
+									if ((*patches)[i].FindGlobalXY(x,y,v,normal,weight))						
+										if (weight>0.0)
+										{
+											//printf("patch=%d v=%f,%f,%f weight=%f\n",i,v.x,v.y,v.z,weight);
+											totalV += v*weight;
+											totalWeight += weight;
+										
+											contributions.push_back(std::tuple<int,Vec3,Vec3>(i,v,normal));
+										}
 								}
-						}
-						//printf("}\n");
+								//printf("}\n");
 
-						if (totalWeight != 0.0)
-						{
-							totalV /= totalWeight;
-							points.push_back(patchPoint(x,y,totalV.x,totalV.y,totalV.z));
-							
-							int r=255,g=255,b=255;
-							
-							std::vector<int> colourableContribs;
-							
-							for(auto c : contributions)
-							{
-								int patch = std::get<0>(c);
-								if (patchesToColour.count(patch)!=0)
-									colourableContribs.push_back(patch);
-							}
-							
-							if (colourableContribs.size()>0)
-							{
-								int n = rand()%colourableContribs.size();
-
-								PatchNumberToColour(colourableContribs[n],r,g,b);
-							}
-							
-							colours.push_back({r,g,b});
-						}
-
-						//printf("%f,%f has coords %f,%f,%f\n",x,y,totalV.x,totalV.y,totalV.z); 
-					
-						// Look for the largest distance between pairs of contributions, in the direction of normals
-						float maxDistance = 0;
-						for(int i=0; i<contributions.size(); i++)
-						{
-							for(int j=i+1; j<contributions.size(); j++)
-							{
-								Vec3 posi = std::get<1>(contributions[i]);
-								Vec3 normali = std::get<2>(contributions[i]);
-								Vec3 posj = std::get<1>(contributions[j]);
-								Vec3 normalj = std::get<2>(contributions[j]);
-								
-								float distancei = fabs(Vec3::dot(normali,posi - posj));
-								float distancej = fabs(Vec3::dot(normalj,posi - posj));
-								
-								float distance = distancei>distancej ? distancei : distancej;
-
-								if (distance > maxDistance)
+														// Look for the largest distance between pairs of contributions, in the direction of normals
+								float maxDistance = 0;
+								for(int i=0; i<contributions.size(); i++)
 								{
-									maxDistance = distance;
+									for(int j=i+1; j<contributions.size(); j++)
+									{
+										Vec3 posi = std::get<1>(contributions[i]);
+										Vec3 normali = std::get<2>(contributions[i]);
+										Vec3 posj = std::get<1>(contributions[j]);
+										Vec3 normalj = std::get<2>(contributions[j]);
+										
+										float distancei = fabs(Vec3::dot(normali,posi - posj));
+										float distancej = fabs(Vec3::dot(normalj,posi - posj));
+										
+										float distance = distancei>distancej ? distancei : distancej;
+
+										if (distance > maxDistance)
+										{
+											maxDistance = distance;
+										}
+										
+										int distance_i = (int)distance;
+										
+										if (distanceDistribution.count(distance_i)==0)
+										{
+											distanceDistribution[distance_i] = 0;
+										}
+										
+										distanceDistribution[distance_i]++;
+									}
 								}
 								
-								int distance_i = (int)distance;
-								
-								if (distanceDistribution.count(distance_i)==0)
+								if (maxDistanceThresh!=-1 && maxDistance>(float)maxDistanceThresh)
 								{
-									distanceDistribution[distance_i] = 0;
+									printf("Distance violation (%f) when flattening at %f,%f\n",maxDistance,x,y);
+									for(auto &c : contributions)
+									{
+										printf("%d : %f,%f,%f\n",std::get<0>(c),std::get<1>(c).x,std::get<1>(c).y,std::get<1>(c).z);
+									}
+									
+									std::list<int> mismatch;
+									for(auto &c : contributions)
+									{
+										mismatch.push_back(std::get<0>(c));
+									}
+									
+									
+									mismatches.insert(mismatch);
 								}
-								
-								distanceDistribution[distance_i]++;
-							}
-						}
-						
-						if (maxDistanceThresh!=-1 && maxDistance>(float)maxDistanceThresh)
-						{
-							printf("Distance violation (%f) when flattening at %f,%f\n",maxDistance,x,y);
-							for(auto &c : contributions)
-							{
-								printf("%d : %f,%f,%f\n",std::get<0>(c),std::get<1>(c).x,std::get<1>(c).y,std::get<1>(c).z);
+
+								if (totalWeight != 0.0)
+								{
+									totalV /= totalWeight;
+									points.push_back(patchPoint(x,y,totalV.x,totalV.y,totalV.z));
+									
+									int r=255,g=255,b=255;
+									
+									std::vector<int> colourableContribs;
+									
+									for(auto c : contributions)
+									{
+										int patch = std::get<0>(c);
+										if (patchesToColour.count(patch)!=0)
+											colourableContribs.push_back(patch);
+									}
+									
+									if (colourableContribs.size()>0)
+									{
+										int n = rand()%colourableContribs.size();
+
+										PatchNumberToColour(colourableContribs[n],r,g,b);
+									}
+
+									// Use a red hue to indicate thickness
+									r += (int)maxDistance;
+									g -= (int)maxDistance;
+									b -= (int)maxDistance;
+									
+									if (r>255) r=255;
+									if (g<0) g=0;
+									if (b<0) b=0;
+									
+									colours.push_back({r,g,b});
+								}
+
+								//printf("%f,%f has coords %f,%f,%f\n",x,y,totalV.x,totalV.y,totalV.z); 
+							
 							}
 							
-							std::list<int> mismatch;
-							for(auto &c : contributions)
-							{
-								mismatch.push_back(std::get<0>(c));
-							}
-							
-							
-							mismatches.insert(mismatch);
 						}
 					}
 					
+					outputPatch.BuildFromPoints(points,colours,0);
+					outputPatch.Write(OUTPUT_DIR,0);
+					
+					printf("Distance distribution\n");
+					for(const auto &dd : distanceDistribution)
+					{
+						printf("%d,%d\n",dd.first,dd.second);
+					}
+					
+					printf("Mismatches\n");
+					for(const auto &mm : mismatches)
+					{
+						for(const auto &m : mm)
+						{
+							printf("%d ",m);
+						}
+						printf("\n");
+					}
 				}
-			}
-			
-			outputPatch.BuildFromPoints(points,colours);
-			outputPatch.Write(OUTPUT_DIR,0);
-			
-			printf("Distance distribution\n");
-			for(const auto &dd : distanceDistribution)
-			{
-				printf("%d,%d\n",dd.first,dd.second);
-			}
-			
-			printf("Mismatches\n");
-			for(const auto &mm : mismatches)
-			{
-				for(const auto &m : mm)
-				{
-					printf("%d ",m);
-				}
-				printf("\n");
 			}
 		}
 		

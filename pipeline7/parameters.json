@@ -16,7 +16,7 @@
 	
     "VOXEL_SIZE" : 7.91,
 
-	"RANDOM_SEED" : 123,
+	"RANDOM_SEED" : 124,
 	
 	"VOLUME_ZARR" : "d:/zarrs/s4/20231117161658.zarr/0",
 	"SURFACE_ZARR" : "d:/zarrs/s4_059_medial_ome.zarr/0"
@@ -58,8 +58,8 @@
   
   "patch_add" : {
     "__comment__" : "Parameters related to testing patches and adding them to a surface",
-	"MAX_ROTATE_VARIANCE" : 0.1,
-	"MAX_TRANSLATE_VARIANCE" : 50,
+	"MAX_ROTATE_VARIANCE" : 0.02,
+	"MAX_TRANSLATE_VARIANCE" : 5,
 	
 	"__comment__1" : "If any points on the current boundary are within this distance of any points in the patch, erase them. Okay to be overzealous.",
 	"CURRENT_BOUNDARY_ERASE_DISTANCE" : 10,
@@ -74,7 +74,7 @@
     "__comment__1" : "The minimum distance between a point in one patch and another that will be considered before assessing it as a match", "MATCH_MIN_DIST" : 8.0, 
 	
 	"__comment__2" : "The number of point-pair samples that will be take per-patch when looking for transformations",
-    "NUM_POINT_SAMPLES" :  500, 
+    "NUM_POINT_SAMPLES" :  1000, 
 
 	"__comment__3" : "The min length line that will be used when looking for transformations",
 	"MIN_LINE_LENGTH" : 50,
@@ -88,6 +88,6 @@
   
   "bad_patch": {
     "__comment__" : "Max volume distance allowed for overlapping x,y points",
-	"BP_MAX_XYZ_DISTANCE" : 15
+	"BP_MAX_XYZ_DISTANCE" : 10
   }
 }

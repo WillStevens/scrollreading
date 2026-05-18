@@ -185,7 +185,8 @@ int ErasePoints(BigPatch *bp0, Patch &p1, int which, float radius)
 		  points.push_back(patchPoint(std::get<0>(gp),std::get<1>(gp),std::get<2>(gp),std::get<3>(gp),std::get<4>(gp)));
 	  }
 	  
-	  p1.BuildFromPoints(points);
+	  // There might be 0 points, make sure Patch can handle this
+	  p1.BuildFromPoints(points,p1.patchNum);
   }
   else
   {
@@ -236,7 +237,7 @@ int ErasePoints(BigPatch *bp0, float x, float y, float z, int which, float radiu
 	std::vector<patchPoint> pts;
 	pts.push_back(patchPoint(0,0,x,y,z));
 	
-	p.BuildFromPoints(pts);
+	p.BuildFromPoints(pts,0);
 	
 	return ErasePoints(bp0,p,which,radius);
 }

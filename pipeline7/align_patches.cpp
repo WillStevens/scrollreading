@@ -54,6 +54,33 @@ bool Aligner::AlignPatches(BigPatch *bp, Patch &p, std::vector<alignment> &align
 	return AlignMatches(matchList,alignments);
 }		
 
+bool Aligner::AlignPatches(Patch &p0, Patch &p1, std::vector<alignment> &alignments)
+{	
+	std::set<chunkIndex> chunks;
+
+	for(PatchIterator pi = p0.Begin(); p0.Next(pi);)
+	{
+		gridPoints[0].push_back(gridPoint(pi.p->x,pi.p->y,pi.p->v.x,pi.p->v.y,pi.p->v.z,p0.patchNum));
+		// Which chunk is the point in?
+		chunks.insert(GetChunkIndex(pi.p->v.x,pi.p->v.y,pi.p->v.z));
+	}
+	
+	for(PatchIterator pi = p1.Begin(); p1.Next(pi);)
+	{
+		gridPoints[1].push_back(gridPoint(pi.p->x,pi.p->y,pi.p->v.x,pi.p->v.y,pi.p->v.z,p1.patchNum));
+		// Which chunk is the point in?
+		chunks.insert(GetChunkIndex(pi.p->v.x,pi.p->v.y,pi.p->v.z));
+	}
+		
+	FillCellMap();
+	
+	std::map<int,std::vector<match>> matchList;
+	
+	FindMatches(matchList);
+	
+	return AlignMatches(matchList,alignments);
+}		
+
 void Aligner::FillCellMap(void)
 {
 	for(auto const &gp : gridPoints[0])

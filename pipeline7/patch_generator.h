@@ -36,7 +36,7 @@ class PatchGenerator
 		void AddNewPoints(pointSet &newPts, pointSet &newPtsPaper);
 
 		void OutputBoundary(Patch &boundary, pointSet &boundaryPoints, pointSet &boundaryPointsPaper);
-		void OutputPatch(Patch &patch);
+		void OutputPatch(Patch &patch, int iter);
 
         int GeneratePatch(float seed[9],Patch &patch, Patch &boundary, int iter);
 	private:

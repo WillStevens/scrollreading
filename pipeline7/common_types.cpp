@@ -130,6 +130,13 @@ bool Patch::Next(PatchIterator &pi)
 		if (pointGrid[pi.x][pi.y])
 		{
 			pi.p = pointGrid[pi.x][pi.y];
+			// debug
+			/*
+			if (patchNum==347 && (pi.x+minux==31 || pi.x+minux==32))
+			{
+				printf("Iterating:%d,%d %p %f,%f %f,%f,%f\n",pi.x+minux,pi.y+minuy,pi.p,pi.p->x,pi.p->y,pi.p->v.x,pi.p->v.y,pi.p->v.z);
+			}
+			*/
 			return true;
 		}
 	}
@@ -152,8 +159,8 @@ void Patch::Flip(void)
 			pointGrid[x][y] = pointGrid[maxux-minux-x][y];
 			pointGrid[maxux-minux-x][y] = tmp;
 			
-			if (pointGrid[x][y]) pointGrid[x][y]->x = x;
-			if (pointGrid[maxux-minux-x][y]) pointGrid[maxux-minux-x][y]->x = maxux-minux-x;
+			if (pointGrid[x][y]) pointGrid[x][y]->x = x+minux;
+			if (pointGrid[maxux-minux-x][y]) pointGrid[maxux-minux-x][y]->x = maxux-x;
 		}
 	}
 }
@@ -167,7 +174,7 @@ bool Patch::Write(const std::string &path, int i)
 		
 		FILE *fo = fopen(fileName.str().c_str(),"w");
 
-		printf("Writing patches\n");
+		//printf("Writing patches\n");
 		if(fo)
 		{
 			gridPointStruct p;
@@ -217,10 +224,12 @@ bool Patch::Write(const std::string &path, int i)
 	return true;
 }
 
-void Patch::BuildFromPoints(vector<patchPoint> &points)
+void Patch::BuildFromPoints(vector<patchPoint> &points, int patchNum)
 {
+	if (points.size()==0)
+		return;
 	CalcExtents(points);
-	MakeGrid(points);
+	MakeGrid(points,patchNum);
 	// Estimate the radius using minx,maxx,miny,maxy
 	// Currently radius is only used for visualisation in patchsprings, so it doesn't matter too much if it's wrong.
 	radius = abs(minux)>maxux ? abs(minux) : maxux;
@@ -228,9 +237,9 @@ void Patch::BuildFromPoints(vector<patchPoint> &points)
 		radius = abs(minuy)>maxuy ? abs(minuy) : maxuy;
 }
 
-void Patch::BuildFromPoints(std::vector<patchPoint> &points,std::vector<std::tuple<int,int,int>> &colours)
+void Patch::BuildFromPoints(std::vector<patchPoint> &points,std::vector<std::tuple<int,int,int>> &colours,int patchNum)
 {
-	BuildFromPoints(points);
+	BuildFromPoints(points,patchNum);
 	MakeColourGrid(points,colours);
 }	
 
@@ -260,7 +269,7 @@ bool Patch::Read(const std::string &path, int i)
 		
 		fclose(fi);
 		
-		BuildFromPoints(points);
+		BuildFromPoints(points,i);
 		patchNum = i;
 		
 		return true;
@@ -292,7 +301,7 @@ void Patch::CalcExtents(vector<patchPoint> &points)
 
 		if (point.v.x<minx || first)
 			minx = point.v.x;
-		if (point.v.z>maxx || first)
+		if (point.v.x>maxx || first)
 			maxx = point.v.x;
 		if (point.v.y<miny || first)
 			miny = point.v.y;
@@ -666,7 +675,7 @@ bool Patch::GetNormal(int x, int y, Vec3 &v)
 	}
 }
 
-void Patch::MakeGrid(std::vector<patchPoint> &points)
+void Patch::MakeGrid(std::vector<patchPoint> &points, int patchNum)
 {	
 	pointGrid = (patchPoint***)malloc(sizeof(patchPoint**)*(maxux-minux+1));
 	
@@ -683,6 +692,17 @@ void Patch::MakeGrid(std::vector<patchPoint> &points)
 		//patchPoint *p = pointGrid[(int)pt.x-minux][(int)pt.y-minuy];
 		//printf("%d,%d : %f,%f,%f,%f,%f\n",(int)pt.x-minux,(int)pt.y-minuy,p->x,p->y,p->v.x,p->v.y,p->v.z);
 	}
+	
+	// debug individual case
+/*	if (patchNum==347)
+	{
+		printf("grid pointers:\n");
+		printf("31,48: %p\n",pointGrid[31-minux][48-minuy]);
+		printf("32,48: %p\n",pointGrid[32-minux][48-minuy]);
+		
+		exit(-1);
+	}
+	*/
 }
 
 void Patch::DestroyGrid(void)

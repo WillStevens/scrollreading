@@ -267,6 +267,17 @@ void AddToBigPatch(BigPatch *bp, Patch &p,int patchNum)
 		  chunkedPoints[ci] = std::vector<gridPoint>();
 	  }
 	  
+	  // Bug tracing
+	  /*
+	  if (patchNum==347 && (pi.p->x==31 || pi.p->x==32) && (pi.p->y==47 || pi.p->y==48))
+	  {
+		  printf("Adding to bigpatch:%d %f,%f %f,%f,%f\n",patchNum,pi.p->x,pi.p->y,pi.p->v.x,pi.p->v.y,pi.p->v.z);
+	  }
+	  else if (patchNum>347)
+	  {
+	 	  exit(-1);
+	  }
+	  */
 	  chunkedPoints[ci].push_back(gridPoint(pi.p->x,pi.p->y,pi.p->v.x,pi.p->v.y,pi.p->v.z,patchNum));	  
   }
   

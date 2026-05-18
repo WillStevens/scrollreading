@@ -192,7 +192,7 @@ void render(char *zname,char *fname, char *colourFile, int maskOnly)
 														
 							unsigned char value = (v>>8);
 							
-							unsigned char r=255,g=255,b=255;
+							int r=255,g=255,b=255;
 							
 							if (index<colours.size())
 							{
@@ -201,9 +201,38 @@ void render(char *zname,char *fname, char *colourFile, int maskOnly)
 								b = std::get<2>(colours[index]);
 							}
 							
-							rendered[yo-miny][(xo-minx)*3+0] = maskOnly?255:r*value/255;
-							rendered[yo-miny][(xo-minx)*3+1] = maskOnly?255:g*value/255;
-							rendered[yo-miny][(xo-minx)*3+2] = maskOnly?255:b*value/255;
+							int rr,rg,rb;
+							{
+								rr = maskOnly?255:r*value/255;
+								rg = maskOnly?255:g*value/255;
+								rb = maskOnly?255:b*value/255;
+							}
+							
+							if (z%100<8)
+							{
+								rr += 64; 
+								rg += 64; 
+								rb += 64; 
+							}
+
+							rr += (x%200)/2-50;
+							rg += (x%200)/2-50;
+							rb += (x%200)/2-50;
+							
+							if (rr>255) rr=255;
+							if (rg>255) rg=255;
+							if (rb>255) rb=255;
+							
+							if (rr<0) rr=0;
+							if (rg<0) rg=0;
+							if (rb<0) rb=0;
+							
+							{
+								rendered[yo-miny][(xo-minx)*3+0] = maskOnly?255:rr;
+								rendered[yo-miny][(xo-minx)*3+1] = maskOnly?255:rg;
+								rendered[yo-miny][(xo-minx)*3+2] = maskOnly?255:rb;
+							}
+
 							mask[yo-miny][xo-minx] = 255;
 						}
 						else

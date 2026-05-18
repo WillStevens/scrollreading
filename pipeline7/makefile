@@ -54,7 +54,7 @@ parameters.h : parameters.json
 render_from_zarr6: render_from_zarr6.o bigpatch.o common_types.o
 	$(CC) -o $@ $^ $(CFLAGS) $(LFLAGS)
 	
-render_from_zarr6.o: render_from_zarr6.cpp bigpatch.h
+render_from_zarr6.o: render_from_zarr6.cpp bigpatch.h zarr_4.c
 	$(CC) -c $< $(CFLAGS)
 
 	

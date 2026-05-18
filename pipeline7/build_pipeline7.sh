@@ -25,6 +25,7 @@
 #python zarrgen.py zarr_meta_c64i1.json 64 _c64i1b64 > zarr_c64i1b64.c
 #python zarrgen.py zarr_meta_c64i1.json 256 _c64i1b256 > zarr_c64i1b256.c
 #python zarrgen.py zarr_meta_c128.json 80 _c128 > zarr_c128.c 
+#python zarrgen.py zarr_meta_4.json 160 _4 > zarr_4.c 
 
 
 # Generate parameters.h and parameters.py from parameters.json

@@ -8,7 +8,7 @@
 #define VOL_SIZE_Z 11174
 #define QUADMESH_SIZE 4
 #define VOXEL_SIZE 7.91
-#define RANDOM_SEED 123
+#define RANDOM_SEED 124
 #define VOLUME_ZARR "d:/zarrs/s4/20231117161658.zarr/0"
 #define SURFACE_ZARR "d:/zarrs/s4_059_medial_ome.zarr/0"
 /* The initial seed point */
@@ -35,8 +35,8 @@
 #define MIN_RELAX_ITERATIONS 15
 #define HIGH_STRESS_THRESHHOLD 0.05
 /* Parameters related to testing patches and adding them to a surface */
-#define MAX_ROTATE_VARIANCE 0.1
-#define MAX_TRANSLATE_VARIANCE 50
+#define MAX_ROTATE_VARIANCE 0.02
+#define MAX_TRANSLATE_VARIANCE 5
 /* If any points on the current boundary are within this distance of any points in the patch, erase them. Okay to be overzealous. */
 #define CURRENT_BOUNDARY_ERASE_DISTANCE 10
 /* If any points on the boundary to add are within this distance of the current surface, erase them */
@@ -45,7 +45,7 @@
 /* The minimum distance between a point in one patch and another that will be considered before assessing it as a match */
 #define MATCH_MIN_DIST 8.0
 /* The number of point-pair samples that will be take per-patch when looking for transformations */
-#define NUM_POINT_SAMPLES 500
+#define NUM_POINT_SAMPLES 1000
 /* The min length line that will be used when looking for transformations */
 #define MIN_LINE_LENGTH 50
 /* The maximum difference in line length tolerated when looking for transformations */
@@ -53,4 +53,4 @@
 /* Minimum number of transforms that must be found for transform and variance to be output */
 #define MIN_TRANSFORMS 25
 /* Max volume distance allowed for overlapping x,y points */
-#define BP_MAX_XYZ_DISTANCE 15
+#define BP_MAX_XYZ_DISTANCE 10

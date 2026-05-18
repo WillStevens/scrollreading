@@ -57,11 +57,12 @@ class PatchIterator
 
 class Patch
 {
-	public:		
+	public:
+		bool Empty(void) {return pointGrid==NULL;}
 		void Flip(void);
 		bool Write(const std::string &path, int i);
-		void BuildFromPoints(std::vector<patchPoint> &points);
-		void BuildFromPoints(std::vector<patchPoint> &points,std::vector<std::tuple<int,int,int>> &colours);
+		void BuildFromPoints(std::vector<patchPoint> &points, int patchNum);
+		void BuildFromPoints(std::vector<patchPoint> &points,std::vector<std::tuple<int,int,int>> &colours, int patchNum);
 		bool Read(const std::string &path, int i);
 
 		PatchIterator Begin();
@@ -81,7 +82,7 @@ class Patch
 		void TransformPoint(float x, float y, float &xo, float &yo);
 		bool GetNormal(int x, int y, Vec3 &v);
 		
-		void MakeGrid(std::vector<patchPoint> &points);
+		void MakeGrid(std::vector<patchPoint> &points, int patchNum);
 		void MakeColourGrid(std::vector<patchPoint> &points, std::vector<std::tuple<int,int,int>> &colours);
 		void DestroyGrid(void);
 		void DestroyColourGrid(void);
@@ -90,7 +91,7 @@ class Patch
 		void SetPatchNum(int n) {patchNum = n;}
 		int GetPatchNum(void) {return patchNum;}
 		
-		Patch(void) {interpolatedPointGrid = NULL; minux=maxux=minuy=maxuy=minx=maxx=miny=maxy=minz=maxz=-1; positionSet=false; pointGrid=NULL;}
+		Patch(void) {interpolatedPointGrid = NULL; minux=maxux=minuy=maxuy=minx=maxx=miny=maxy=minz=maxz=-1; positionSet=false; pointGrid=NULL;colourGrid=NULL;}
 		
 		~Patch(void) {DestroyInterpolatedGrid();DestroyGrid();DestroyColourGrid();}
 		void Clear(void) {DestroyInterpolatedGrid();DestroyGrid();interpolatedPointGrid = NULL; minux=maxux=minuy=maxuy=minx=maxx=miny=maxy=minz=maxz=-1; positionSet=false; pointGrid=NULL;colourGrid=NULL;}
