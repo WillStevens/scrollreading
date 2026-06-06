@@ -22,7 +22,7 @@
 #include "position_patches.h"
 #include "zarr_show2_u8.h"
 
-#define PATCH_LIMIT 6000
+#define PATCH_LIMIT 18000
 
 void MemInfo(void)
 {
@@ -191,7 +191,7 @@ void GeneratePatches(std::map<int,Patch> *patches,AlignmentMap *am)
 			return;			
 	}
 	
-	for(int i=startingPatch; i<=startingPatch+6000; i++)
+	for(int i=startingPatch; i<=startingPatch+5000; i++)
 	{
 		MemInfo();
 		printf("======== Patch %d ========\n",i);
@@ -386,7 +386,7 @@ void GeneratePatches(std::map<int,Patch> *patches,AlignmentMap *am)
 	printf("Deleting patches\n");
 }
 
-void LoadPatchesAndRelationships(std::map<int,Patch> *patches, 	AlignmentMap *am, int limit = -1)
+void LoadPatchesAndRelationships(std::map<int,Patch> *patches, 	AlignmentMap *am, int limit = -1, std::set<int> *restricted = NULL)
 {
 	DIR *dir;
 	struct dirent *ent;
@@ -394,6 +394,7 @@ void LoadPatchesAndRelationships(std::map<int,Patch> *patches, 	AlignmentMap *am
 	// iterate through all patch files
 	if ((dir = opendir (OUTPUT_DIR "/patches")) != NULL)
 	{
+		int i = 0;
 		while ((ent = readdir (dir)) != NULL)
 		{
 			std::string file(ent->d_name);
@@ -408,11 +409,12 @@ void LoadPatchesAndRelationships(std::map<int,Patch> *patches, 	AlignmentMap *am
 						patchNum = patchNum*10+(c-'0');
 				}
 			
-				if (patchNum<=limit || limit==-1)
+				if ( (patchNum<=limit || limit==-1) && (restricted==NULL || restricted->count(patchNum)!=0)) 
 				{
 					(*patches)[patchNum]=Patch();
-	
-					printf("Loading %d\n",patchNum);
+					
+					if (i++%100==0)	
+						printf("Loading %d\n",patchNum);
 					(*patches)[patchNum].Read(OUTPUT_DIR "/patches",patchNum);
 		
 				}
@@ -460,6 +462,7 @@ void LoadPatchesAndRelationships(std::map<int,Patch> *patches, 	AlignmentMap *am
 			}
 		}
 		
+		/*
 		for(auto &a : *am)
 		{
 			printf("%d\n",a.first);
@@ -468,6 +471,7 @@ void LoadPatchesAndRelationships(std::map<int,Patch> *patches, 	AlignmentMap *am
 				printf(".%d\n",std::get<0>(al));
 			}
 		}
+		*/
 	}
 	
 }
@@ -544,8 +548,7 @@ int main(int argc, char *argv[])
 
 	srand(RANDOM_SEED);
 
-	// eXamine alignment (x <patch>)
-	// examine alignment of patch x against patches in surface.bp
+	// examine alignment of two patches
 	if (mode=='x')
 	{
 		if (argc!=6)
@@ -688,11 +691,29 @@ int main(int argc, char *argv[])
 		std::set<int> round1BadPatches = badPatches;
 		
 		bpf->FindBadPatchesGeneral(*am,patches,3,badPatches,badPatchScores);		
+
+		std::set<int> round2BadPatches = badPatches;
 		std::set<int> round2OnlyBadPatches;
 		
 		std::set_difference(badPatches.begin(), badPatches.end(), round1BadPatches.begin(), round1BadPatches.end(),
                         std::inserter(round2OnlyBadPatches, round2OnlyBadPatches.begin()));
 		
+		bpf->FindBadPatchesGeneral(*am,patches,4,badPatches,badPatchScores);		
+
+		std::set<int> round3BadPatches = badPatches;
+		std::set<int> round3OnlyBadPatches;
+		
+		std::set_difference(badPatches.begin(), badPatches.end(), round2BadPatches.begin(), round2BadPatches.end(),
+                        std::inserter(round3OnlyBadPatches, round3OnlyBadPatches.begin()));
+
+		bpf->FindBadPatchesGeneral(*am,patches,5,badPatches,badPatchScores);		
+						
+		std::set<int> round4BadPatches = badPatches;
+		std::set<int> round4OnlyBadPatches;
+		
+		std::set_difference(badPatches.begin(), badPatches.end(), round3BadPatches.begin(), round3BadPatches.end(),
+                        std::inserter(round4OnlyBadPatches, round4OnlyBadPatches.begin()));
+						
 		printf("Round 1 bad patches\n");
 		for(auto i : round1BadPatches)
 		{
@@ -701,6 +722,18 @@ int main(int argc, char *argv[])
 
 		printf("Round 2 bad patches\n");
 		for(auto i : round2OnlyBadPatches)
+		{
+			printf("%d\n",i);
+		}
+
+		printf("Round 3 bad patches\n");
+		for(auto i : round3OnlyBadPatches)
+		{
+			printf("%d\n",i);
+		}
+
+		printf("Round 4 bad patches\n");
+		for(auto i : round4OnlyBadPatches)
 		{
 			printf("%d\n",i);
 		}
@@ -751,6 +784,16 @@ int main(int argc, char *argv[])
 			}
 		}
 
+				{
+			int i;
+			
+			std::ifstream is(OUTPUT_DIR "/manualBadPatch.csv");
+			while(is>>i)
+			{
+				badPatches.insert(i);
+			}
+		}
+
 		std::set<std::pair<int,int>> manualBadRel;
 
 		{
@@ -766,6 +809,11 @@ int main(int argc, char *argv[])
 			}
 		}
 
+		for(auto &mb : manualBadRel)
+		{
+			printf("manual bad rel: %d,%d\n",mb.first,mb.second);
+		}
+		
 		std::map<int,std::set<int> > neighbourList;
 		int minPatchInNeighbourList = -1;
 		
@@ -848,7 +896,7 @@ int main(int argc, char *argv[])
 		std::map<int,affineTx> patchPositions;
 		std::vector<std::pair<int,alignment>> alignmentOrder;
 		AugmentAlignmentMap(*am);
-		PositionPatches(patches,*am,patchOrder,patchPositions,alignmentOrder);
+		PositionPatches(patches,*am,patchOrder,patchPositions,alignmentOrder,manualBadRel);
 
 		{
 			ofstream os(OUTPUT_DIR "/alignmentorder.txt");
@@ -927,16 +975,47 @@ int main(int argc, char *argv[])
 			}
 		}
 
+		std::set<std::pair<int,int>> manualGoodRel;
+
+		{
+			std::ifstream is(OUTPUT_DIR "/manualGoodRel.csv");
+			std::string line;
+			while(std::getline(is,line))
+			{
+				std::istringstream ss(line);
+				int a, b;
+				char comma;
+				if (ss >> a >> comma >> b)
+					manualGoodRel.insert({a, b});
+			}
+		}
+
+		std::set<int> patchesInvolved;
+
 		while(true)
 		{
 			std::string s;
-			std::cout << "Enter q to quit, anything else for next iteration" << std::endl;
+			std::cout << "Enter q to quit, c to set patches to colour, anything else for next iteration" << std::endl;
 			std::cin >> s;
 			
 			if (s==std::string("q"))
 				break;
+			
+			if (s==std::string("c"))
+			{
+				patchesToColour.clear();
+				
+				for(auto p : patchesInvolved)
+					patchesToColour.insert(p);
+			}
+			
+			patchesInvolved.clear();
+			
 			{	
+				for (auto i : patchOrder)
+					(*patches)[i].UnsetPosition();
 
+			
 				std::map<int,int> distanceDistribution;
 
 				// This must come from patchsprings.py
@@ -962,6 +1041,13 @@ int main(int argc, char *argv[])
 				{
 					for (auto i : patchOrder)
 					{
+						printf("Indexing %d\n",i);
+						
+						if (patches->count(i)==0)
+						{
+							printf("Patch %d not found in 'patches'\n");
+							exit(-1);
+						}
 						Patch &p = (*patches)[i];
 						for(PatchIterator pi = p.Begin(); p.Next(pi);)
 						{
@@ -974,7 +1060,10 @@ int main(int argc, char *argv[])
 							for(int yo = yi-1; yo <= yi+1; yo++)
 							{
 								if (patchIndex.count(std::pair<int,int>(xo,yo))==0)
+								{
+									printf("New cell %d,%d\n",xo,yo);
 									patchIndex[std::pair<int,int>(xo,yo)] = std::set<int>();
+								}
 								
 								patchIndex[std::pair<int,int>(xo,yo)].insert(i);
 							}
@@ -1059,7 +1148,10 @@ int main(int argc, char *argv[])
 										
 										float distance = distancei>distancej ? distancei : distancej;
 
-										if (distance > maxDistance)
+										// Don't report on any that are to be excluded from report
+										if (distance > maxDistance &&
+										  manualGoodRel.count({std::get<0>(contributions[i]),std::get<0>(contributions[j])})==0 &&
+										  manualGoodRel.count({std::get<0>(contributions[j]),std::get<0>(contributions[i])})==0)
 										{
 											maxDistance = distance;
 										}
@@ -1117,9 +1209,9 @@ int main(int argc, char *argv[])
 									}
 
 									// Use a red hue to indicate thickness
-									r += (int)maxDistance;
-									g -= (int)maxDistance;
-									b -= (int)maxDistance;
+									r += (int)maxDistance*4;
+									g -= (int)maxDistance*4;
+									b -= (int)maxDistance*4;
 									
 									if (r>255) r=255;
 									if (g<0) g=0;
@@ -1150,9 +1242,16 @@ int main(int argc, char *argv[])
 						for(const auto &m : mm)
 						{
 							printf("%d ",m);
+							patchesInvolved.insert(m);
 						}
 						printf("\n");
 					}
+					
+					for(auto p : patchesInvolved)
+					{
+						printf("%d ",p);
+					}
+					printf("\n");
 				}
 			}
 		}
@@ -1161,7 +1260,8 @@ int main(int argc, char *argv[])
 		delete am;
 	}
 	
-	if (mode=='a')
+	// ffmpeg -framerate 24 -i d:/pipelineOutput/sliceanim/s_%08d.tif -vf scale=iw/2:ih/2 -c:v libx264 -pix_fmt yuv420p d:/pipelineOutput/sliceanim.mp4
+	if (mode=='a' || mode=='A')
 	{
 		int closeUpIter = -1;
 		
@@ -1172,7 +1272,7 @@ int main(int argc, char *argv[])
 		std::map<int,Patch> *patches = new std::map<int,Patch>;
 
 		printf("Loading patches and relationships...\n");
-		LoadPatchesAndRelationships(patches,am);
+		LoadPatchesAndRelationships(patches,am,PATCH_LIMIT);
 
 		std::vector<int> patchOrder;
 		
@@ -1185,12 +1285,29 @@ int main(int argc, char *argv[])
 			}
 		}
 
+		// This must come from patchsprings.py
+		// TODO - patchsprings will be rewritten in C++ soon
+		ifstream is(OUTPUT_DIR "/patchPositions.txt");
+			
+		while(true)
+		{
+			int patchNum;
+			float x,y,angle;
+			if (is >> patchNum >> x >> y >> angle)
+				(*patches)[patchNum].SetPosition(x,y,angle);
+			else
+				break;
+		}
+
+		printf("Loaded patch positions\n");
+
+		
 		// Enough buffers that we can do several layers before reloading buffers,
 		ZARR_1_b700 *surfaceZarr = ZARROpen_1_b700(SURFACE_ZARR);
 
 		printf("Rendering...\n");
 
-		SliceAnimRender(surfaceZarr,std::string(OUTPUT_DIR "/sliceanim"),100,50,1,closeUpIter,patches,patchOrder);
+		SliceAnimRender(surfaceZarr,std::string(OUTPUT_DIR "/sliceanim"),100,50,1,closeUpIter,patches,patchOrder,mode=='A');
 	
 		ZARRClose_1_b700(surfaceZarr);
 	}
@@ -1198,16 +1315,19 @@ int main(int argc, char *argv[])
 	if (mode=='p')
 	{
 		std::vector<int> patchesToShow;
+		std::set<int> patchesToShowSet;
 		
 		for(int i = 2; i<argc; i++)
+		{
 			patchesToShow.push_back(atoi(argv[i]));
-		
+			patchesToShowSet.insert(atoi(argv[i]));
+		}
 		AlignmentMap *am = new AlignmentMap;
 		std::map<int,Patch> *patches = new std::map<int,Patch>;
 
 		printf("Loading patches and relationships...\n");
-		LoadPatchesAndRelationships(patches,am,PATCH_LIMIT);
-
+		LoadPatchesAndRelationships(patches,am,PATCH_LIMIT,&patchesToShowSet);
+		printf("Finished loading\n");
 		// Enough buffers that we can do several layers before reloading buffers,
 		ZARR_1_b700 *surfaceZarr = ZARROpen_1_b700(SURFACE_ZARR);
 
@@ -1247,6 +1367,41 @@ int main(int argc, char *argv[])
 		ZarrShow2U8(surfaceZarr, 0,0,zcoord,VOL_SIZE_X,VOL_SIZE_Y,std::string(OUTPUT_DIR "/slice.tif"),patchesToShow,shown,0,0,0);
 	
 		ZARRClose_1_b700(surfaceZarr);
+	}
+
+	// q <path> <patchnum> x y
+	// returns the vx,vy,vz volume coords of x,y
+	if (mode=='q')
+	{		
+		int patchNum, x, y;
+		
+		if (argc==6)
+		{
+			patchNum = atoi(argv[3]);
+			x = atoi(argv[4]);
+			y = atoi(argv[5]);
+		}
+		else
+		{
+			printf("%s q <path> <patchnum> x y\n",argv[0]);
+			printf("Show the vx,vy,vz coords of 0-based x,y (e.g. from tif image)\n");
+			exit(-1);
+		}
+
+		Patch p;
+		
+		p.Read(argv[2],patchNum);
+		
+		if (x<p.maxux-p.minux && y<p.maxuy-p.minuy)
+		{			
+			if (p.pointGrid[x][y])
+			{
+				printf("%f,%f,%f\n",p.pointGrid[x][y]->v.x,p.pointGrid[x][y]->v.y,p.pointGrid[x][y]->v.z);
+			}
+			else
+				printf("No point found\n");
+			
+		}
 	}
 	
 	printf("Done\n");

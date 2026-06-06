@@ -18,13 +18,14 @@ def RGB(r,g,b):
  print(count)
  return ret
   
-print(RGB(175,175,125),"yellow")
-print(RGB(173,133,123),"brown")
-
-print(RGBFunc(1755))
-print(RGBFunc(804))
-print(RGBFunc(1295))
-print(RGBFunc(3604))
-
-print(RGB(64,64,91),"grey")
-print(RGB(75,75,105),"blue grey")
+print(RGB(174,214,228),"")
+print(RGB(92,132,122),"")
+print(RGB(174,254,228),"")
+print(RGB(171,171,199),"")
+print(RGB(91,131,225),"")
+print(RGB(165,125,219),"")
+print(RGB(173,173,149),"")
+print(RGB(86,246,220),"")
+print(RGB(248,208,92),"")
+print(RGB(166,86,168),"")
+print(RGB(92,132,122),"")

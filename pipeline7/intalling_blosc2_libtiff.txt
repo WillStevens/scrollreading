@@ -1,0 +1,21 @@
+Installing blosc2 and libtiff-devel
+
+blosc2
+------
+
+Follow the instructions here:
+
+https://blosc.org/c-blosc2/c-blosc2.html#compiling-the-c-blosc2-library-with-cmake
+
+When running cmaks, install it to /usr/local
+
+must use 'sudo' for the very last install step
+
+libtiff-devel
+-------------
+
+sudo yum install libtiff-devel
+
+
+To be able to find the shared libraries, the following needs to be added to the environment:
+export LD_LIBRARY_PATH=$LB_LIBRARY_PATH:/usr/local/lib64

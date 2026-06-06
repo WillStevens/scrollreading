@@ -5,7 +5,7 @@
 #include "sliceanimrender.h"
 #include "zarr_show2_u8.h"
 
-void SliceAnimRender(ZARR_1_b700 *za,const std::string &path, int patchesper, int zstep, int zscale, int closeUpIter, std::map<int,Patch> *patches, std::vector<int> &patchOrder)
+void SliceAnimRender(ZARR_1_b700 *za,const std::string &path, int patchesper, int zstep, int zscale, int closeUpIter, std::map<int,Patch> *patches, std::vector<int> &patchOrder, bool showGlobalCoord)
 {
 	std::vector<Patch *> pNorm;
 
@@ -56,7 +56,7 @@ void SliceAnimRender(ZARR_1_b700 *za,const std::string &path, int patchesper, in
 			{
 				std::set<Patch *> pShown;
 
-				ZarrShow2U8(za,VOL_OFFSET_X,VOL_OFFSET_Y,z,VOL_SIZE_X,VOL_SIZE_Y,fileNameRoot+".tif",pNorm,pShown,forward?32:0,0,forward?0:32);
+				ZarrShow2U8(za,VOL_OFFSET_X,VOL_OFFSET_Y,z,VOL_SIZE_X,VOL_SIZE_Y,fileNameRoot+".tif",pNorm,pShown,forward?32:0,0,forward?0:32,showGlobalCoord);
 				// Output details about which patche are in this slice
 				{
 					std::ofstream os(fileNameRoot+".csv");

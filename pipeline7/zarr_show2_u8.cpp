@@ -127,10 +127,11 @@ bool LoadOrCreateTiffIntoBuffer(ZARR_1_b700 *za, uint32_t *pointBuffer, int xcoo
 	return true;
 }
 	
-void ZarrShow2U8(ZARR_1_b700 *za, int xcoord, int ycoord, int zcoord, int width, int height, const std::string &tifName, std::vector<Patch *> patches, std::set<Patch *> &shown, int bgr, int bgg, int bgb)
+void ZarrShow2U8(ZARR_1_b700 *za, int xcoord, int ycoord, int zcoord, int width, int height, const std::string &tifName, std::vector<Patch *> patches, std::set<Patch *> &shown, int bgr, int bgg, int bgb, bool showGlobalCoord)
 {
     uint32_t *pointBuffer;
 
+	printf("Show global coord:%s\n",showGlobalCoord?"true":"false");
 	printf("Allocating...\n");
 	
 	pointBuffer = (uint32_t *)malloc(width*height*sizeof(uint32_t));
@@ -162,8 +163,22 @@ void ZarrShow2U8(ZARR_1_b700 *za, int xcoord, int ycoord, int zcoord, int width,
 					for(int yo=-1; yo<=1; yo++)\
 						if ((int)pt.v.x>=xcoord-xo && (int)pt.v.x<xcoord+width-xo && (int)pt.v.y>=ycoord-yo && (int)pt.v.y<ycoord+height-yo)\
 						{\
-						pointBuffer[((int)pt.v.x-xcoord+xo)+((int)pt.v.y-ycoord+yo)*width] = p->patchNum+1;\
-						shown.insert(p);\
+						  if (showGlobalCoord)\
+						  {\
+						    /* Need to convert from patch x,y coord to global x,y coord */ \
+						    float gx,gy; \
+							if (p->PatchXYToGlobalXY(pt.x,pt.y,gx,gy)) \
+							{\
+							  uint32_t bufferValue = 1000000000+gy; \
+						      pointBuffer[((int)pt.v.x-xcoord+xo)+((int)pt.v.y-ycoord+yo)*width] = bufferValue; \
+						      shown.insert(p);\
+							}\
+						  }\
+						  else\
+						  {\
+						    pointBuffer[((int)pt.v.x-xcoord+xo)+((int)pt.v.y-ycoord+yo)*width] = p->patchNum+1;\
+						    shown.insert(p);\
+						  }\
 						}\
 				}\
 			}\
@@ -215,6 +230,22 @@ void ZarrShow2U8(ZARR_1_b700 *za, int xcoord, int ycoord, int zcoord, int width,
 						((uint8_t *)buf)[3*i] = bgr;
 						((uint8_t *)buf)[3*i+1] = bgg;
 						((uint8_t *)buf)[3*i+2] = bgb;
+					}
+					else if (showGlobalCoord)
+					{
+						uint32_t ci = pointBuffer[i+row*width]-1000000000;
+						
+						uint32_t rm = ci%2000;
+						uint32_t gm = ci%3000;
+						uint32_t bm = ci%5000;
+						
+						if (rm>=1000) rm = 2000-rm;
+						if (gm>=1500) gm = 3000-gm;
+						if (bm>=2500) bm = 5000-bm;
+						
+						((uint8_t *)buf)[3*i] = 64+rm*191/1000;
+						((uint8_t *)buf)[3*i+1] = 64+gm*191/1500;
+						((uint8_t *)buf)[3*i+2] = 64+bm*191/2500;
 					}
 					else if (pointBuffer[i+row*width] != 0)
 				    {

@@ -58,7 +58,7 @@ void AugmentAlignmentMap(AlignmentMap &alignmentMap)
 }
 
 // Given patches and alignments, work out global positions. Also output the order in which the patches were aligned and positioned
-void PositionPatches(std::map<int,Patch> *patches, AlignmentMap &alignmentMap, std::vector<int> &patchOrder, std::map<int,affineTx> &patchPositions, std::vector<std::pair<int,alignment>> &alignmentOrder)
+void PositionPatches(std::map<int,Patch> *patches, AlignmentMap &alignmentMap, std::vector<int> &patchOrder, std::map<int,affineTx> &patchPositions, std::vector<std::pair<int,alignment>> &alignmentOrder, std::set<std::pair<int,int>> &badRel)
 {
 	int lastPlaced = -1;
 	for(auto i : patchOrder)
@@ -66,7 +66,7 @@ void PositionPatches(std::map<int,Patch> *patches, AlignmentMap &alignmentMap, s
 		if (lastPlaced==-1)
 		{
 			patchPositions[i] = affineTx(1,0,0,0,1,0);
-			alignmentOrder.push_back(std::pair<int,alignment>(0,alignment(-1,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0,0.0,1.0,0.0)));
+			alignmentOrder.push_back(std::pair<int,alignment>(i,alignment(-1,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0,0.0,1.0,0.0)));
 		}
 		else
 		{
@@ -79,7 +79,7 @@ void PositionPatches(std::map<int,Patch> *patches, AlignmentMap &alignmentMap, s
 
 					//printf("Looking for %d in patchPositions\n",p);
 					
-					if (patchPositions.count(p) != 0)
+					if (badRel.count({p,i})==0 && badRel.count({i,p})==0 && patchPositions.count(p) != 0)
 					{
 						//printf("Found %d in alignment list for %d\n",p,i);
 

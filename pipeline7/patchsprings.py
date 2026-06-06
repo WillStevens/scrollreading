@@ -81,7 +81,7 @@ def LoadPatches(alignmentOrder):
     if other==-1:
       patchNum = int(l[0])
       (x,y,a) = AffineTxToXYA(ta,tb,tc,td,te,tf)
-      patches += [(x,y,a,radius,0)]
+      patches += [(x,y,a,radius,0,x,y,a)]
       patchVel += [(0,0,0)]
       patchAcc += [(0,0,0)]
       transformLookup[patchNum] = (1,0,0,0,1,0)
@@ -100,6 +100,8 @@ def LoadPatches(alignmentOrder):
       if patchNum not in patchNums and len(patchNums)==patchLimit:
         print("Stopped loading when %d encountered" % patchNum)
         print(l)
+        print(f"Max patch number:{max(patchNums)}")
+
         return
       
       if other in transformLookup.keys():
@@ -128,7 +130,7 @@ def LoadPatches(alignmentOrder):
           transformLookup[patchNum] = transform # this had previous been before the if statement, which could have led to inconsistent results
           patchNums.add(patchNum)
           patchIndexLookup[patchNum] = len(patches)
-          patches += [(transform[2],transform[5],0.0,radius,angle)]
+          patches += [(transform[2],transform[5],0.0,radius,angle,transform[2],transform[5],0.0)]
           patchVel += [(0,0,0)]
           patchAcc += [(0,0,0)]
         else:
@@ -148,7 +150,8 @@ def LoadPatches(alignmentOrder):
       else:
         print("Patch %d can't find other patch %d (perhaps other was a bad patch)" % (patchNum,other))
        
-      
+  print(f"Max patch number:{max(patchNums)}")
+  
   
     
 def SavePatches():
@@ -157,7 +160,7 @@ def SavePatches():
   
   if f:
     for patchNum,patchIndex in patchIndexLookup.items():
-      (x,y,a,r,ga) = patches[patchIndex]
+      (x,y,a,r,ga) = patches[patchIndex][0:5]
       f.write("%d %f %f %f\n" % (patchNum,x,y,AddAngle(a,ga)))
       
   f.close()
@@ -167,8 +170,8 @@ def ConnectionForces():
   global patches,patchVel,patchAcc,connections
 
   for (p1,p2,dist,angle1,angle2) in connections:
-    (x1,y1,a1,r1,ga1) = patches[p1]  
-    (x2,y2,a2,r2,ga2) = patches[p2]
+    (x1,y1,a1,r1,ga1) = patches[p1][0:5]  
+    (x2,y2,a2,r2,ga2) = patches[p2][0:5]
 
     currentAngle12 = AddAngle(patches[p1][2],angle1)      
     currentAngle21 = AddAngle(patches[p2][2],angle2)      
@@ -202,7 +205,7 @@ def Move():
   global patches,patchVel,patchAcc,connections
 
   for i in range(0,len(patches)):
-    patches[i] = (patches[i][0]+patchVel[i][0],patches[i][1]+patchVel[i][1],patches[i][2]+patchVel[i][2],patches[i][3],patches[i][4])
+    patches[i] = (patches[i][0]+patchVel[i][0],patches[i][1]+patchVel[i][1],patches[i][2]+patchVel[i][2],patches[i][3],patches[i][4],patches[i][5],patches[i][6],patches[i][7])
     patchVel[i] = (patchAcc[i][0]+patchVel[i][0],patchAcc[i][1]+patchVel[i][1],patchAcc[i][2]+patchVel[i][2])
     patchVel[i] = (patchVel[i][0]*FRICTION_CONSTANT,patchVel[i][1]*FRICTION_CONSTANT,patchVel[i][2]*ANGLE_FRICTION_CONSTANT)
     patchAcc[i] = (0.0,0.0,0.0)
@@ -227,7 +230,7 @@ def Show(links=True):
   rotate=-1.2
   patchi = 0
   patchesLen = len(patches)
-  for (xo,yo,a,rad,ga) in patches:
+  for (xo,yo,a,rad,ga,da,db,dc) in patches:
     x=xo*cos(rotate)-yo*sin(rotate)
     y=yo*cos(rotate)+xo*sin(rotate)
     a+=rotate
@@ -248,12 +251,12 @@ def Show(links=True):
     #canvas.create_line(offset[0]+x*scale[0],offset[1]+y*scale[1],offset[0]+x*scale[0]+rad*sin(a),offset[1]+y*scale[1]+rad*cos(a))
   if links:
     for (p0,p1,dist,a0,a1) in connections:
-      xo,yo,a,rad,ga = patches[p0]
+      xo,yo,a,rad,ga = patches[p0][0:5]
       x=xo*cos(rotate)-yo*sin(rotate)
       y=yo*cos(rotate)+xo*sin(rotate)
       a+=rotate
       canvas.create_line(offset[0]+x*scale,offset[1]+y*scale,offset[0]+x*scale+rad*0.8*cos(a+a0)*scale,offset[1]+y*scale+rad*0.8*sin(a+a0)*scale)
-      xo,yo,a,rad,ga = patches[p1]
+      xo,yo,a,rad,ga = patches[p1][0:5]
       x=xo*cos(rotate)-yo*sin(rotate)
       y=yo*cos(rotate)+xo*sin(rotate)
       a+=rotate
@@ -268,6 +271,16 @@ def RunIteration():
   
   if iterationCount == 50:
     SavePatches()
+    movements = []
+    for patchNum,patchIndex in patchIndexLookup.items():
+      (xo,yo,a,rad,ga,orig_x,orig_y,orig_a)=patches[patchIndex]
+      movements += [(patchNum,Distance(orig_x,orig_y,xo,yo))]
+	  
+    movements = sorted(movements,key=lambda x:x[1])
+	
+    for (patchNum,distance) in movements[-100:]:	
+      print(f"Patch {patchNum} moved {distance}")
+	
   Show()    
   window.after(10,RunIteration)
   

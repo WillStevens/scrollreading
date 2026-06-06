@@ -127,6 +127,7 @@ bool Patch::Next(PatchIterator &pi)
 				return false;
 		}
 		
+		
 		if (pointGrid[pi.x][pi.y])
 		{
 			pi.p = pointGrid[pi.x][pi.y];
@@ -163,6 +164,16 @@ void Patch::Flip(void)
 			if (pointGrid[maxux-minux-x][y]) pointGrid[maxux-minux-x][y]->x = maxux-x;
 		}
 	}
+	
+	// Make sure that min and max are exchanged and negated
+	int tmp;
+	tmp = minux;
+	minux = -maxux;
+	maxux = -tmp;
+	
+	tmp = minuy;
+	minuy = -maxuy;
+	maxuy = -tmp;
 }
 
 bool Patch::Write(const std::string &path, int i)
@@ -400,7 +411,8 @@ std::vector<patchPoint> Patch::InterpolateAtZ(int zcoord)
 				o = (lower*(QUADMESH_SIZE-ym)+upper*ym)/QUADMESH_SIZE;
 
 				if ((int)o.z==zcoord)
-					r.push_back(patchPoint(x,y,o.x,o.y,o.z));
+					/* TODO The surface x and y coords below aren't interpolated - they probably should be */
+					r.push_back(patchPoint(pointGrid[xs][ys]->x,pointGrid[xs][ys]->y,o.x,o.y,o.z));
 				
 			}
 		}
@@ -481,6 +493,25 @@ bool Patch::FindGlobalXY(float x, float y, Vec3 &v, float weight)
 }
 */
 
+bool Patch::PatchXYToGlobalXY(float x, float y, float &gx, float &gy)
+{
+	if (positionSet)
+	{		
+		// Transform x,y using xpos,ypos,angle
+		gx = x*cos(angle)-y*sin(angle)+xpos;
+		gy = x*sin(angle)+y*cos(angle)+ypos;
+
+		//xd = (x-xpos)*cos(angle)+(y-ypos)*sin(angle);
+		//yd = -(x-xpos)*sin(angle)+(y-ypos)*cos(angle);
+		
+		return true;
+	}
+	
+	return false;
+}
+
+/* Given global x,y coordinates, find the volume coord of the point in this patch that corresponds to that */
+/* Also find the normal and weight */
 bool Patch::FindGlobalXY(float x, float y, Vec3 &v, Vec3 &normal, float &weight)
 {
 	if (positionSet)
