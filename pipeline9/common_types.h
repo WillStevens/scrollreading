@@ -73,6 +73,10 @@ class Patch
 		vector<patchPoint> InterpolateAtZ(int zcoord);
 		void DiscardInterpolation(void);
 
+		int MinX(void); 
+		int MaxX(void);
+		int MinY(void); 
+		int MaxY(void);
 		int MinZ(void); 
 		int MaxZ(void);
 		bool ContainsZ(int z);

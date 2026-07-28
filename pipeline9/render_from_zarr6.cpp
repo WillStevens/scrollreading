@@ -183,15 +183,14 @@ void render(char *zname,char *fname, char *colourFile, int maskOnly)
 							{
 								printf("%d,%d,%d,%d\n",xo,yo,minx,miny);
 							}
-							uint16_t v;
+							uint8_t v;
 							v = ZARRRead_4(volumeZarr,z/4,y/4,x/4);
 							if (v==0)
 							{
 								printf("x,y,z=%d,%d,%d is 0\n",x,y,z);
 							}
 
-							int vtrans = (v>>0);
-							vtrans = (v-50)*2;
+							int vtrans = v;
 							
 							if (vtrans<0) vtrans=0;
 							if (vtrans>255) vtrans=255;

@@ -6,6 +6,8 @@
 #include <unordered_set>
 #include <vector>
 
+std::vector<std::string> splitOnSpaceDropLast(const std::string& line);
+
 // PatchSpringSimulation
 // ----------------------
 // A direct C++ port of patchsprings.py, encapsulated in a single class.
@@ -29,7 +31,7 @@ public:
     using Transform = std::array<double, 6>;
 
     explicit PatchSpringSimulation(double quadmeshSize,
-                                    std::string outputDir);
+                                    std::string outputDir, bool writePatchPositions = true);
     virtual ~PatchSpringSimulation() = default;
 
     // ---- Setup -------------------------------------------------------
@@ -49,6 +51,15 @@ public:
     // Writes <outputDir>/patchPositions.txt, one "patchNum x y angle" row
     // per loaded patch, in insertion order.
     void savePatches() const;
+
+	// Get position by patch number : used when savePatches isn't used
+	void GetPatchPosition(int patchNum, float &x, float &y, float &a)
+	{
+        int idx = patchIndexLookup_[patchNum];
+		x = patches_[idx].x;
+		y = patches_[idx].y;
+		a = patches_[idx].a;
+	}
 
     // ---- Simulation ----------------------------------------------------
 
@@ -86,7 +97,7 @@ private:
         double dist;
         double angle1, angle2;
     };
-
+	
     // ---- Math helpers (free functions in the Python version) ---------
     static Transform composeTransforms(const Transform& t1, const Transform& t2);
     static Transform invertTransform(const Transform& t);
@@ -124,6 +135,7 @@ private:
     double quadmeshSize_;
     double radiusFactor_; // QUADMESH_SIZE/2.0 - kept for parity; unused elsewhere
     std::string outputDir_;
+	bool writePatchPositions;
 
     static constexpr double CONNECT_FORCE_CONSTANT = 0.01;
     static constexpr double ANGLE_FORCE_CONSTANT = 0.01;

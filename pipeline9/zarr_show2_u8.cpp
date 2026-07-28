@@ -26,7 +26,7 @@ bool LoadOrCreateTiffIntoBuffer(ZARR_1_b700 *za, uint32_t *pointBuffer, int xcoo
 		if (tif)
 		{
 			tdata_t buf;
-			uint32_t row;
+			int row;
 			
 			TIFFSetField(tif, TIFFTAG_IMAGEWIDTH, width); 
 			TIFFSetField(tif, TIFFTAG_IMAGELENGTH, height); 
@@ -97,7 +97,7 @@ bool LoadOrCreateTiffIntoBuffer(ZARR_1_b700 *za, uint32_t *pointBuffer, int xcoo
 		TIFFGetField(tif, TIFFTAG_SAMPLESPERPIXEL, &samplesPerPixel);
 		TIFFGetField(tif, TIFFTAG_BITSPERSAMPLE, &bitsPerSample);
 
-		if (width != tif_width || height != tif_height)
+		if ((uint32_t)width != tif_width || (uint32_t)height != tif_height)
 		{
 			printf("Width and height mismatch: tif=%u,%u, expected=%u,%u\n", tif_width,tif_height,width, height);
 			TIFFClose(tif);
@@ -166,6 +166,8 @@ void ZarrShow2U8(ZARR_1_b700 *za, int xcoord, int ycoord, int zcoord, int width,
 						  if (showGlobalCoord)\
 						  {\
 						    /* Need to convert from patch x,y coord to global x,y coord */ \
+							/* Note that this depends on orientation of first patch, and if this isn't 0 then need */ \
+							/* to adjust contribution of gx and gy */ \
 						    float gx,gy; \
 							if (p->PatchXYToGlobalXY(pt.x,pt.y,gx,gy)) \
 							{\
@@ -200,7 +202,7 @@ void ZarrShow2U8(ZARR_1_b700 *za, int xcoord, int ycoord, int zcoord, int width,
 		if (tif)
 		{
 			tdata_t buf;
-			uint32_t row;
+			int row;
 			
 			TIFFSetField(tif, TIFFTAG_IMAGEWIDTH, width); 
 			TIFFSetField(tif, TIFFTAG_IMAGELENGTH, height); 
@@ -233,19 +235,19 @@ void ZarrShow2U8(ZARR_1_b700 *za, int xcoord, int ycoord, int zcoord, int width,
 					}
 					else if (showGlobalCoord)
 					{
-						uint32_t ci = pointBuffer[i+row*width]-1000000000;
+						uint32_t ci = pointBuffer[i+row*width];
 						
 						uint32_t rm = ci%2000;
-						uint32_t gm = ci%3000;
-						uint32_t bm = ci%5000;
+						uint32_t gm = (ci+1250)%2500;
+						uint32_t bm = (ci+1500)%3000;
 						
 						if (rm>=1000) rm = 2000-rm;
-						if (gm>=1500) gm = 3000-gm;
-						if (bm>=2500) bm = 5000-bm;
+						if (gm>=1250) gm = 2500-gm;
+						if (bm>=1500) bm = 3000-bm;
 						
-						((uint8_t *)buf)[3*i] = 64+rm*191/1000;
-						((uint8_t *)buf)[3*i+1] = 64+gm*191/1500;
-						((uint8_t *)buf)[3*i+2] = 64+bm*191/2500;
+						((uint8_t *)buf)[3*i] = 96+rm*159/1000;
+						((uint8_t *)buf)[3*i+1] = 96+gm*159/1250;
+						((uint8_t *)buf)[3*i+2] = 96+bm*159/1500;
 					}
 					else if (pointBuffer[i+row*width] != 0)
 				    {

@@ -322,6 +322,26 @@ void Patch::CalcExtents(vector<patchPoint> &points)
 	}
 }
 
+int Patch::MinX(void)
+{
+	return minx;
+}
+
+int Patch::MaxX(void)
+{
+	return maxx;
+}
+
+int Patch::MinY(void)
+{
+	return miny;
+}
+
+int Patch::MaxY(void)
+{
+	return maxy;
+}
+
 int Patch::MinZ(void)
 {
 	return minz;
@@ -795,7 +815,7 @@ void Patch::MakeColourGrid(std::vector<patchPoint> &points,std::vector<std::tupl
 		memset(colourGrid[i-minux],0,sizeof(uint32_t)*(maxuy-minuy+1));
 	}
 	
-	for(int i = 0; i<points.size(); i++)
+	for(int i = 0; i<(int)points.size(); i++)
 	{
 		colourGrid[(int)points[i].x-minux][(int)points[i].y-minuy] = (std::get<0>(colours[i])<<16)+(std::get<1>(colours[i])<<8)+std::get<2>(colours[i]);
 	}

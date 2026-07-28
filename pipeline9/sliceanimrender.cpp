@@ -8,16 +8,18 @@
 void SliceAnimRender(ZARR_1_b700 *za,const std::string &path, int patchesper, int zstep, int zscale, int closeUpIter, std::map<int,Patch> *patches, std::vector<int> &patchOrder, bool showGlobalCoord)
 {
 	std::vector<Patch *> pNorm;
+	int ymin,ymax;
+	int xmin,xmax;
 
 	bool forward = true, doneCloseUp = false;
 	int iter = 0, closeUpStart = 0;
-	for(int i = 0; i<patchOrder.size(); i+=patchesper)
+	for(int i = 0; i<(int)patchOrder.size(); i+=patchesper)
 	{
 		printf("At patch %d\n",patchOrder[i]);
 		int zmin,zmax;
 				
 		// Find min and max z for these slices
-		for(int j=i; j<i+patchesper && j<patchOrder.size(); j++)
+		for(int j=i; j<i+patchesper && j<(int)patchOrder.size(); j++)
 		{
 			int patchNum = patchOrder[j];
 			Patch *p = &(*patches)[patchNum];
@@ -26,6 +28,14 @@ void SliceAnimRender(ZARR_1_b700 *za,const std::string &path, int patchesper, in
 				zmin = p->MinZ();
 			if (p->MaxZ() > zmax || j==i)
 				zmax = p->MaxZ();
+			if (p->MinY() < ymin || j==0)
+				ymin = p->MinY();
+			if (p->MaxY() > ymax || j==0)
+				ymax = p->MaxY();
+			if (p->MinX() < xmin || j==0)
+				xmin = p->MinX();
+			if (p->MaxX() > xmax || j==0)
+				xmax = p->MaxX();
 	
 			pNorm.push_back(p);
 		}
@@ -60,7 +70,7 @@ void SliceAnimRender(ZARR_1_b700 *za,const std::string &path, int patchesper, in
 				// Output details about which patche are in this slice
 				{
 					std::ofstream os(fileNameRoot+".csv");
-					os << z << ":";
+					os << z << "," << xmin << "," << ymin << "," << xmax << "," << ymax << ",";
 					bool first=true;
 					for(auto &p : pShown)
 					{

@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <iterator>
 #include <dirent.h>
+#include <random>
 
 #include "parameters.h"
 
@@ -22,10 +23,12 @@
 #include "patchcolourkey.h"
 #include "position_patches.h"
 #include "zarr_show2_u8.h"
-
 #include "PatchSpringSimulation.hpp"
+#include "anneal.h"
+#include "visitorder.h"
+#include "scoreplacement.h"
 
-#define PATCH_LIMIT 1000
+#define PATCH_LIMIT 4000
 
 void MemInfo(void)
 {
@@ -71,7 +74,7 @@ bool GetNewSeed(BigPatch *bp,BigPatch *bpb,float (&seed)[9])
 		FindBigPatchPointNeighbours(bp,newSeed,neighbours);
 		
 
-		printf("Seed neighbours:%d\n",neighbours.size());
+		printf("Seed neighbours:%d\n",(int)neighbours.size());
 		// If it only has one neighbour, look for neighbours of this neighbour
 		if (neighbours.size()==2)
 		{
@@ -479,7 +482,7 @@ void LoadPatchesAndRelationships(std::map<int,Patch> *patches, 	AlignmentMap *am
 	
 }
 
-void LoadBadPatches(std::set<int> &badPatches, std::set<std::pair<int,int>> &manualBadRel)
+void LoadBadPatches(std::set<int> &badPatches, std::set<std::pair<int,int>> &manualBadRel, bool includeBadBridges = false)
 {
 		{
 			int i;
@@ -501,6 +504,7 @@ void LoadBadPatches(std::set<int> &badPatches, std::set<std::pair<int,int>> &man
 			}
 		}
 
+		if (includeBadBridges)
 		{
 			int i;
 			
@@ -524,604 +528,6 @@ void LoadBadPatches(std::set<int> &badPatches, std::set<std::pair<int,int>> &man
 			}
 		}
 
-}
-
-struct ComponentInfo {
-    int size;
-    int minVertex;
-};
-
-std::vector<ComponentInfo> getComponents(const std::map<int, std::set<int>>& neighbourList)
-{
-    std::vector<ComponentInfo> components;
-    std::set<int> globalVisited;
-
-    for (auto& [vertex, neighbours] : neighbourList)
-    {
-        if (globalVisited.count(vertex)) continue;
-
-        // BFS over this component
-        std::set<int> visited;
-        std::queue<int> toVisit;
-
-        toVisit.push(vertex);
-        visited.insert(vertex);
-
-        while (!toVisit.empty())
-        {
-            int current = toVisit.front();
-            toVisit.pop();
-
-            for (int neighbour : neighbourList.at(current))
-            {
-                if (!visited.count(neighbour))
-                {
-                    visited.insert(neighbour);
-                    toVisit.push(neighbour);
-                }
-            }
-        }
-
-        globalVisited.insert(visited.begin(), visited.end());
-
-        components.push_back({
-            (int)visited.size(),
-            *visited.begin()  // set is ordered, so begin() is the minimum
-        });
-    }
-
-    return components;
-}
-
-void MakeVisitOrder(AlignmentMap *am, std::map<int,Patch> *patches,std::set<int> &badPatches,std::set<std::pair<int,int>> &manualBadRel, std::vector<int> &patchOrder, std::vector<std::pair<int,alignment>> &alignmentOrder,std::map<int,affineTx> &patchPositions, std::map<int,std::set<int> > &neighbourList)
-{
-		int minPatchInNeighbourList = -1;
-		
-		printf("Constructing neighbour list\n");
-		for(auto &a : *am)
-		{
-			int patch1 = a.first;
-		
-			if (badPatches.count(patch1)==0)
-			{
-				// Iterate over alignments
-				for(auto al : a.second)
-				{	
-					int patch2 = std::get<0>(al);
-
-					if (badPatches.count(patch2)==0 && manualBadRel.count(std::pair<int,int>(patch1,patch2))==0 && manualBadRel.count(std::pair<int,int>(patch2,patch1))==0)
-					{
-						if (neighbourList.count(patch1)==0)
-							neighbourList[patch1] = std::set<int>();
-						if (neighbourList.count(patch2)==0)
-							neighbourList[patch2] = std::set<int>();
-						
-						neighbourList[patch1].insert(patch2);
-						neighbourList[patch2].insert(patch1);
-						
-						if (minPatchInNeighbourList==-1 || patch1<minPatchInNeighbourList)
-							minPatchInNeighbourList = patch1;
-						if (minPatchInNeighbourList==-1 || patch2<minPatchInNeighbourList)
-							minPatchInNeighbourList = patch2;
-					}
-				}
-			}
-		}
-
-		std::vector<ComponentInfo> components = getComponents(neighbourList);
-		
-		printf("Size and min vertex of components\n");
-		for(auto &ci : components)
-		{
-			printf("%d : %d\n",ci.size,ci.minVertex);
-		}
-
-		
-		printf("Calculating patch order...\n");
-		
-		std::set<int> visited;
-		int currentVisit = minPatchInNeighbourList;
-		std::set<int> toVisitSet;
-		
-		while(true)
-		{
-			visited.insert(currentVisit);
-
-			patchOrder.push_back(currentVisit);
-			
-			std::set_difference(neighbourList[currentVisit].begin(),
-								neighbourList[currentVisit].end(),
-								visited.begin(),
-								visited.end(),
-								std::inserter(toVisitSet,toVisitSet.begin()));
-			
-			if (toVisitSet.size()==0)
-				break;
-			
-			auto nh = toVisitSet.extract(toVisitSet.begin());
-			currentVisit = nh.value();
-		}
-
-		{
-			std::ofstream os(OUTPUT_DIR "/patchorder.csv");
-			for (auto i : patchOrder)
-			{
-				os << i << std::endl;
-			}
-		}
-		
-		printf("Producing alignment order...\n");
-
-		PositionPatches(patches,*am,patchOrder,patchPositions,alignmentOrder,manualBadRel);
-}
-
-float ScorePlacement(AlignmentMap *am, std::map<int,Patch> *patches,  std::vector<int> &patchOrder, std::set<int> &patchesToColour, std::set<std::pair<int,int>> &manualGoodRel, std::set<int> &patchesInvolved, int maxDistanceThresh, float stepSize=1.0)
-{
-	for (auto i : patchOrder)
-		(*patches)[i].UnsetPosition();
-
-			
-	std::map<int,int> distanceDistribution;
-
-	// This must come from patchsprings.py
-	// TODO - patchsprings will be rewritten in C++ soon
-	ifstream is(OUTPUT_DIR "/patchPositions.txt");
-				
-	while(true)
-	{
-		int patchNum;
-		float x,y,angle;
-		if (is >> patchNum >> x >> y >> angle)
-			(*patches)[patchNum].SetPosition(x,y,angle);
-		else
-			break;
-	}
-
-	printf("Loaded patch positions\n");
-				
-	// Which patches could be in each x,y chunk?
-	std::map<std::pair<int,int>,std::set<int>> patchIndex;
-	int patchIndexScale = 16;
-				
-    // also work out xmin,xmax,ymin,ymax;
-	
-	float xmin=0,ymin=0,xmax=0,ymax=0;
-	bool first = true;
-	{
-		for (auto i : patchOrder)
-		{			
-			if (patches->count(i)==0)
-			{
-				printf("Patch %d not found in 'patches'\n");
-				exit(-1);
-			}
-			Patch &p = (*patches)[i];
-			for(PatchIterator pi = p.Begin(); p.Next(pi);)
-			{
-				float x,y;
-				p.TransformPoint(pi.p->x,pi.p->y,x,y);
-				
-				if (x<xmin || first) xmin=x;
-				if (y<ymin || first) ymin=y;
-				if (x>xmax || first) xmax=x;
-				if (y>ymax || first) ymax=y;
-				
-				first = false;
-				
-				int xi = x/patchIndexScale;
-				int yi = y/patchIndexScale;
-							
-				for(int xo = xi-1; xo <= xi+1; xo++)
-				for(int yo = yi-1; yo <= yi+1; yo++)
-				{
-					if (patchIndex.count(std::pair<int,int>(xo,yo))==0)
-					{
-						patchIndex[std::pair<int,int>(xo,yo)] = std::set<int>();
-					}
-								
-					patchIndex[std::pair<int,int>(xo,yo)].insert(i);
-				}
-								
-			}
-		}
-	}
-				
-	printf("Finished indexing patches\n");
-	printf("xmin,ymin,xmax,ymax=%f,%f,%f,%f\n",xmin,ymin,xmax,ymax);		
-	float score = 0;
-	
-	// Now iterate over some coords...
-	{		
-		Patch outputPatch;
-		std::vector<patchPoint> points;
-		std::vector<std::tuple<int,int,int>> colours;
-					
-		std::set<std::list<int> > mismatches;
-
-		/*			for(float x=-1600+719*2; x<=-1600+719*2+800; x+=1)
-					{
-						for(float y=-2600+1500*2; y<=-2600+1500*2+800; y+=1)
-						{
-		*/			
-		for(float x=xmin; x<=xmax; x+=stepSize)
-		{
-			for(float y=ymin; y<=ymax; y+=stepSize)
-			{
-				std::vector<std::tuple<int,Vec3,Vec3>> contributions;
-							
-				int xi = x/patchIndexScale;
-				int yi = y/patchIndexScale;
-							
-				if (patchIndex.count(std::pair<int,int>(xi,yi))!=0)
-				{
-					Vec3 totalV;
-					float totalWeight = 0.0;
-											
-					//printf("{\n");
-					for(auto &i : patchIndex[std::pair<int,int>(xi,yi)])
-					{
-						Vec3 v;
-						Vec3 normal;
-						float weight=0.0;
-									
-						if ((*patches)[i].FindGlobalXY(x,y,v,normal,weight))						
-							if (weight>0.0)
-							{
-								//printf("patch=%d v=%f,%f,%f weight=%f\n",i,v.x,v.y,v.z,weight);
-								totalV += v*weight;
-								totalWeight += weight;
-										
-								contributions.push_back(std::tuple<int,Vec3,Vec3>(i,v,normal));
-							}
-					}
-					//printf("}\n");
-
-					// Look for the largest distance between pairs of contributions, in the direction of normals
-					
-					// If there are any contributions, increase the score by 1 for area covered
-					if (contributions.size()>0)
-						score+=1.0;
-					
-					float maxDistance = 0;
-					for(int i=0; i<contributions.size(); i++)
-					{
-						for(int j=i+1; j<contributions.size(); j++)
-						{
-							Vec3 posi = std::get<1>(contributions[i]);
-							Vec3 normali = std::get<2>(contributions[i]);
-							Vec3 posj = std::get<1>(contributions[j]);
-							Vec3 normalj = std::get<2>(contributions[j]);
-										
-							float distancei = fabs(Vec3::dot(normali,posi - posj));
-							float distancej = fabs(Vec3::dot(normalj,posi - posj));
-										
-							float distance = distancei>distancej ? distancei : distancej;
-
-							// Don't report on any that are to be excluded from report
-							if (distance > maxDistance &&
-							  manualGoodRel.count({std::get<0>(contributions[i]),std::get<0>(contributions[j])})==0 &&
-							  manualGoodRel.count({std::get<0>(contributions[j]),std::get<0>(contributions[i])})==0)
-							{
-								maxDistance = distance;
-							}
-										
-							int distance_i = (int)distance;
-										
-							if (distanceDistribution.count(distance_i)==0)
-							{
-								distanceDistribution[distance_i] = 0;
-							}
-										
-							distanceDistribution[distance_i]++;
-						}
-					}
-
-					// decrease score - bigger decrease is points are a long distance apart
-					score -= maxDistance/30;
-					
-					if (maxDistanceThresh!=-1 && maxDistance>(float)maxDistanceThresh)
-					{
-						printf("Distance violation (%f) when flattening at %f,%f\n",maxDistance,x,y);
-						for(auto &c : contributions)
-						{
-							printf("%d : %f,%f,%f\n",std::get<0>(c),std::get<1>(c).x,std::get<1>(c).y,std::get<1>(c).z);
-						}
-									
-						std::list<int> mismatch;
-						for(auto &c : contributions)
-						{
-							mismatch.push_back(std::get<0>(c));
-						}
-									
-									
-						mismatches.insert(mismatch);
-					}
-
-					if (totalWeight != 0.0)
-					{
-						totalV /= totalWeight;
-						points.push_back(patchPoint(x,y,totalV.x,totalV.y,totalV.z));
-									
-						int r=255,g=255,b=255;
-									
-						std::vector<int> colourableContribs;
-									
-						for(auto c : contributions)
-						{
-							int patch = std::get<0>(c);
-							if (patchesToColour.count(patch)!=0)
-								colourableContribs.push_back(patch);
-						}
-								
-						if (colourableContribs.size()>0)
-						{
-							int n = rand()%colourableContribs.size();
-							PatchNumberToColour(colourableContribs[n],r,g,b);
-						}
-
-						// Use a red hue to indicate thickness
-						r += (int)maxDistance*4;
-						g -= (int)maxDistance*4;
-						b -= (int)maxDistance*4;
-									
-						if (r>255) r=255;
-						if (g<0) g=0;
-						if (b<0) b=0;
-									
-						colours.push_back({r,g,b});
-					}
-
-					//printf("%f,%f has coords %f,%f,%f\n",x,y,totalV.x,totalV.y,totalV.z); 
-							
-				}
-							
-			}
-		}
-					
-		outputPatch.BuildFromPoints(points,colours,0);
-		outputPatch.Write(OUTPUT_DIR,0);
-					
-		printf("Distance distribution\n");
-		for(const auto &dd : distanceDistribution)
-		{
-			printf("%d,%d\n",dd.first,dd.second);
-		}
-					
-		printf("Mismatches\n");
-		for(const auto &mm : mismatches)
-		{
-			for(const auto &m : mm)
-			{
-				printf("%d ",m);
-				patchesInvolved.insert(m);
-			}
-			printf("\n");
-		}
-					
-		for(auto p : patchesInvolved)
-		{
-			printf("%d ",p);
-		}
-		printf("\n");
-	}
-	
-	return score;
-}
-
-/*
-
-Need to combine the v, patchsprings, f operations into one
-f will produce a score
-v takes as input a vector that lists which patches should be ignored
-
-development pathway
-
-isolate f into a function, make it output a score
-
-c++ version of patchsprings
-
-*/
-
-namespace {
-
-std::vector<std::string> splitOnSpaceDropLast(const std::string& line) {
-    // Mirrors Python's `l.split(' ')[:-1]`.
-    std::vector<std::string> tokens;
-    std::stringstream ss(line);
-    std::string tok;
-    while (std::getline(ss, tok, ' ')) tokens.push_back(tok);
-    return tokens;
-}
-
-} // namespace
-
-// size is the maximum number of patches to be added or removed
-void MutateState(std::set<int> &newState, std::vector<int> &patchNums, std::set<int> &badPatches, int size)
-{
-	int addRemove = std::rand()%2;
-		
-	int numAddRemove = 1+(std::rand()%size);
-	
-	if (addRemove || newState.size()==0)
-	{
-		for(int j=0; j<numAddRemove; j++)
-		{
-			// 10 attempts in case patch is already in badPatches or newState
-			// (we expected that most patches won't be)
-			for(int i=0; i<10; i++)
-			{
-				// pick random patch and add it to newState
-				int rp = std::rand()%patchNums.size();
-
-				if (badPatches.count(patchNums[rp])==0 && newState.count(patchNums[rp])==0)
-				{
-					newState.insert(patchNums[rp]);
-					printf("Added patch to state\n");
-					break;
-				}
-			}
-		}
-	}
-	
-	else if (newState.size()>0)
-	{
-		for(int j=0; j<numAddRemove && newState.size()>0; j++)
-		{
-			auto it = std::next(newState.begin(), rand()%newState.size()); // walk to a random position, O(n)
-			newState.erase(it); 
-			printf("Removed patch from state\n");
-		}
-	}
-}
-
-bool Accept(float score, float currentScore, int iters, int maxIters)
-{
-	float scoreDiff = score - currentScore;
-	
-	if (scoreDiff>0.0)
-		return true;
-	
-	// Acceptance probability depends on scoreDiff and temperature and chance
-	
-	// temp between 0 and 1
-	float temp = (float)(maxIters - iters) / (float)maxIters;
-
-	// maximum score difference that could be accepted if temp = 1.0
-	int maxAccept = 200;
-	
-	if (temp * (float)(rand()%maxAccept) > -scoreDiff)
-	{
-		return true;
-	}
-	
-	return false;
-}
-
-void Anneal(void)
-{
-	AlignmentMap *am = new AlignmentMap;
-	std::map<int,Patch> *patches = new std::map<int,Patch>;
-	
-	printf("Loading patches and relationships...\n");
-	LoadPatchesAndRelationships(patches,am,PATCH_LIMIT);
-
-	AugmentAlignmentMap(*am);
-
-	std::vector<int> patchNums;
-	for(auto &i : *patches)
-		patchNums.push_back(i.first);
-	
-	std::set<int> badPatches;
-	std::set<std::pair<int,int>> manualBadRel;
-
-	LoadBadPatches(badPatches,manualBadRel);
-
-	// a state vector is a set of additional bad patches
-	std::set<int> currentState;
-	std::set<int> newState;
-	
-	float currentScore=0,score=0;
-	
-	std::vector<float> scoreLog,currentScoreLog;
-	
-	int maxIters = 200;
-	for(int iters = 0; iters<maxIters; iters++)
-	{
-		newState = currentState;
-		
-		if (iters != 0)
-		{			
-			MutateState(newState,patchNums,badPatches,5);
-		}
-		
-		std::set<int> effectiveBadPatches;
-		
-		std::set_union(badPatches.begin(), badPatches.end(),
-					   newState.begin(), newState.end(),
-                       std::inserter(effectiveBadPatches, effectiveBadPatches.begin()));
-					   
-		std::vector<int> patchOrder;
-		std::vector<std::pair<int,alignment>> alignmentOrder;
-		std::map<int,affineTx> patchPositions;
-		std::map<int,std::set<int> > neighbourList;
-		
-		MakeVisitOrder(am,patches,effectiveBadPatches,manualBadRel,patchOrder,alignmentOrder,patchPositions,neighbourList);
-
-		{
-			ofstream os(OUTPUT_DIR "/alignmentorder.txt");
-			
-			for(auto &a : alignmentOrder)
-			{
-				os << a.first << " "
-				   << (*patches)[a.first].radius << " "			
-				   << std::get<0>(a.second) << " "
-				   << std::get<7>(a.second) << " "
-				   << std::get<8>(a.second) << " "
-				   << std::get<9>(a.second) << " "
-				   << std::get<10>(a.second) << " "
-				   << std::get<11>(a.second) << " "
-				   << std::get<12>(a.second) << " "
-				   << endl;
-			}
-		}
-	
-	    printf("Running patchsprings...\n");
-		{
-			PatchSpringSimulation pss(QUADMESH_SIZE,OUTPUT_DIR);
-			
-			pss.loadPatchVolCoords(OUTPUT_DIR "/patchVolCoords.csv");
-			
-			std::vector<std::vector<std::string>> alignmentOrderDash;
-			{
-				std::ifstream f(OUTPUT_DIR "/alignmentorder.txt");
-				if (!f) {
-					std::cerr << "Could not open alignmentorder.txt\n";
-				}
-				std::string line;
-				while (std::getline(f, line)) {
-					alignmentOrderDash.push_back(splitOnSpaceDropLast(line));
-				}
-			}
-
-			printf("Loading patches for patchsprings...\n");
-			pss.loadPatches(alignmentOrderDash, patches->size());
-			
-			printf("Running patchsprings...\n");
-		    pss.run(50);
-			printf("Finished patchsprings...\n");
-
-		}
-	    printf("Finished running patchsprings\n");
-		
-		std::set<int> patchesToColour;
-		std::set<std::pair<int,int>> manualGoodRel;
-		std::set<int> patchesInvolved;
-		
-		score = ScorePlacement(am, patches, patchOrder, patchesToColour, manualGoodRel, patchesInvolved, 30,5);
-		
-		printf("Score = %f\n",score);
-	
-		if (iters==0 || Accept(score,currentScore,iters,maxIters))
-		{
-			printf("New best score\n");
-			currentScore = score;
-			currentState = newState;
-		}
-        scoreLog.push_back(score);	
-        currentScoreLog.push_back(currentScore);	
-	}
-	
-	printf("Scores:\n");
-	for(int i = 0; i<scoreLog.size(); i++)
-	{
-		printf("%f,%f\n",scoreLog[i],currentScoreLog[i]);
-	}
-	
-	printf("State:\n");
-	for(auto i : currentState)
-	{
-		printf("%d\n",i);
-	}
 }
 
 int main(int argc, char *argv[])
@@ -1181,7 +587,6 @@ int main(int argc, char *argv[])
 		
 		delete al;
 			
-		int numSuccessfulAlignments = 0, badVarianceCount = 9;
 		for(auto const &a : alignments)
 		{
 			printf("%d (%f,%f,%f,%f,%f,%f) (%f,%f,%f,%f,%f,%f)\n",
@@ -1411,7 +816,7 @@ int main(int argc, char *argv[])
 		std::map<int,affineTx> patchPositions;
 		std::map<int,std::set<int> > neighbourList;
 		
-		MakeVisitOrder(am,patches,badPatches,manualBadRel,patchOrder,alignmentOrder,patchPositions,neighbourList);
+		MakeVisitOrder(am,patches,badPatches,manualBadRel,patchOrder,alignmentOrder,patchPositions,neighbourList,true);
 		
 		{
 			ofstream os(OUTPUT_DIR "/alignmentorder.txt");
@@ -1474,7 +879,8 @@ int main(int argc, char *argv[])
 			}
 
 			{
-				std::ofstream os(OUTPUT_DIR "/badbridges.csv");
+				// remember to copy this to badbridges.csv
+				std::ofstream os(OUTPUT_DIR "/badbridges_out.csv");
 				for(auto i : badBridges)
 				{
 					os << i << std::endl;;
@@ -1568,13 +974,35 @@ int main(int argc, char *argv[])
 			
 			patchesInvolved.clear();
 
-			ScorePlacement(am, patches, patchOrder, patchesToColour, manualGoodRel, patchesInvolved, maxDistanceThresh);
+			{
+				for (auto i : patchOrder)
+					(*patches)[i].UnsetPosition();
+
+				// This must come from patchsprings.py
+				// TODO - patchsprings will be rewritten in C++ soon
+				ifstream is(OUTPUT_DIR "/patchPositions.txt");
+				
+				while(true)
+				{
+					int patchNum;
+					float x,y,angle;
+					if (is >> patchNum >> x >> y >> angle)
+						(*patches)[patchNum].SetPosition(x,y,angle);
+					else
+						break;
+				}
+			}
+			
+			ScorePlacement(am, patches, patchOrder, patchesToColour, manualGoodRel, patchesInvolved, maxDistanceThresh, true, false);
 		}
 		
 		delete patches;
 		delete am;
 	}
-	
+
+    // 'a' and 'A' generate images in sliceanim - moving up and down the scroll as more and more patches are added.
+    // This helps to spot mistakes.	
+	// after generating sliceanim, turn it into an mp4 using this
 	// ffmpeg -framerate 24 -i d:/pipelineOutput/sliceanim/s_%08d.tif -vf scale=iw/2:ih/2 -c:v libx264 -pix_fmt yuv420p d:/pipelineOutput/sliceanim.mp4
 	// A means show global coords of patches
 	if (mode=='a' || mode=='A')
@@ -1722,8 +1150,75 @@ int main(int argc, char *argv[])
 
 	if (mode=='n')
 	{
+		int iterations = 100;
+		
+		if (argc>2)
+			iterations = atoi(argv[2]);
+
+
+		AlignmentMap *am = new AlignmentMap;
+		std::map<int,Patch> *patches = new std::map<int,Patch>;
+
+		printf("Loading patches and relationships...\n");
+		LoadPatchesAndRelationships(patches,am,PATCH_LIMIT);
+
+		AugmentAlignmentMap(*am);
+
+		std::vector<int> patchNums;
+		for(auto &i : *patches)
+			patchNums.push_back(i.first);
+
+		std::set<int> badPatches;
+		std::set<std::pair<int,int>> manualBadRel;
+
+		LoadBadPatches(badPatches,manualBadRel,false);
+		
+		std::set<int> badBridges;
+		{
+			int i;
+			std::ifstream is(OUTPUT_DIR "/badbridges.csv");
+			while(is>>i)
+			{
+				badBridges.insert(i);
+			}
+		}
+
 		printf("Annealing\n");
-		Anneal();
+		Anneal(am,patches,patchNums,badPatches,manualBadRel,badBridges,iterations,4);
+		
+		delete patches;
+		delete am;
+	}
+
+	if (mode=='h')
+	{
+	    printf("Running patchsprings...\n");
+		{
+			PatchSpringSimulation pss(QUADMESH_SIZE,OUTPUT_DIR);
+			
+			pss.loadPatchVolCoords(OUTPUT_DIR "/patchVolCoords.csv");
+			
+			std::vector<std::vector<std::string>> alignmentOrderDash;
+			{
+				std::ifstream f(OUTPUT_DIR "/alignmentorder.txt");
+				if (!f) {
+					std::cerr << "Could not open alignmentorder.txt\n";
+				}
+				std::string line;
+				while (std::getline(f, line)) {
+					alignmentOrderDash.push_back(splitOnSpaceDropLast(line));
+				}
+			}
+
+			printf("Loading patches for patchsprings...\n");
+			pss.loadPatches(alignmentOrderDash, PATCH_LIMIT);
+			
+			printf("Running patchsprings...\n");
+		    pss.run(50);
+			printf("Finished patchsprings...\n");
+
+		}
+	    printf("Finished running patchsprings\n");
 	}
 	
 	printf("Done\n");

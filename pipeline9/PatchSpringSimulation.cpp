@@ -12,12 +12,25 @@ namespace {
 constexpr double PI = 3.14159265358979323846;
 }
 
+
+
+std::vector<std::string> splitOnSpaceDropLast(const std::string& line)
+{
+    // Mirrors Python's `l.split(' ')[:-1]`.
+    std::vector<std::string> tokens;
+    std::stringstream ss(line);
+    std::string tok;
+    while (std::getline(ss, tok, ' ')) tokens.push_back(tok);
+    return tokens;
+}
+
+
 // ------------------------------------------------------------------------
 // Construction
 // ------------------------------------------------------------------------
 
-PatchSpringSimulation::PatchSpringSimulation(double quadmeshSize, std::string outputDir)
-    : quadmeshSize_(quadmeshSize),
+PatchSpringSimulation::PatchSpringSimulation(double quadmeshSize, std::string outputDir, bool writePatchPositions)
+    : quadmeshSize_(quadmeshSize), writePatchPositions(writePatchPositions),
       radiusFactor_(quadmeshSize / 2.0),
       outputDir_(std::move(outputDir)) {}
 
@@ -93,7 +106,7 @@ void PatchSpringSimulation::loadPatches(
     for (const auto& l : alignmentOrder) {
 		if (l.size()<=0)
 			continue;
-	    printf("size %d\n",(int)l.size());
+	    // printf("size %d\n",(int)l.size());
         double radius = std::stod(l[1]);
         int other = std::stoi(l[2]);
         std::array<double, 6> tx{};
@@ -111,7 +124,7 @@ void PatchSpringSimulation::loadPatches(
             patchIndexLookup_[patchNum] = static_cast<int>(patches_.size()) - 1;
             patchInsertionOrder_.push_back(patchNum);
             patchNums.insert(patchNum);
-			printf("Added patch %d\n",patchNum);
+			//printf("Added patch %d\n",patchNum);
         } else {
             int linePatchNum = std::stoi(l[0]);
             if (linePatchNum != patchNum) {
@@ -154,14 +167,14 @@ void PatchSpringSimulation::loadPatches(
                     patchVel_.push_back({0, 0, 0});
                     patchAcc_.push_back({0, 0, 0});
                     patchInsertionOrder_.push_back(patchNum);
-					printf("Added patch %d\n",patchNum);
+					//printf("Added patch %d\n",patchNum);
                 } else {
                     double newDistance = distance(patches_.back().x, patches_.back().y,
                                                    transform[2], transform[5]);
-                    std::cout << "Patchnum " << patchNum << ", other " << other
-                              << ", distance " << newDistance << "\n";
+                    //std::cout << "Patchnum " << patchNum << ", other " << other
+                    //          << ", distance " << newDistance << "\n";
                     if (newDistance > MAX_CORRECTABLE_DISTANCE) {
-                        std::cout << "Patch " << patchNum << " is a bad patch\n\n";
+                        //std::cout << "Patch " << patchNum << " is a bad patch\n\n";
                         badPatch = true;
                         int lastPatchIndex = static_cast<int>(patches_.size()) - 1;
                         while (!connections_.empty() && connections_.back().p1 == lastPatchIndex) {
@@ -187,11 +200,12 @@ void PatchSpringSimulation::loadPatches(
             }
         }
     }
-
+/*
     if (!patchNums.empty()) {
         int maxPatch = *std::max_element(patchNums.begin(), patchNums.end());
         std::cout << "Max patch number:" << maxPatch << "\n";
     }
+*/
 }
 
 void PatchSpringSimulation::loadPatchVolCoords(const std::string& filename) {
@@ -214,7 +228,7 @@ void PatchSpringSimulation::loadPatchVolCoords(const std::string& filename) {
 }
 
 void PatchSpringSimulation::savePatches() const {
-    std::cout << "Saving positions...\n";
+    //std::cout << "Saving positions...\n";
     std::ofstream f(outputDir_ + "/patchPositions.txt");
     if (f) {
         for (int patchNum : patchInsertionOrder_) {
@@ -224,7 +238,7 @@ void PatchSpringSimulation::savePatches() const {
             f << patchNum << " " << p.x << " " << p.y << " " << addAngle(p.a, p.ga) << "\n";
         }
     }
-    std::cout << "Saved\n";
+    //std::cout << "Saved\n";
 }
 
 // ------------------------------------------------------------------------
@@ -542,7 +556,8 @@ void PatchSpringSimulation::runIteration() {
     ++iterationCount_;
 
     if (iterationCount_ == 50) {
-        savePatches();
+		if (writePatchPositions)
+			savePatches();
         std::vector<std::pair<int, double>> movements;
         for (int patchNum : patchInsertionOrder_) {
             auto it = patchIndexLookup_.find(patchNum);
@@ -552,15 +567,16 @@ void PatchSpringSimulation::runIteration() {
         }
         std::sort(movements.begin(), movements.end(),
                   [](const auto& a, const auto& b) { return a.second < b.second; });
-
-        std::size_t start = movements.size() > 100 ? movements.size() - 100 : 0;
+/*
+        std::size_t start = movements.size() > 0 ? movements.size() - 1 : 0;
         for (std::size_t i = start; i < movements.size(); ++i) {
-            std::cout << "Patch " << movements[i].first << " moved " << movements[i].second
+            std::cout << "Largest movement: Patch " << movements[i].first << " moved " << movements[i].second
                       << "\n";
         }
+*/
     }
 
-    show();
+    //show();
 }
 
 void PatchSpringSimulation::run(int maxIterations) {

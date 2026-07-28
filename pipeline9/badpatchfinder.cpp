@@ -271,7 +271,7 @@ void BadPatchFinder::FindBadPatchesGeneral(AlignmentMap &am, std::map<int,Patch>
 		currentSequence.push_back(currentPatch);
 		for(int i = 1; i<length; i++)
 		{
-			if (indices[i]<am[currentPatch].size())
+			if (indices[i]<(int)am[currentPatch].size())
 			{
 				currentPatch = std::get<0>(am[currentPatch][indices[i]]);
 				if (badPatches.count(currentPatch)!=0) hasBadPatch=true;
@@ -309,7 +309,7 @@ void BadPatchFinder::FindBadPatchesGeneral(AlignmentMap &am, std::map<int,Patch>
 				int currentPatch = indexedPatches[indices[0]];
 				for(int i = 1; i<length; i++)
 				{
-					if (indices[i]<am[currentPatch].size())
+					if (indices[i]<(int)am[currentPatch].size())
 					{
 						currentPatch = std::get<0>(am[currentPatch][indices[i]]);
 					}
@@ -365,7 +365,7 @@ void BadPatchFinder::FindBadPatchesGeneral(AlignmentMap &am, std::map<int,Patch>
 						aftx = AffineTxMultiply(aftx,nextAftx);
 					}
 					
-				if (count == i.size()-1)
+				if (count == (int)i.size()-1)
 				{
 					PlacePatch((*patches)[p],p,aftx,false);
 					

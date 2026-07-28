@@ -1,11 +1,20 @@
 CC=g++
-CFLAGS=-O3 -Wall
+CFLAGS=-O3 -Wall -fopenmp
 LFLAGS=-lblosc2 -ltiff -L/usr/local/lib -I/usr/local/include
 
-simpaper10: common_types.o patch_generator.o simpaper10.o zarr_1.o zarr_1_b700.o bigpatch.o align_patches.o erasepoints.o badpatchfinder.o zarr_show2_u8.o sliceanimrender.o position_patches.o calcvectorfield.o patchcolourkey.o PatchSpringSimulation.o
+simpaper10: common_types.o patch_generator.o simpaper10.o zarr_1.o zarr_1_b700.o bigpatch.o align_patches.o erasepoints.o badpatchfinder.o zarr_show2_u8.o sliceanimrender.o position_patches.o calcvectorfield.o patchcolourkey.o PatchSpringSimulation.o anneal.o visitorder.o scoreplacement.o
 	$(CC) -o $@ $^ $(CFLAGS) $(LFLAGS)
 
 PatchSpringSimulation.o: PatchSpringSimulation.cpp PatchSpringSimulation.hpp
+	$(CC) -c $< $(CFLAGS)
+
+anneal.o: anneal.cpp anneal.h visitorder.h scoreplacement.h PatchSpringSimulation.cpp
+	$(CC) -c $< $(CFLAGS)
+
+visitorder.o: visitorder.cpp visitorder.h position_patches.h
+	$(CC) -c $< $(CFLAGS)
+
+scoreplacement.o: scoreplacement.cpp scoreplacement.h
 	$(CC) -c $< $(CFLAGS)
 	
 zarr_1.o: zarr_1.c zarr_1.h
