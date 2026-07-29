@@ -7,9 +7,9 @@
 #include "parameters.h"
 #include "common_types.h"
 
-float ScorePlacement(AlignmentMap *am, std::map<int,Patch> *patches,  std::vector<int> &patchOrder, std::set<int> &patchesToColour, std::set<std::pair<int,int>> &manualGoodRel, std::set<int> &patchesInvolved, int maxDistanceThresh, float stepSize=1.0, bool writeColours = true, bool showDD = false)
+float ScorePlacement(AlignmentMap *am, std::map<int,Patch> *patches, std::map<int,std::tuple<float,float,float>> &patchPositionsXYA, std::vector<int> &patchOrder, std::set<int> &patchesToColour, std::set<std::pair<int,int>> &manualGoodRel, std::set<int> &patchesInvolved, int maxDistanceThresh, float stepSize=1.0, bool writePatch = true, bool writeColours = true, bool showDD = false)
 {
-
+    //printf("Starting ScorePlacement\n");
 			
 	std::map<int,int> distanceDistribution;
 
@@ -35,7 +35,13 @@ float ScorePlacement(AlignmentMap *am, std::map<int,Patch> *patches,  std::vecto
 			for(PatchIterator pi = p.Begin(); p.Next(pi);)
 			{
 				float x,y;
-				p.TransformPoint(pi.p->x,pi.p->y,x,y);
+				if (patchPositionsXYA.count(i)==0)
+				{
+					printf("Couldn't find %d in patchPositionsXYA\n",i);
+					exit(-1);
+				}
+	
+				p.TransformPoint(patchPositionsXYA[i],pi.p->x,pi.p->y,x,y);
 				
 				if (x<xmin || first) xmin=x;
 				if (y<ymin || first) ymin=y;
@@ -100,8 +106,8 @@ float ScorePlacement(AlignmentMap *am, std::map<int,Patch> *patches,  std::vecto
 						Vec3 v;
 						Vec3 normal;
 						float weight=0.0;
-									
-						if ((*patches)[i].FindGlobalXY(x,y,v,normal,weight))						
+				
+						if ((*patches)[i].FindGlobalXY(patchPositionsXYA[i],x,y,v,normal,weight))						
 							if (weight>0.0)
 							{
 								//printf("patch=%d v=%f,%f,%f weight=%f\n",i,v.x,v.y,v.z,weight);
@@ -122,6 +128,7 @@ float ScorePlacement(AlignmentMap *am, std::map<int,Patch> *patches,  std::vecto
 						totalPoints+=1.0;
 					}
 					
+					//printf("Iterating over contributions\n");
 					float maxDistance = 0;
 					for(int i=0; i<(int)contributions.size(); i++)
 					{
@@ -143,8 +150,6 @@ float ScorePlacement(AlignmentMap *am, std::map<int,Patch> *patches,  std::vecto
 							  manualGoodRel.count({std::get<0>(contributions[j]),std::get<0>(contributions[i])})==0)
 							{
 								maxDistance = distance;
-								patchesInvolved.insert(std::get<0>(contributions[i]));
-								patchesInvolved.insert(std::get<0>(contributions[j]));
 							}
 										
 							int distance_i = (int)distance;
@@ -159,16 +164,17 @@ float ScorePlacement(AlignmentMap *am, std::map<int,Patch> *patches,  std::vecto
 					}
 
 					// decrease score - bigger decrease is points are a long distance apart
-					score -= maxDistance/30;
+					score -= maxDistance/(float)maxDistanceThresh;
 					
 					if (maxDistanceThresh!=-1 && maxDistance>(float)maxDistanceThresh)
 					{
-						//printf("Distance violation (%f) when flattening at %f,%f\n",maxDistance,x,y);
-						//for(auto &c : contributions)
-						//{
-						//	printf("%d : %f,%f,%f\n",std::get<0>(c),std::get<1>(c).x,std::get<1>(c).y,std::get<1>(c).z);
-						//}
-									
+/*
+						printf("Distance violation (%f) when flattening at %f,%f\n",maxDistance,x,y);
+						for(auto &c : contributions)
+						{
+							printf("%d : %f,%f,%f\n",std::get<0>(c),std::get<1>(c).x,std::get<1>(c).y,std::get<1>(c).z);
+						}
+*/									
 						std::list<int> mismatch;
 						for(auto &c : contributions)
 						{
@@ -220,12 +226,17 @@ float ScorePlacement(AlignmentMap *am, std::map<int,Patch> *patches,  std::vecto
 			}
 		}
 		
-		if (writeColours)
-			outputPatch.BuildFromPoints(points,colours,0);
-		else
-			outputPatch.BuildFromPoints(points,0);
-			
-		outputPatch.Write(OUTPUT_DIR,0);
+		printf("Making patch\n");
+		
+		if (writePatch)
+		{
+			if (writeColours)
+				outputPatch.BuildFromPoints(points,colours,0);
+			else
+				outputPatch.BuildFromPoints(points,0);
+				
+			outputPatch.Write(OUTPUT_DIR,0);
+		}
 		
 		if (showDD)
 		{
@@ -236,17 +247,17 @@ float ScorePlacement(AlignmentMap *am, std::map<int,Patch> *patches,  std::vecto
 			}
 		}
 		
-/*		printf("Mismatches\n");
+		//printf("Mismatches\n");
 		for(const auto &mm : mismatches)
 		{
 			for(const auto &m : mm)
 			{
-				printf("%d ",m);
+			//	printf("%d ",m);
 				patchesInvolved.insert(m);
 			}
-			printf("\n");
+			//printf("\n");
 		}
-*/					
+					
 /*
 		for(auto p : patchesInvolved)
 		{

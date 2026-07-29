@@ -528,14 +528,19 @@ bool Patch::PatchXYToGlobalXY(float x, float y, float &gx, float &gy)
 
 /* Given global x,y coordinates, find the volume coord of the point in this patch that corresponds to that */
 /* Also find the normal and weight */
-bool Patch::FindGlobalXY(float x, float y, Vec3 &v, Vec3 &normal, float &weight)
+/* 2026-07-09 - no longer used patchs own coord, but use parameter */
+bool Patch::FindGlobalXY(std::tuple<float,float,float> patchPosition, float x, float y, Vec3 &v, Vec3 &normal, float &weight)
 {
-	if (positionSet)
-	{		
+//	if (positionSet)
+//	{		
+        float ppx = std::get<0>(patchPosition);
+        float ppy = std::get<1>(patchPosition);
+        float ppa = std::get<2>(patchPosition);
+		
 		// Inverse transform x,y using xpos,ypos,angle
 
-		float xd = (x-xpos)*cos(angle)+(y-ypos)*sin(angle);
-		float yd = -(x-xpos)*sin(angle)+(y-ypos)*cos(angle);
+		float xd = (x-ppx)*cos(ppa)+(y-ppy)*sin(ppa);
+		float yd = -(x-ppx)*sin(ppa)+(y-ppy)*cos(ppa);
 		
 		//printf("x,y = %f,%f\n",x,y);
 		//printf("xd,yd = %f,%f\n",xd,yd);
@@ -619,22 +624,20 @@ bool Patch::FindGlobalXY(float x, float y, Vec3 &v, Vec3 &normal, float &weight)
 		}
 		
 		return false;
-	}
+//	}
 	
-	return false;
+//	return false;
 }
 
-void Patch::TransformPoint(float x, float y, float &xo, float &yo)
+// No longer use the patch x,y,a, but use patchPosition
+void Patch::TransformPoint(std::tuple<float,float,float> patchPosition, float x, float y, float &xo, float &yo)
 {
-	if (positionSet)
-	{
-		xo = x*cos(angle)-y*sin(angle)+xpos;
-		yo = y*cos(angle)+x*sin(angle)+ypos;
-	}
-	else
-	{
-		xo = x; yo = y;
-	}
+	float ppx = std::get<0>(patchPosition);
+	float ppy = std::get<1>(patchPosition);
+	float ppa = std::get<2>(patchPosition);
+	
+	xo = x*cos(ppa)-y*sin(ppa)+ppx;
+	yo = y*cos(ppa)+x*sin(ppa)+ppy;
 }
 
 bool Patch::GetNormal(int x, int y, Vec3 &v)

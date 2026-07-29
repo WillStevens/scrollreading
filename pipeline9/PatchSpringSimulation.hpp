@@ -58,7 +58,7 @@ public:
         int idx = patchIndexLookup_[patchNum];
 		x = patches_[idx].x;
 		y = patches_[idx].y;
-		a = patches_[idx].a;
+		a = addAngle(patches_[idx].a,patches_[idx].ga);
 	}
 
     // ---- Simulation ----------------------------------------------------

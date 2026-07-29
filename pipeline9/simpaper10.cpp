@@ -974,6 +974,8 @@ int main(int argc, char *argv[])
 			
 			patchesInvolved.clear();
 
+			std::map<int,std::tuple<float,float,float>> patchPositionsXYA;
+
 			{
 				for (auto i : patchOrder)
 					(*patches)[i].UnsetPosition();
@@ -987,13 +989,13 @@ int main(int argc, char *argv[])
 					int patchNum;
 					float x,y,angle;
 					if (is >> patchNum >> x >> y >> angle)
-						(*patches)[patchNum].SetPosition(x,y,angle);
+						patchPositionsXYA[patchNum]=std::tuple<float,float,float>(x,y,angle);
 					else
 						break;
 				}
 			}
 			
-			ScorePlacement(am, patches, patchOrder, patchesToColour, manualGoodRel, patchesInvolved, maxDistanceThresh, true, false);
+			ScorePlacement(am, patches, patchPositionsXYA,patchOrder, patchesToColour, manualGoodRel, patchesInvolved, maxDistanceThresh, true, false);
 		}
 		
 		delete patches;

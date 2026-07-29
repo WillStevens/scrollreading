@@ -173,7 +173,7 @@ void PatchSpringSimulation::loadPatches(
                                                    transform[2], transform[5]);
                     //std::cout << "Patchnum " << patchNum << ", other " << other
                     //          << ", distance " << newDistance << "\n";
-                    if (newDistance > MAX_CORRECTABLE_DISTANCE) {
+                    /*if (newDistance > MAX_CORRECTABLE_DISTANCE) {
                         //std::cout << "Patch " << patchNum << " is a bad patch\n\n";
                         badPatch = true;
                         int lastPatchIndex = static_cast<int>(patches_.size()) - 1;
@@ -188,7 +188,7 @@ void PatchSpringSimulation::loadPatches(
                             patchInsertionOrder_.back() == patchNum) {
                             patchInsertionOrder_.pop_back();
                         }
-                    }
+                    }*/
                 }
                 if (!badPatch) {
                     connections_.push_back({static_cast<int>(patches_.size()) - 1, otherIndex,

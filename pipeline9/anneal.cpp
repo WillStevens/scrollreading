@@ -306,6 +306,8 @@ float EvaluateState(AlignmentMap *am, std::map<int,Patch> *patches,
 		}
 	}
 
+	std::map<int,std::tuple<float,float,float>> patchPositionsXYA;
+	
 	//printf("Running patchsprings...\n");
 	{
 		PatchSpringSimulation pss(QUADMESH_SIZE,OUTPUT_DIR,false);
@@ -328,15 +330,18 @@ float EvaluateState(AlignmentMap *am, std::map<int,Patch> *patches,
 			(*patches)[i].UnsetPosition();
 			float x,y,angle;
             pss.GetPatchPosition(i,x,y,angle);
-			(*patches)[i].SetPosition(x,y,angle);
+			
+			patchPositionsXYA[i]=std::tuple<float,float,float>(x,y,angle);
+			
+			//printf("%d %f %f %f\n",i,x,y,angle);
 		}
 	}
 	
     std::set<int> patchesToColour;
     std::set<std::pair<int,int>> manualGoodRel;
 	
-	float score = ScorePlacement(am, patches, patchOrder, patchesToColour,
-	                              manualGoodRel, patchesInvolved, 30, 10, false);
+	float score = ScorePlacement(am, patches, patchPositionsXYA,patchOrder, patchesToColour,
+	                              manualGoodRel, patchesInvolved, 30, 10, false, false);
 
 	return score;
 }
@@ -524,6 +529,23 @@ void Anneal(AlignmentMap *am, std::map<int,Patch> *patches, std::vector<int> pat
 		{
 			os << i << std::endl;
 		}
+	}
+
+	// Show the output from visit order - useful to see sizes of components.
+	{
+		std::set<int> effectiveBadPatches;
+
+		std::set_union(badPatches.begin(), badPatches.end(),
+					bestState.begin(), bestState.end(),
+					std::inserter(effectiveBadPatches, effectiveBadPatches.begin()));
+
+		std::vector<int> patchOrder;
+		std::vector<std::pair<int,alignment>> alignmentOrder;
+		std::map<int,affineTx> patchPositions;
+		std::map<int,std::set<int> > neighbourList;
+
+		MakeVisitOrder(am, patches, effectiveBadPatches, manualBadRel,
+	               patchOrder, alignmentOrder, patchPositions, neighbourList,true);
 	}
 }
 /*

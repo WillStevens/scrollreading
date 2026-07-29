@@ -84,8 +84,8 @@ class Patch
 		void SetPosition(float x, float y, float a) {xpos=x;ypos=y;angle=a;positionSet=true;}
 		void UnsetPosition(void) {positionSet=false;}
 		bool PatchXYToGlobalXY(float x, float y, float &gx, float &gy);
-		bool FindGlobalXY(float x, float y, Vec3 &v, Vec3 &normal, float &weight);
-		void TransformPoint(float x, float y, float &xo, float &yo);
+		bool FindGlobalXY(std::tuple<float,float,float> patchPosition,float x, float y, Vec3 &v, Vec3 &normal, float &weight);
+		void TransformPoint(std::tuple<float,float,float>,float x, float y, float &xo, float &yo);
 		bool GetNormal(int x, int y, Vec3 &v);
 		bool CentreVolCoords(Vec3 &v);
 		
