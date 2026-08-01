@@ -225,11 +225,11 @@ float ScorePlacement(AlignmentMap *am, std::map<int,Patch> *patches, std::map<in
 							
 			}
 		}
-		
-		printf("Making patch\n");
-		
+				
 		if (writePatch)
 		{
+			printf("Making patch\n");
+
 			if (writeColours)
 				outputPatch.BuildFromPoints(points,colours,0);
 			else

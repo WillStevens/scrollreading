@@ -390,7 +390,7 @@ struct CandidateResult
 
 void Anneal(AlignmentMap *am, std::map<int,Patch> *patches, std::vector<int> patchNums,
             std::set<int> badPatches, std::set<std::pair<int,int>> manualBadRel,
-            std::set<int> badBridges, int iterations, int N)
+            std::set<int> badBridges, int iterations, int N, float initT0=-1.0)
 {
 	std::set<int> currentState;
 	std::set<int> newState;
@@ -407,39 +407,56 @@ void Anneal(AlignmentMap *am, std::map<int,Patch> *patches, std::vector<int> pat
 	
 	// ---- Calibration pass (serial) ----
 	std::set<int> patchesInvolved;
-	
-	printf("Calibrating T0...\n");
+
+    float T0;
+
 	float baselineScore = EvaluateState(am, patches, currentState, badPatches,
-										 manualBadRel, patchesInvolved);
-	std::vector<float> negativeDeltas;
-	int numCalibrationSamples = 8;
-	for (int i = 0; i < numCalibrationSamples; i++)
-	{
-		patchesInvolved.clear();
-		
-		std::set<int> trialState = currentState;
-		MutateState(trialState, patchNums, badPatches, patchHeat, 5, rng);
-		float trialScore = EvaluateState(am, patches, trialState, badPatches,
-										  manualBadRel, patchesInvolved);
-		float delta = trialScore - baselineScore;
-		printf("Calibration sample %d: delta=%f\n", i, delta);
-		if (delta < 0.0f)
-			negativeDeltas.push_back(delta);
-	}
-	float T0 = CalibrateT0(negativeDeltas, 0.5f);
-	printf("Calibrated T0 = %f (from %zu negative samples)\n", T0, negativeDeltas.size());
+											 manualBadRel, patchesInvolved);
 	
+	if (initT0==-1)
+	{
+		printf("Calibrating T0...\n");
+		std::vector<float> negativeDeltas;
+		int numCalibrationSamples = 8;
+		for (int i = 0; i < numCalibrationSamples; i++)
+		{
+			patchesInvolved.clear();
+			
+			std::set<int> trialState = currentState;
+			MutateState(trialState, patchNums, badPatches, patchHeat, 5, rng);
+			float trialScore = EvaluateState(am, patches, trialState, badPatches,
+											  manualBadRel, patchesInvolved);
+			float delta = trialScore - baselineScore;
+			printf("Calibration sample %d: delta=%f\n", i, delta);
+			if (delta < 0.0f)
+				negativeDeltas.push_back(delta);
+		}
+		T0 = CalibrateT0(negativeDeltas, 0.5f);
+	    printf("Calibrated T0 = %f (from %zu negative samples)\n", T0, negativeDeltas.size());
+	}
+	else
+	{
+		T0 = initT0;
+	}
 	
 	// ---- Main loop ----
-	float currentScore = baselineScore, score = 0;
+	float currentScore = baselineScore;
 	std::set<int> bestState = currentState;
 	float bestScore = currentScore;
 	std::vector<float> scoreLog, currentScoreLog, stateLength;
 
 	std::vector<CandidateResult> candidates(N);
 
+	int acceptedCount = 0;
+	
 	for(int iters = 0; iters<maxIters; iters++)
 	{		
+		if (acceptedCount>=12)
+		{
+			T0=T0*0.75;
+			acceptedCount=0;
+		}
+		
 		float T = TemperatureAt(iters, maxIters, T0);
 
 		std::cout << "-------- Annealing iteration " << iters << ", T=" << T << " : Best score=" << bestScore
@@ -461,7 +478,7 @@ void Anneal(AlignmentMap *am, std::map<int,Patch> *patches, std::vector<int> pat
 			{
 				#pragma omp critical(mutate_state)
 				{
-					MutateState(localState, patchNums, badPatches, patchHeat, 5, localRng);
+					MutateState(localState, patchNums, badPatches, patchHeat, (int)(4.0*T/T0+1.0), localRng);
 				}
 			}
 
@@ -478,41 +495,41 @@ void Anneal(AlignmentMap *am, std::map<int,Patch> *patches, std::vector<int> pat
 			candidates[n].patchesInvolved = std::move(localPatchesInvolved);
 		}
 
-		// Pick the best of the N candidates
-		int bestIdx = 0;
-		for(int n=1; n<N; n++)
-		{
-			if (candidates[n].score > candidates[bestIdx].score)
-				bestIdx = n;
-		}
-		newState = candidates[bestIdx].state;
-		score = candidates[bestIdx].score;
-
-		printf("State size = %d, score = %f (best of %d candidates)\n",
-		       (int)newState.size(), score, N);
-
-		DecayPatchHeat(patchHeat);
-		// Now that all N threads have finished, merge every run's
-		// patchesInvolved into patchHeat (serial, no race).
+		// We don't want to just pick the best of the N candidates or this would reduce
+		// the smoothing that simulated annealing depends on - it would be the same as reducing the temperature.
+		// Instead we try accepting each one in turn
+		
 		for(int n=0; n<N; n++)
 		{
+			DecayPatchHeat(patchHeat);
 			UpdatePatchHeat(patchHeat, candidates[n].patchesInvolved);
-		}
 
-		if (iters==0 || Accept(score - currentScore, T, rng))
-		{
-			printf("Accepted (T=%f)\n", T);
-			currentScore = score;
-			currentState = newState;
+			if ((iters==0 && n==0) || Accept(candidates[n].score - currentScore, T, rng))
+		    {
+			    printf("Accepted %d (T=%f)\n",n,T);
+			    currentScore = candidates[n].score;
+			    currentState = candidates[n].state;
+				
+				acceptedCount++;
+		    }
+			else
+			{
+				acceptedCount = 0;
+			}
+			
+		    if (candidates[n].score > bestScore)
+		    {
+			    bestScore = candidates[n].score;
+			    bestState = candidates[n].state;
+		    }
+		    scoreLog.push_back(candidates[n].score);
+		    currentScoreLog.push_back(currentScore);
+		    stateLength.push_back(candidates[n].state.size());
+
+			printf("State size = %d, score = %f\n",
+		       (int)candidates[n].state.size(), candidates[n].score);
+
 		}
-		if (score > bestScore)
-		{
-			bestScore = score;
-			bestState = newState;
-		}
-		scoreLog.push_back(score);
-		currentScoreLog.push_back(currentScore);
-		stateLength.push_back(newState.size());
 	}
 	{
 		std::ofstream os(OUTPUT_DIR "/annealStats.csv");

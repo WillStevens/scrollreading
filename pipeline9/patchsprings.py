@@ -358,8 +358,8 @@ def truncate(x):
 
 def Show(links=True):
   canvas.delete('all')
-  offset=(600,300)
-  scale=0.2
+  offset=(600,450)
+  scale=0.27
   rotate=-1.2
   patchi = 0
   patchesLen = len(patches)

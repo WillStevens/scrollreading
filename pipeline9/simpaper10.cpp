@@ -995,7 +995,7 @@ int main(int argc, char *argv[])
 				}
 			}
 			
-			ScorePlacement(am, patches, patchPositionsXYA,patchOrder, patchesToColour, manualGoodRel, patchesInvolved, maxDistanceThresh, true, false);
+			ScorePlacement(am, patches, patchPositionsXYA,patchOrder, patchesToColour, manualGoodRel, patchesInvolved, maxDistanceThresh, true, true, false);
 		}
 		
 		delete patches;
@@ -1153,10 +1153,12 @@ int main(int argc, char *argv[])
 	if (mode=='n')
 	{
 		int iterations = 100;
+		float initT0 = -1;
 		
 		if (argc>2)
 			iterations = atoi(argv[2]);
-
+        if (argc>3)
+			initT0 = atof(argv[3]);
 
 		AlignmentMap *am = new AlignmentMap;
 		std::map<int,Patch> *patches = new std::map<int,Patch>;
@@ -1186,7 +1188,7 @@ int main(int argc, char *argv[])
 		}
 
 		printf("Annealing\n");
-		Anneal(am,patches,patchNums,badPatches,manualBadRel,badBridges,iterations,4);
+		Anneal(am,patches,patchNums,badPatches,manualBadRel,badBridges,iterations,4,initT0);
 		
 		delete patches;
 		delete am;
