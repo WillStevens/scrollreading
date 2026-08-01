@@ -160,7 +160,7 @@ bool GetNewSeed(BigPatch *bp,BigPatch *bpb,float (&seed)[9])
 // and if they are spaced far enough apart then generate several patches at once.
 //
 // This can be done by having more than once instance of PatchGenerator
-void GeneratePatches(std::map<int,Patch> *patches,AlignmentMap *am)
+void GeneratePatches(std::map<int,Patch> *patches,AlignmentMap *am, int numPatches)
 {
 	int acceptedCount=0,unalignedCount=0,acceptedWithSomeBadVariance=0;
 
@@ -197,7 +197,7 @@ void GeneratePatches(std::map<int,Patch> *patches,AlignmentMap *am)
 			return;			
 	}
 	
-	for(int i=startingPatch; i<=startingPatch+2000; i++)
+	for(int i=startingPatch; i<=startingPatch+numPatches; i++)
 	{
 		MemInfo();
 		printf("======== Patch %d ========\n",i);
@@ -617,10 +617,14 @@ int main(int argc, char *argv[])
 	
 	if (mode=='g')
 	{
+		int numPatches = 100;
+		if (argc>=3)
+			numPatches = atoi(argv[2]);
+
 		AlignmentMap *am = new AlignmentMap;
 		std::map<int,Patch> *patches = new std::map<int,Patch>;
 
-		GeneratePatches(patches,am);
+		GeneratePatches(patches,am,numPatches);
 		printf("Generated patches\n");
 		
 		delete patches;
@@ -629,13 +633,17 @@ int main(int argc, char *argv[])
 
 	if (mode=='r')
 	{
+		int numPatches = 100;
+		if (argc>=3)
+			numPatches = atoi(argv[2]);
+
 		AlignmentMap *am = new AlignmentMap;
 		std::map<int,Patch> *patches = new std::map<int,Patch>;
 
 		printf("Loading patches and relationships...\n");
 		LoadPatchesAndRelationships(patches,am);
 
-		GeneratePatches(patches,am);
+		GeneratePatches(patches,am,numPatches);
 		printf("Generated patches\n");
 		
 		delete patches;
