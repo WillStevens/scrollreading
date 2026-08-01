@@ -5,7 +5,7 @@ The main differences between this and previous version of the pipeline are:
 - The whole pipeline is now a single C++ program. This is so that operations can be carried out in-memory with having to save and load to disk.
   (This is only partly realized - the only part that runs fully in-memory is the simulated annealing step). 
 
-This is a C++ makefile project.
+This is a C++ makefile project. It is a low-dependency quick-build project. blosc2 and libtiff-dev are the only C++ dependencies. It typically takes a few seconds to compile and link.
 
 To download and run this pipeline, follow these steps:
 
