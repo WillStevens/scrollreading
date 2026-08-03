@@ -42,12 +42,12 @@ To download and run this pipeline, follow these steps:
 
 The pipeline has been run on windows (using cygwin) and on linux.
 
-This is the complete list of one-character commands and paramegeters that the program accepts, showing which input files they need and which outputs they produce.
+This is the complete list of one-character commands and paramegeters that the program accepts, showing which input files they need and which outputs they produce. Read report12.pdf for a high level overview of what the program does.
 
 g [n] : generate n patches. Requires folders surface.bp/surface, boundary.bp/surface and patches to exist in the output folder. Produces .bin patches in the 'patches' folder. The surface.bp and boundary.bp folders keep track of the growing surface and its boundary during patch growth. The file 'rel.csv' stores relationships between overlapping patches.
 
-r [n] : rester generation for a further n patches. Requires the same folders as above, and produces the same outputs.
+r [n] : restart generation for a further n patches. Requires the same folders as above, and produces the same outputs.
 
-
+b : Obsolete function for finding bad patches. Use c instead.
 
 
