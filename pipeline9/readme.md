@@ -6,6 +6,7 @@ The main differences between this and previous version of the pipeline are:
   (This is only partly realized - the only part that runs fully in-memory is the simulated annealing step). 
 
 This is a C++ makefile project. It is a low-dependency quick-build project. blosc2 and libtiff-dev are the only C++ dependencies. It typically takes a few seconds to compile and link.
+You will need at least 16Gb RAM to generate and process patches for a whole scroll (e.g. scroll 4). Larger scrolls probably need 32Gb.
 
 To download and run this pipeline, follow these steps:
 
@@ -31,13 +32,22 @@ To download and run this pipeline, follow these steps:
     - patches/*.bin - all of the patches in a binary qx,qy,vx,vy,vz format (q=quadmesh, v=volume). These are in low resolution (4-voxels per quadmesh point).
     - rel.csv - this contains the relationships between all overlapping patches, represented as an affine transformation, along with the variance of the transformations sampled.
 10. To find problem patches run './simpaper10 c'. This will load the patches already produced, look for problems, and output badpatches.csv which lists all of the problem patches.
-11. To produce a visit order and initial 2D placement of patches run './simpaper10 v'
-12. To refine positions using a ball-and-spring model run './simpaper h'
-13. To flatten the resulting surface run './simpaper f 30'. This will produce patch_0.bin in OUTPUT_DIR.
+11. To output a list of 3D coordinates for the central 2D point of each patch run './simpaper10 l'
+12. To produce a visit order and initial 2D placement of patches run './simpaper10 v'
+13. To refine positions using a ball-and-spring model run './simpaper h'
+14. To flatten the resulting surface run './simpaper f 30'. This will produce patch_0.bin in OUTPUT_DIR.
     patch_0.bin is a binary file of ux,uy,vx,vy,vz. It can be converted to CSV using bin2csv.
     The resulting csv file can be converted to tifxyz using csv2tifxyz
     
 
 The pipeline has been run on windows (using cygwin) and on linux.
+
+This is the complete list of one-character commands and paramegeters that the program accepts, showing which input files they need and which outputs they produce.
+
+g [n] : generate n patches. Requires folders surface.bp/surface, boundary.bp/surface and patches to exist in the output folder. Produces .bin patches in the 'patches' folder. The surface.bp and boundary.bp folders keep track of the growing surface and its boundary during patch growth. The file 'rel.csv' stores relationships between overlapping patches.
+
+r [n] : rester generation for a further n patches. Requires the same folders as above, and produces the same outputs.
+
+
 
 
