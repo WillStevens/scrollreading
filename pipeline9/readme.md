@@ -50,4 +50,27 @@ r [n] : restart generation for a further n patches. Requires the same folders as
 
 b : Obsolete function for finding bad patches. Use c instead.
 
+c : Reads patches from patches folder and outputs badpatches.csv (listing bad patches) and badpatchscores.csv (showing how they score).
+
+l : produce 3D x,y,z coords for each patch centre and write to patchVolCoords.csv
+
+v : Inputs badpatches.csv and optionally manualBadPatch.csv and produces a visit order. Write it to visitorder.csv and in alignmentorder.txt write 2D positions. Also outputs badbridges_out.csv which lists patches that connect other patches with implausibly different 2D coords.
+
+h : inputs patchVolCoords and alignmentorder.txt and outputs patchPositions.txt : balances 2D positions using a ball and spring model.
+
+f [d] : reads patchorder.csv and patchPositions.txt and outputs a single flatten patch made from all of the smaller patches. Writes the output to patch_0.bin in the output folder.
+
+a : produce an animation showing growing patches. Reads patchorder.csv and pathchPositions.txt. Needs sliceanim folder for output and tifbus for cache.
+
+A : as above, but colours patches using global 2D coords - useful for spotting sheet switching
+
+p [patchnum...] : like a, but for specified patches rather than all patches.
+
+q patchnum x y : gives the 3D coord of local 2D coord of a patch (where 0 0 = patch centre)
+
+z zcoord : show z-slice through scroll, showing all patches in that slice.
+
+n : using badpatches.csv, manualBadPatch.csv (optional) and annealState.csv (optional), run simulated annealing. Output is annealState_out.csv and annealStats.csv. Copy annealState_out.csv to annealState.csv if rerunning again from previous state. Copy annealState_out.csv to manualBadPatch.csv to use results of annealing in other commands. (i.e. to exclude patches found by annealing)
+
+
 
