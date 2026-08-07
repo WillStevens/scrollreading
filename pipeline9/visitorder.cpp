@@ -57,7 +57,7 @@ std::vector<ComponentInfo> getComponents(const std::map<int, std::set<int>>& nei
     return components;
 }
 
-void MakeVisitOrder(AlignmentMap *am, std::map<int,Patch> *patches,std::set<int> &badPatches,std::set<std::pair<int,int>> &manualBadRel, std::vector<int> &patchOrder, std::vector<std::pair<int,alignment>> &alignmentOrder,std::map<int,affineTx> &patchPositions, std::map<int,std::set<int> > &neighbourList, bool showSize=false)
+void MakeVisitOrder(AlignmentMap *am, std::map<int,Patch> *patches,std::set<int> &badPatches,std::set<std::pair<int,int>> &manualBadRel, std::vector<int> &patchOrder, std::vector<std::pair<int,alignment>> &alignmentOrder,std::map<int,affineTx> &patchPositions, std::map<int,std::set<int> > &neighbourList, bool showSize=false, bool saveOutput = true)
 {
 		int minPatchInNeighbourList = -1;
 		
@@ -129,6 +129,7 @@ void MakeVisitOrder(AlignmentMap *am, std::map<int,Patch> *patches,std::set<int>
 			currentVisit = nh.value();
 		}
 
+		if (saveOutput)
 		{
 			std::ofstream os(OUTPUT_DIR "/patchorder.csv");
 			for (auto i : patchOrder)

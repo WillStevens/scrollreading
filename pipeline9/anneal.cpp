@@ -1,6 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <set>
+#include <unordered_map>
 #include <map>
 #include <vector>
 #include <queue>
@@ -33,7 +34,7 @@ void LoadAnnealState(std::set<int> &state)
 // Tunable parameters
 const double HEAT_DECAY = 0.85;          // exponential decay applied each iteration
 const double HEAT_INCREMENT = 1.0;       // added per appearance in patchesInvolved
-const double EXPLORATION_EPSILON = 0.50; // floor weight so cold/unseen patches still get proposed
+const double EXPLORATION_EPSILON = 0.20; // floor weight so cold/unseen patches still get proposed
 
 // Decays existing heat first (so old evidence fades)
 void DecayPatchHeat(std::map<int,double> &patchHeat,
@@ -278,7 +279,7 @@ float EvaluateState(AlignmentMap *am, std::map<int,Patch> *patches,
 	std::map<int,std::set<int> > neighbourList;
 
 	MakeVisitOrder(am, patches, effectiveBadPatches, manualBadRel,
-	               patchOrder, alignmentOrder, patchPositions, neighbourList);
+	               patchOrder, alignmentOrder, patchPositions, neighbourList,false,false);
 
 				   
 	{
@@ -306,7 +307,7 @@ float EvaluateState(AlignmentMap *am, std::map<int,Patch> *patches,
 		}
 	}
 
-	std::map<int,std::tuple<float,float,float>> patchPositionsXYA;
+	std::unordered_map<int,std::tuple<float,float,float>> patchPositionsXYA;
 	
 	//printf("Running patchsprings...\n");
 	{
@@ -340,7 +341,7 @@ float EvaluateState(AlignmentMap *am, std::map<int,Patch> *patches,
     std::set<int> patchesToColour;
     std::set<std::pair<int,int>> manualGoodRel;
 	
-	float score = ScorePlacement(am, patches, patchPositionsXYA,patchOrder, patchesToColour,
+	float score = ScorePlacementAreaAndIncon(am, patches, patchPositionsXYA,patchOrder, patchesToColour,
 	                              manualGoodRel, patchesInvolved, 30, 10, false, false);
 
 	return score;
@@ -423,7 +424,7 @@ void Anneal(AlignmentMap *am, std::map<int,Patch> *patches, std::vector<int> pat
 			patchesInvolved.clear();
 			
 			std::set<int> trialState = currentState;
-			MutateState(trialState, patchNums, badPatches, patchHeat, 5, rng);
+			MutateState(trialState, patchNums, badPatches, patchHeat, 20, rng);
 			float trialScore = EvaluateState(am, patches, trialState, badPatches,
 											  manualBadRel, patchesInvolved);
 			float delta = trialScore - baselineScore;
@@ -478,7 +479,8 @@ void Anneal(AlignmentMap *am, std::map<int,Patch> *patches, std::vector<int> pat
 			{
 				#pragma omp critical(mutate_state)
 				{
-					MutateState(localState, patchNums, badPatches, patchHeat, (int)(4.0*T/T0+1.0), localRng);
+					//MutateState(localState, patchNums, badPatches, patchHeat, 15*(T/T0)*0+1, localRng);
+					MutateState(localState, patchNums, badPatches, patchHeat, 15*(T/T0)*0+1, localRng);
 				}
 			}
 

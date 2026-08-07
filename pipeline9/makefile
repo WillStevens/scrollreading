@@ -47,7 +47,7 @@ common_types.o: common_types.cpp common_types.h vec3.h
 patch_generator.o: patch_generator.cpp patch_generator.h parameters.h common_types.h vec3.h zarr_1.h calcvectorfield.h
 	$(CC) -c $< $(CFLAGS)
 
-simpaper10.o: simpaper10.cpp badpatchfinder.h erasepoints.h align_patches.h patch_generator.h sliceanimrender.h patchcolourkey.h bigpatch.h common_types.h vec3.h parameters.h PatchSpringSimulation.hpp
+simpaper10.o: simpaper10.cpp badpatchfinder.h erasepoints.h align_patches.h patch_generator.h sliceanimrender.h patchcolourkey.h bigpatch.h common_types.h vec3.h parameters.h PatchSpringSimulation.hpp visitorder.h
 	$(CC) -c $< $(CFLAGS)
 	
 align_patches.o : align_patches.cpp align_patches.h bigpatch.h common_types.h parameters.h

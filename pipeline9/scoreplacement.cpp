@@ -1,5 +1,6 @@
 #include <fstream>
 #include <map>
+#include <unordered_map>
 #include <vector>
 #include <set>
 #include <list>
@@ -7,7 +8,212 @@
 #include "parameters.h"
 #include "common_types.h"
 
-float ScorePlacement(AlignmentMap *am, std::map<int,Patch> *patches, std::map<int,std::tuple<float,float,float>> &patchPositionsXYA, std::vector<int> &patchOrder, std::set<int> &patchesToColour, std::set<std::pair<int,int>> &manualGoodRel, std::set<int> &patchesInvolved, int maxDistanceThresh, float stepSize=1.0, bool writePatch = true, bool writeColours = true, bool showDD = false)
+float GetMaxDistance(std::vector<Vec3> &v)
+{
+	float maxDistance = 0.0f;
+
+	for(int i = 0; i<v.size(); i++)
+	{
+		for(int j = i+1; j<v.size(); j++)
+		{
+			float distance = (v[i]-v[j]).length();
+			
+			if (distance>maxDistance)
+				maxDistance=distance;
+		}
+	}
+	
+	return maxDistance;
+}
+
+float ScorePlacementAreaAndIncon(AlignmentMap *am, std::map<int,Patch> *patches, std::unordered_map<int,std::tuple<float,float,float>> &patchPositionsXYA, std::vector<int> &patchOrder, std::set<int> &patchesToColour, std::set<std::pair<int,int>> &manualGoodRel, std::set<int> &patchesInvolved, int maxDistanceThresh, float stepSize=1.0, bool writePatch = true, bool writeColours = true, bool showDD = false)
+{
+    //printf("Starting ScorePlacement\n");
+			
+	//printf("Loaded patch positions\n");
+				
+				
+    // work out xmin,xmax,ymin,ymax;
+	
+	float xmin=0,ymin=0,xmax=0,ymax=0;
+	bool first = true;
+	{
+		for (auto i : patchOrder)
+		{			
+			if (patches->count(i)==0)
+			{
+				printf("Patch %d not found in 'patches'\n",i);
+				exit(-1);
+			}
+			Patch &p = (*patches)[i];
+			for(PatchIterator pi = p.Begin(); p.Next(pi);)
+			{
+				float x,y;
+				if (patchPositionsXYA.count(i)==0)
+				{
+					printf("Couldn't find %d in patchPositionsXYA\n",i);
+					exit(-1);
+				}
+	
+				p.TransformPoint(patchPositionsXYA[i],pi.p->x,pi.p->y,x,y);
+				
+				if (x<xmin || first) xmin=x;
+				if (y<ymin || first) ymin=y;
+				if (x>xmax || first) xmax=x;
+				if (y>ymax || first) ymax=y;
+				
+				first = false;
+			}
+		}
+	}
+
+	int xsize = (int)xmax-(int)xmin;
+	int ysize = (int)ymax-(int)ymin;
+
+	int downSize = 5;
+	
+	xsize /= downSize; xsize++;
+	ysize /= downSize; ysize++;
+	
+	std::vector<std::vector<Vec3>> plotted(xsize*ysize);
+
+	int score = 0;
+				
+	{
+		for (auto i : patchOrder)
+		{			
+			if (patches->count(i)==0)
+			{
+				printf("Patch %d not found in 'patches'\n",i);
+				exit(-1);
+			}
+			Patch &p = (*patches)[i];
+			for(PatchIterator pi = p.Begin(); p.Next(pi);)
+			{
+				float x,y;
+				if (patchPositionsXYA.count(i)==0)
+				{
+					printf("Couldn't find %d in patchPositionsXYA\n",i);
+					exit(-1);
+				}
+	
+				p.TransformPoint(patchPositionsXYA[i],pi.p->x,pi.p->y,x,y);
+
+				int xp = (int)x-(int)xmin;
+				int yp = (int)y-(int)ymin;
+
+				if (xp%5==0 && yp%5==0)
+				{
+					if (!plotted[(yp/downSize)*xsize+(xp/downSize)].size()==0)
+					{
+						score++;
+					}
+				
+					plotted[(yp/downSize)*xsize+(xp/downSize)].push_back(pi.p->v);
+				}
+			}
+		}
+	}
+
+	// Now iterate over plotted, looking for max distances
+	// Unlike previous implementation this ignores normals and just looks for max 3D distance
+
+	for(int x = 0; x<xsize; x++)
+	for(int y = 0; y<ysize; y++)
+	{
+		float d = GetMaxDistance(plotted[y*xsize+x]);
+
+		score -= d/(float)maxDistanceThresh;
+	} 
+				
+	return score;
+}
+
+float ScorePlacementAreaOnly(AlignmentMap *am, std::map<int,Patch> *patches, std::unordered_map<int,std::tuple<float,float,float>> &patchPositionsXYA, std::vector<int> &patchOrder, std::set<int> &patchesToColour, std::set<std::pair<int,int>> &manualGoodRel, std::set<int> &patchesInvolved, int maxDistanceThresh, float stepSize=1.0, bool writePatch = true, bool writeColours = true, bool showDD = false)
+{
+    //printf("Starting ScorePlacement\n");
+			
+	//printf("Loaded patch positions\n");
+				
+				
+    // work out xmin,xmax,ymin,ymax;
+	
+	float xmin=0,ymin=0,xmax=0,ymax=0;
+	bool first = true;
+	{
+		for (auto i : patchOrder)
+		{			
+			if (patches->count(i)==0)
+			{
+				printf("Patch %d not found in 'patches'\n",i);
+				exit(-1);
+			}
+			Patch &p = (*patches)[i];
+			for(PatchIterator pi = p.Begin(); p.Next(pi);)
+			{
+				float x,y;
+				if (patchPositionsXYA.count(i)==0)
+				{
+					printf("Couldn't find %d in patchPositionsXYA\n",i);
+					exit(-1);
+				}
+	
+				p.TransformPoint(patchPositionsXYA[i],pi.p->x,pi.p->y,x,y);
+				
+				if (x<xmin || first) xmin=x;
+				if (y<ymin || first) ymin=y;
+				if (x>xmax || first) xmax=x;
+				if (y>ymax || first) ymax=y;
+				
+				first = false;
+			}
+		}
+	}
+
+	int xsize = (int)xmax-(int)xmin+1;
+	int ysize = (int)ymax-(int)ymin+1;
+
+	std::vector<bool> plotted(xsize*ysize);
+
+	int score = 0;
+				
+	{
+		for (auto i : patchOrder)
+		{			
+			if (patches->count(i)==0)
+			{
+				printf("Patch %d not found in 'patches'\n",i);
+				exit(-1);
+			}
+			Patch &p = (*patches)[i];
+			for(PatchIterator pi = p.Begin(); p.Next(pi);)
+			{
+				float x,y;
+				if (patchPositionsXYA.count(i)==0)
+				{
+					printf("Couldn't find %d in patchPositionsXYA\n",i);
+					exit(-1);
+				}
+	
+				p.TransformPoint(patchPositionsXYA[i],pi.p->x,pi.p->y,x,y);
+
+				int xp = (int)x-(int)xmin;
+				int yp = (int)y-(int)ymin;
+
+				if (!plotted[yp*xsize+xp])
+				{
+					score++;
+					plotted[yp*xsize+xp]=true;
+				}
+				
+			}
+		}
+	}
+				
+	return score;
+}
+
+float ScorePlacement(AlignmentMap *am, std::map<int,Patch> *patches, std::unordered_map<int,std::tuple<float,float,float>> &patchPositionsXYA, std::vector<int> &patchOrder, std::set<int> &patchesToColour, std::set<std::pair<int,int>> &manualGoodRel, std::set<int> &patchesInvolved, int maxDistanceThresh, float stepSize=1.0, bool writePatch = true, bool writeColours = true, bool showDD = false)
 {
     //printf("Starting ScorePlacement\n");
 			
@@ -164,7 +370,6 @@ float ScorePlacement(AlignmentMap *am, std::map<int,Patch> *patches, std::map<in
 					}
 
 					// decrease score - bigger decrease is points are a long distance apart
-					score -= maxDistance/(float)maxDistanceThresh;
 					
 					if (maxDistanceThresh!=-1 && maxDistance>(float)maxDistanceThresh)
 					{

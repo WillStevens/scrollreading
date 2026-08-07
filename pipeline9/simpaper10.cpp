@@ -982,7 +982,7 @@ int main(int argc, char *argv[])
 			
 			patchesInvolved.clear();
 
-			std::map<int,std::tuple<float,float,float>> patchPositionsXYA;
+			std::unordered_map<int,std::tuple<float,float,float>> patchPositionsXYA;
 
 			{
 				for (auto i : patchOrder)
@@ -1003,7 +1003,7 @@ int main(int argc, char *argv[])
 				}
 			}
 			
-			ScorePlacement(am, patches, patchPositionsXYA,patchOrder, patchesToColour, manualGoodRel, patchesInvolved, maxDistanceThresh, true, true, false);
+			ScorePlacement(am, patches, patchPositionsXYA,patchOrder, patchesToColour, manualGoodRel, patchesInvolved, maxDistanceThresh, 1.0, true, true, false);
 		}
 		
 		delete patches;
