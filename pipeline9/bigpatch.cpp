@@ -98,6 +98,13 @@ std::vector<chunkIndex> GetAllPatchChunks(BigPatch *z)
 		}
 		
 		closedir(dir);
+
+		// A7.4 belongs to the CORRECTED build, not here.
+		// readdir() returns entries in filesystem order, and this vector is then indexed to pick
+		// a seed: so the reproducibility of this build is a property of the machine, not of the
+		// program. Sorting repairs that, but the gate declared in the audit (byte identity on a
+		// single run) FAILED: 177 files out of 178 differ, and 198 patches instead of 178. So it
+		// is not a speed-up at equal result and it cannot live in this build. See pipeline9-B2.
 	}
 	
 	return ret;

@@ -1,93 +1,126 @@
 #include <algorithm>
+#include <omp.h>
 
 #include "badpatchfinder.h"
 
+// A7.9: the counter of points falling outside the grid was incremented and never printed.
+// It says how often the bounds check we added is actually preventing an out-of-array write:
+// if it is zero, the upstream defect is not reachable on this data and that is worth stating;
+// if it is not, the number is the measure of how reachable it is.
+long offGridTotal = 0;
 void BadPatchFinder::ClearRendered(void)
 {
-	memset(rendered_f,0,R_ARRAY_SIZE*R_ARRAY_SIZE*2*sizeof(float)*3);
-	memset(distances,0,D_SIZE_X*D_SIZE_Y*sizeof(float));
-	
+	offGridTotal += mainState.offGrid;
+	mainState.Clear();
 	maxDistance = 0.0;
+	cellsOverlap = 0;
+	cellsBlind = 0;
 }
 
-void BadPatchFinder::PlacePatch(Patch &p1, int patchNum,const affineTx &aftx, bool first)
-{	
+void BadPatchFinder::PrecomputeNormals(std::map<int,Patch> *patches)
+{
+	for(auto &entry : *patches)
+	{
+		std::vector<Vec3> &v = normals[entry.first];
+		if (!v.empty()) continue;
+		Patch &p = entry.second;
+		for(PatchIterator pi = p.Begin(); p.Next(pi);)
+		{
+			Vec3 n;
+			if (!p.GetNormal(pi.p->x,pi.p->y,n)) n = Vec3(0,0,0);
+			v.push_back(n);
+		}
+	}
+}
+
+void BadPatchFinder::PlacePatchInto(RenderState &st, Patch &p1, int patchNum, const affineTx &aftx, bool first)
+{
+	std::unordered_map<int, std::vector<Vec3>>::const_iterator nit = normals.find(patchNum);
+	const std::vector<Vec3> *cache = (nit == normals.end()) ? NULL : &nit->second;
+	size_t k = 0;
+
 	for(PatchIterator pi = p1.Begin(); p1.Next(pi);)
 	{
 		float x,y,px,py,pz;
 		x=pi.p->x; y=pi.p->y; px=pi.p->v.x; py=pi.p->v.y; pz=pi.p->v.z;
-			
+
 		Vec3 normal;
-		//printf("%f,%f : Calculating normal...\n",pi.p->x,pi.p->y);
-		bool gotNormal = p1.GetNormal(pi.p->x,pi.p->y,normal);
-		//printf("%d : %f,%f,%f\n",(int)gotNormal,normal.x,normal.y,normal.z);
-		if (!gotNormal)
-			normal=Vec3(0,0,0);
-		
-		//x=x*QUADMESH_SIZE;
-		//y=y*QUADMESH_SIZE;
-								
+		if (cache && k < cache->size())
+			normal = (*cache)[k];
+		else if (!p1.GetNormal(pi.p->x,pi.p->y,normal))
+			normal = Vec3(0,0,0);
+		k++;
+
 		// transform to get position of this patch point
 		AffineTxApply(aftx,x,y);
-		
+
 		int xrdi = ROUND(x/RESCALE);
 		int yrdi = ROUND(y/RESCALE);
 
+		// R_ARRAY_SIZE is documented as needing to be large enough, but nothing ever checked it.
+		// A patch placed far from the origin, which happens as soon as patches from separately
+		// grown runs are aligned into one set, indexes outside the grid and corrupts memory with
+		// no message. Points that fall outside are skipped: they could not have been compared
+		// against anything anyway, because the other patch cannot be there either.
+		int gx = xrdi + R_ARRAY_SIZE/2, gy = yrdi + R_ARRAY_SIZE/2;
+		if (gx < 0 || gy < 0 || gx >= R_ARRAY_SIZE || gy >= R_ARRAY_SIZE)
+		{
+			st.offGrid++;		// counted here, summed into offGridTotal and printed at the end of the stage
+			continue;
+		}
+
+		size_t cell = (size_t)gx*R_ARRAY_SIZE + gy;
+		float *c = &st.grid[cell*6];
+
 		if (first)
-		{			
-			if (rendered_f[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2][0][0] != 0)
+		{
+			if (c[0] != 0)
 			{
 				printf("Error - encountered more than one point per cell on first pass - expecting that aftx will be identity so that there is exactly one point per cell\n");
 				exit(-1);
 			}
-			
-			rendered_f[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2][0][0] = px;
-			rendered_f[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2][0][1] = py;
-			rendered_f[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2][0][2] = pz;
 
-			rendered_f[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2][1][0] = normal.x;
-			rendered_f[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2][1][1] = normal.y;
-			rendered_f[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2][1][2] = normal.z;
-			
-#ifdef COLLECT_DISTANCE_DISTRIB
-            distances[xrdi+D_OFF_X][yrdi+D_OFF_Y] = 1; // don't use zero, because that means 'empty'
-#endif
+			c[0]=px; c[1]=py; c[2]=pz;
+			c[3]=normal.x; c[4]=normal.y; c[5]=normal.z;
+
+			st.touched.push_back((int)cell);
 		}
-        else
+		else
 		{
-			float cellMaxDistance = 0.0;
-
-			if (rendered_f[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2][0][0] != 0)
+			if (c[0] != 0)
 			{
-			Vec3 pPos(px,py,pz);
-			
-			Vec3 ePos(rendered_f[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2][0][0],
-					  rendered_f[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2][0][1],
-					  rendered_f[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2][0][2]);
-			
-			Vec3 eNormal(rendered_f[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2][1][0],
-						 rendered_f[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2][1][1],
-						 rendered_f[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2][1][2]);
-						 
-			// So long as we have at least 1 normal, we can work out a distance
-			// If a normal is missing it is set to zero, so the distance comes out as zero, so if both are missing the distance will be zero
-			float distance1 = fabs(Vec3::dot(ePos-pPos,eNormal));
-			float distance2 = fabs(Vec3::dot(ePos-pPos,normal));
+				Vec3 pPos(px,py,pz);
+				Vec3 ePos(c[0],c[1],c[2]);
+				Vec3 eNormal(c[3],c[4],c[5]);
 
-			// Use the worst of the distances calculated
-			float distance = distance1>distance2 ? distance1 : distance2;
-				
-			if (distance > maxDistance) maxDistance = distance;					
-			if (distance > cellMaxDistance) cellMaxDistance = distance;					
+				// So long as we have at least 1 normal, we can work out a distance.
+				// If a normal is missing it is set to zero, so the distance comes out as zero,
+				// so if both are missing the distance will be zero.
+				float distance1 = fabs(Vec3::dot(ePos-pPos,eNormal));
+				float distance2 = fabs(Vec3::dot(ePos-pPos,normal));
 
-#ifdef COLLECT_DISTANCE_DISTRIB
-			distances[xrdi+D_OFF_X][yrdi+D_OFF_Y] = cellMaxDistance+1;
-#endif		
+				// Use the worst of the distances calculated
+				float distance = distance1>distance2 ? distance1 : distance2;
+
+				if (distance > st.maxDistance) st.maxDistance = distance;
+
+				// instrumentation: how much of the overlap the test could actually see
+				st.cellsOverlap++;
+				if (eNormal.x==0.0f && eNormal.y==0.0f && eNormal.z==0.0f &&
+				    normal.x==0.0f && normal.y==0.0f && normal.z==0.0f)
+					st.cellsBlind++;
 			}
 		}
 	}
 }
 
+void BadPatchFinder::PlacePatch(Patch &p1, int patchNum,const affineTx &aftx, bool first)
+{
+	PlacePatchInto(mainState,p1,patchNum,aftx,first);
+	maxDistance = mainState.maxDistance;
+	cellsOverlap = mainState.cellsOverlap;
+	cellsBlind = mainState.cellsBlind;
+}
 
 #ifdef OUTPUT_DISTANCE_TIF
 void BadPatchFinder::RenderDistances(void)
@@ -130,6 +163,7 @@ void BadPatchFinder::RenderDistances(void)
 }
 #endif
 
+#ifdef COLLECT_DISTANCE_DISTRIB
 void BadPatchFinder::CollectDistanceStats(void)
 {
 	std::list<float> distanceList;
@@ -146,42 +180,65 @@ void BadPatchFinder::CollectDistanceStats(void)
 	// sort the distance list
 	// work out quartiles and median
 }
+#endif
 
 // Given an alignment map and the patches, iterate through all neighbouring patches
 // and find patches with mismatch between 2D x,y and 3D x,y,z
 void BadPatchFinder::FindBadPatches(const AlignmentMap &am, std::map<int,Patch> *patches, std::set<int> &badPatches, std::vector<std::tuple<int,int,float>> &badPatchScores)
 {
 	std::list<std::pair<int,int>> badPatchPairs;
-		
-	// Iterate over patches
-	for(auto a : am)
-	{
-		int patch1 = a.first;
-		
-		// Iterate over alignments
-		for(auto al : a.second)
+
+	PrecomputeNormals(patches);
+
+	// The pairs are flattened into a list, measured in parallel (each pair is independent of the
+	// others), and emitted afterwards in the original order, so the output is unchanged.
+	// (*patches)[p] and am[p] are deliberately not used inside the parallel loop: std::map's
+	// operator[] inserts when the key is absent, which would be a silent data race on the map.
+	std::vector<std::pair<int,int>> pairList;             // (patch1, index into its alignments)
+	std::vector<const std::vector<alignment> *> alignOf;
+	for(const auto &a : am)
+		for(size_t k = 0; k<a.second.size(); k++)
 		{
-			ClearRendered();
-	
-			int patch2 = std::get<0>(al);
-			
-			affineTx aftx(std::get<7>(al),std::get<8>(al),std::get<9>(al),std::get<10>(al),std::get<11>(al),std::get<12>(al));
-			
-			PlacePatch((*patches)[patch2],patch2,affineTx(1,0,0,0,1,0),true);
-			PlacePatch((*patches)[patch1],patch1,aftx,false);
-			
-			printf("%d,%d : %f\n",patch2,patch1,maxDistance);
-			badPatchScores.push_back(std::tuple<int,int,float>(patch2,patch1,maxDistance));
-			
-			if (maxDistance > BP_MAX_XYZ_DISTANCE)
-			{
-				badPatchPairs.push_back(std::pair<int,int>(patch1,patch2));
-			}
-			
-#ifdef OUTPUT_DISTANCE_TIF
-			RenderDistances();
-#endif
+			pairList.push_back(std::pair<int,int>(a.first,(int)k));
+			alignOf.push_back(&a.second);
 		}
+
+	const size_t numPairs = pairList.size();
+	std::vector<float> pairMaxDistance(numPairs, 0.0f);
+
+	{
+		int nt = omp_get_max_threads();
+		std::vector<RenderState> states(nt);
+
+		#pragma omp parallel for schedule(dynamic,8)
+		for(size_t q = 0; q<numPairs; q++)
+		{
+			RenderState &st = states[omp_get_thread_num()];
+			st.Clear();
+
+			int patch1 = pairList[q].first;
+			const alignment &al = (*alignOf[q])[pairList[q].second];
+			int patch2 = std::get<0>(al);
+
+			affineTx aftx(std::get<7>(al),std::get<8>(al),std::get<9>(al),std::get<10>(al),std::get<11>(al),std::get<12>(al));
+
+			PlacePatchInto(st,patches->at(patch2),patch2,affineTx(1,0,0,0,1,0),true);
+			PlacePatchInto(st,patches->at(patch1),patch1,aftx,false);
+
+			pairMaxDistance[q] = st.maxDistance;
+		}
+	}
+
+	for(size_t q = 0; q<numPairs; q++)
+	{
+		int patch1 = pairList[q].first;
+		int patch2 = std::get<0>((*alignOf[q])[pairList[q].second]);
+
+		printf("%d,%d : %f\n",patch2,patch1,pairMaxDistance[q]);
+		badPatchScores.push_back(std::tuple<int,int,float>(patch2,patch1,pairMaxDistance[q]));
+
+		if (pairMaxDistance[q] > BP_MAX_XYZ_DISTANCE)
+			badPatchPairs.push_back(std::pair<int,int>(patch1,patch2));
 	}
 	
 	while(badPatchPairs.size()>0)
@@ -229,14 +286,30 @@ void BadPatchFinder::FindBadPatches(const AlignmentMap &am, std::map<int,Patch> 
 void BadPatchFinder::FindBadPatchesGeneral(AlignmentMap &am, std::map<int,Patch> *patches, int length, std::set<int> &badPatches, std::vector<std::tuple<int,int,float>> &badPatchScores)
 {
 	std::list<std::vector<int>> badPatchTuples;
-	
+
+	PrecomputeNormals(patches);
+
 	std::vector<int> indexedPatches;
 	
-	// Index patches
+	// Index patches.
+	//
+	// Only patches that have at least one alignment: a patch aligned to nothing cannot be part of
+	// any chain, and the index initialisation below reads am[patch][0] without checking, so an
+	// isolated patch segfaults there. It never happens in a single grown run, because a patch is
+	// only kept when it aligns, but it happens as soon as patches from separate runs are put in
+	// one set.
 	for(auto &p : *patches)
 	{
+		AlignmentMap::const_iterator it = am.find(p.first);
+		if (it == am.end() || it->second.empty()) continue;
 		printf("%d\n",p.first);
 		indexedPatches.push_back(p.first);
+	}
+
+	if (indexedPatches.size() < (size_t)length)
+	{
+		printf("Not enough aligned patches for chains of length %d\n",length);
+		return;
 	}
 	
 	std::vector<int> indices; // first index is index of patch, next are all index into alignment map vector
@@ -262,19 +335,33 @@ void BadPatchFinder::FindBadPatchesGeneral(AlignmentMap &am, std::map<int,Patch>
 
 	std::vector<std::vector<int>> patchSequences;
 	
+	// A patch can be named as the target of an alignment and have no geometry on disk:
+	// the patches map is keyed by the patch files that were loaded, while the alignment
+	// map keeps every id ever named as a target, because AugmentAlignmentMap inserts the
+	// target of an alignment as a key without checking that the target was loaded. A chain
+	// assembled through such an id has no geometry to place, so it is refused here, where
+	// chains are built, and not at the call that would ask for that geometry. What is
+	// refused is counted and printed below: a run that drops chains says so.
+	long chainsWithoutGeometry = 0;
+	std::set<int> patchesWithoutGeometry;
+	
 	bool done = false;
 	while(!done)
 	{
 		std::vector<int> currentSequence;
 		std::set<int> currentSequencePatches;
-		bool hasBadPatch = false, hasRepeat = false;
+		bool hasBadPatch = false, hasRepeat = false, hasNoGeometry = false;
+		// The position at which this chain stopped being extendable. length-1 means it
+		// was built whole, and the odometer then advances its last index as before.
+		int deadDepth = length-1;
 				
 		// output a patch sequence only if it contains no bad patches
 		int currentPatch = indexedPatches[indices[0]];
-		if (badPatches.count(currentPatch)!=0) hasBadPatch=true;
+		if (badPatches.count(currentPatch)!=0) { hasBadPatch=true; deadDepth=0; }
+		if (patches->count(currentPatch)==0) hasNoGeometry=true;
 		currentSequence.push_back(currentPatch);
 		currentSequencePatches.insert(currentPatch);
-		for(int i = 1; i<length; i++)
+		for(int i = 1; i<length && !hasBadPatch; i++)
 		{
 			if (indices[i]<(int)am[currentPatch].size())
 			{
@@ -282,13 +369,16 @@ void BadPatchFinder::FindBadPatchesGeneral(AlignmentMap &am, std::map<int,Patch>
 				if (currentSequencePatches.count(currentPatch)!=0)
 				{
 					hasRepeat=true;
+					deadDepth=i;
 					break;
 				}
 				if (badPatches.count(currentPatch)!=0)
 				{
 					hasBadPatch=true;
+					deadDepth=i;
 					break;
 				}
+				if (patches->count(currentPatch)==0) hasNoGeometry=true;
 				currentSequence.push_back(currentPatch);
 				currentSequencePatches.insert(currentPatch);
 			}
@@ -303,12 +393,31 @@ void BadPatchFinder::FindBadPatchesGeneral(AlignmentMap &am, std::map<int,Patch>
 		{
 			// To avoid duplicating sequences, only save those where the first patch is < the last patch
 			if (currentSequence.front() < currentSequence.back())
-				patchSequences.push_back(currentSequence);
+			{
+				if (hasNoGeometry)
+				{
+					chainsWithoutGeometry++;
+					for(int pn : currentSequence)
+						if (patches->count(pn)==0)
+							patchesWithoutGeometry.insert(pn);
+				}
+				else
+					patchSequences.push_back(currentSequence);
+			}
 		}
 		
-		// increment onto the next sequence of patches
+		// increment onto the next sequence of patches.
+		//
+		// Every tuple that shares indices[0..deadDepth] with this one contains the same
+		// repeated patch, or the same bad patch, or the same bad first patch, and is
+		// rejected for the same reason. Advancing at deadDepth instead of at length-1
+		// skips them all. The indices below it go back to zero, which is where the
+		// carry below would have left them. When the chain was built whole, deadDepth is
+		// length-1 and this is the odometer exactly as it was.
+		for(int i = deadDepth+1; i<length; i++)
+			indices[i]=0;
 		bool advanceToNextIndex = true;
-		for(int indexToInc=length-1; indexToInc>=0 && advanceToNextIndex; indexToInc--)
+		for(int indexToInc=deadDepth; indexToInc>=0 && advanceToNextIndex; indexToInc--)
 		{
 			advanceToNextIndex = false;
 			if (indexToInc==0)
@@ -351,60 +460,105 @@ void BadPatchFinder::FindBadPatchesGeneral(AlignmentMap &am, std::map<int,Patch>
 		printf("\n");
 	}
 */
+	printf("Chains refused for a patch with no geometry: length=%d chains=%ld patches=%d\n",
+	       length,chainsWithoutGeometry,(int)patchesWithoutGeometry.size());
+	printf("Patches with no geometry:");
+	for(int pn : patchesWithoutGeometry)
+		printf(" %d",pn);
+	printf("\n");
+
     printf("Iterating over patch sequences\n");
 	
-	for(auto &i : patchSequences)
+	// Each sequence is independent of the others. The parallel loop computes only the three
+	// numbers that are needed, into vectors indexed by sequence; everything else (the printed
+	// lines, the two lists, the flagged chains) is derived from those numbers in a serial pass
+	// afterwards, in the original order. The output is therefore unchanged.
+	const size_t numSeq = patchSequences.size();
+	std::vector<float> seqMaxDistance(numSeq, 0.0f);
+	std::vector<long> seqOverlap(numSeq, 0), seqBlind(numSeq, 0);
+
 	{
-		for(auto &p : i)
+		int nt = omp_get_max_threads();
+		std::vector<RenderState> states(nt);
+
+		#pragma omp parallel for schedule(dynamic,16)
+		for(size_t q = 0; q<numSeq; q++)
 		{
-			printf("%d ",p);
+			RenderState &st = states[omp_get_thread_num()];
+			st.Clear();
+
+			const std::vector<int> &i = patchSequences[q];
+			int count = 0;
+			int lastPatch = -1;
+			affineTx aftx = affineTx(1,0,0,0,1,0);
+
+			for(int p : i)
+			{
+				if (count==0)
+				{
+					PlacePatchInto(st,patches->at(p),p,aftx,true);
+				}
+				else
+				{
+					for(const auto &al : am.at(p))
+						if (std::get<0>(al)==lastPatch)
+						{
+							affineTx nextAftx(std::get<7>(al),std::get<8>(al),std::get<9>(al),std::get<10>(al),std::get<11>(al),std::get<12>(al));
+							aftx = AffineTxMultiply(aftx,nextAftx);
+						}
+
+					if (count == (int)i.size()-1)
+						PlacePatchInto(st,patches->at(p),p,aftx,false);
+				}
+
+				count++;
+				lastPatch = p;
+			}
+
+			seqMaxDistance[q] = st.maxDistance;
+			seqOverlap[q]     = st.cellsOverlap;
+			seqBlind[q]       = st.cellsBlind;
 		}
+	}
+
+	for(size_t q = 0; q<numSeq; q++)
+	{
+		const std::vector<int> &i = patchSequences[q];
+
+		for(auto &p : i)
+			printf("%d ",p);
 		printf("\n");
 
-		ClearRendered();
-		int count = 0;
-		int lastPatch = -1;
-		affineTx aftx = affineTx(1,0,0,0,1,0);
-		for(auto &p : i)
-		{			
-			if (count==0)
-			{
-				PlacePatch((*patches)[p],p,aftx,true);
-			}
-			else
-			{
-				for(auto &al : am[p])
-					if (std::get<0>(al)==lastPatch)
-					{
-						affineTx nextAftx(std::get<7>(al),std::get<8>(al),std::get<9>(al),std::get<10>(al),std::get<11>(al),std::get<12>(al));
-						
-						//aftx = AffineTxMultiply(aftx,AffineTxInverse(nextAftx));
-						aftx = AffineTxMultiply(aftx,nextAftx);
-					}
-					
-				if (count == (int)i.size()-1)
-				{
-					PlacePatch((*patches)[p],p,aftx,false);
-					
-					badPatchScores.push_back(std::tuple<int,int,float>(i[0],p,maxDistance));
-					printf("%d,%d,%f\n",i[0],p,maxDistance);
-					
-					if (maxDistance > BP_MAX_XYZ_DISTANCE*(length-1))
-					{
-						badPatchTuples.push_back(i);
-					}
-				}
-			}
-			
-			count++;
-			lastPatch = p;
-		}
+		int p = i.back();
+		badPatchScores.push_back(std::tuple<int,int,float>(i[0],p,seqMaxDistance[q]));
+		pairStats.push_back(std::make_tuple(i[0],p,length,seqMaxDistance[q],seqOverlap[q],seqBlind[q]));
+		printf("%d,%d,%f\n",i[0],p,seqMaxDistance[q]);
+
+		if (seqMaxDistance[q] > BP_MAX_XYZ_DISTANCE*(length-1))
+			badPatchTuples.push_back(i);
 	}
 	
 	
+	// At length 2 the tuples are pairs, so the choice of what to discard is the same vertex
+	// cover as in FindBadPatches and goes through the same function. Longer chains are a
+	// hypergraph and the loop below is left as it was.
+
+	// The frequency table below was a std::map<int,int> built from nothing on every
+	// pass of the loop, which allocates and frees one red black node per distinct
+	// patch per pass, and this loop runs once per patch it condemns. Patch numbers
+	// are small non negative integers, so one vector indexed by patch number holds
+	// the same counts for every pass with no allocation at all. It is cleared at the
+	// top of each pass, which is what building a new map did. The scan order and the
+	// comparison are untouched, so the patch chosen on each pass is the same patch.
+	int highestPatchNumber = -1;
+	for(auto &bpt : badPatchTuples)
+		for(auto i : bpt)
+			if (i>highestPatchNumber) highestPatchNumber = i;
+	std::vector<int> freqCount(highestPatchNumber+1,0);
+
 	while(badPatchTuples.size()>0)
 	{
-		std::map<int,int> freqCount;
+		std::fill(freqCount.begin(),freqCount.end(),0);
 
 		int highestFreq = -1;
 		int highestPatch = -1;
@@ -412,8 +566,6 @@ void BadPatchFinder::FindBadPatchesGeneral(AlignmentMap &am, std::map<int,Patch>
 		{
 			for(auto i : bpt)
 			{
-				if (freqCount.count(i) == 0)
-					freqCount[i] = 0;
 				freqCount[i]++;
 			
 				if (highestFreq==-1 || freqCount[i]>highestFreq)
