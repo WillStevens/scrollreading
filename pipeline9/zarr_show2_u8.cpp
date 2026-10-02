@@ -144,7 +144,7 @@ void ZarrShow2U8(ZARR_1_b700 *za, int xcoord, int ycoord, int zcoord, int width,
 
 	{
 		std::stringstream oss;
-		oss << OUTPUT_DIR << "/tifbuf/t_" << std::setfill('0') << std::setw(8) << zcoord << ".tif";
+		oss << outputDir() << "/tifbuf/t_" << std::setfill('0') << std::setw(8) << zcoord << ".tif";
 		LoadOrCreateTiffIntoBuffer(za,pointBuffer,xcoord,ycoord,zcoord,width,height,oss.str());
 	}
 	

@@ -257,7 +257,7 @@ static void loadPatches(const std::vector<std::vector<std::string>>& alignmentOr
 static void savePatches()
 {
     std::printf("Saving positions...\n");
-    std::string path = OUTPUT_DIR + "/patchPositions.txt";
+    std::string path = outputDir() + "/patchPositions.txt";
     std::ofstream f(path);
     if (!f) {
         std::fprintf(stderr, "Could not open %s for writing\n", path.c_str());

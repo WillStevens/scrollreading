@@ -463,7 +463,7 @@ float ScorePlacement(AlignmentMap *am, std::map<int,Patch> *patches, std::unorde
 			else
 				outputPatch.BuildFromPoints(points,outputNum);
 				
-			outputPatch.Write(OUTPUT_DIR,outputNum);
+			outputPatch.Write(outputDir(),outputNum);
 		}
 		
 		if (showDD)

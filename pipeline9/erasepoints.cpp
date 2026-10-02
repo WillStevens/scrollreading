@@ -5,71 +5,58 @@
 #include <set>
 
 #include "bigpatch.h"
+#include "cellgrid.h"
 
 #define CELL_SIZE 10
 typedef std::tuple<int,int,int> gridCell;
 
 std::vector<gridPoint> gridPoints[2];
 
-std::map< gridCell, std::vector<gridPoint> > cellMap0;
-std::map< gridCell, std::vector<gridPoint> > cellMap1;
+// the cells of gridPoints[0] and gridPoints[1]; a flat hash in place of std::map< gridCell, std::vector<gridPoint> >
+CellGrid<gridPoint> cellMap0;
+CellGrid<gridPoint> cellMap1;
 
-typedef std::map< gridCell, std::vector<gridPoint> >::iterator cellMapIterator;
+static void EraseCell(const gridPoint &gp, int &xc, int &yc, int &zc)
+{
+	xc = ((int)std::get<2>(gp))/CELL_SIZE;
+	yc = ((int)std::get<3>(gp))/CELL_SIZE;
+	zc = ((int)std::get<4>(gp))/CELL_SIZE;
+}
 
 void FillCellMap(void)
 {
-	for(auto const &gp : gridPoints[0])
-	{
-	  int xc = ((int)std::get<2>(gp))/CELL_SIZE;
-	  int yc = ((int)std::get<3>(gp))/CELL_SIZE;
-	  int zc = ((int)std::get<4>(gp))/CELL_SIZE;
-
-      gridCell g(xc,yc,zc);
-
-      if (cellMap0.count(g)==0)
-        cellMap0[g] = std::vector<gridPoint>();			  
-      cellMap0[g].push_back(gp);
-	}
-
-	for(auto const &gp : gridPoints[1])
-	{
-	  int xc = ((int)std::get<2>(gp))/CELL_SIZE;
-	  int yc = ((int)std::get<3>(gp))/CELL_SIZE;
-	  int zc = ((int)std::get<4>(gp))/CELL_SIZE;
-
-      gridCell g(xc,yc,zc);
-
-      if (cellMap1.count(g)==0)
-        cellMap1[g] = std::vector<gridPoint>();			  
-      cellMap1[g].push_back(gp);
-	}
+	cellMap0.Build(gridPoints[0],EraseCell);
+	cellMap1.Build(gridPoints[1],EraseCell);
 }
 
 void FindMatches(std::set<gridPoint> &matchSet,int which, float radius)
 {
-	for(cellMapIterator i = cellMap0.begin(); i!= cellMap0.end(); i++)
+	// The cells of cellMap0 in the order std::map iterated them (x, then y, then z); matchSet is a
+	// std::set, but the order is kept anyway so that nothing here depends on that argument.
+	std::vector<int> order;
+	cellMap0.SortedCells(order);
+	for(int c0 : order)
 	{
-		int g0x = std::get<0>(i->first);
-		int g0y = std::get<1>(i->first);
-		int g0z = std::get<2>(i->first);
-				
-		bool foundAny = false;
+		int g0x = cellMap0.X(c0);
+		int g0y = cellMap0.Y(c0);
+		int g0z = cellMap0.Z(c0);
+
+		// The occupied neighbour cells of cellMap1, found once, in the nx, ny, nz order of the loops below
+		int neighbours[27];
+		int numNeighbours = 0;
 		for(int nx = g0x-1; nx<=g0x+1; nx++)
 		for(int ny = g0y-1; ny<=g0y+1; ny++)
 		for(int nz = g0z-1; nz<=g0z+1; nz++)
 		{
-			gridCell g(nx,ny,nz);
-			if (cellMap1.count(g) != 0)
-			{
-				// There is an overlapping cell, so add to the list of patches that could be involved
-				foundAny = true;
-			}
+			int c1 = cellMap1.Find(nx,ny,nz);
+			if (c1 >= 0)
+				neighbours[numNeighbours++] = c1;
 		}
-		
+		bool foundAny = numNeighbours > 0;
 				
 		if (foundAny)
 		{
-		    for(const gridPoint &gp0 : cellMap0[i->first])
+		    for(const gridPoint &gp0 : cellMap0.Cell(c0))
 			{
 				float x0 = std::get<0>(gp0);
 				float y0 = std::get<1>(gp0);
@@ -79,14 +66,10 @@ void FindMatches(std::set<gridPoint> &matchSet,int which, float radius)
 				int p0 = std::get<5>(gp0);
 
 					
-				for(int nx = g0x-1; nx<=g0x+1; nx++)
-				for(int ny = g0y-1; ny<=g0y+1; ny++)
-				for(int nz = g0z-1; nz<=g0z+1; nz++)
+				for(int k = 0; k < numNeighbours; k++)
 				{
-					gridCell g(nx,ny,nz);
-					if (cellMap1.count(g) != 0)
-					{		
-						for(const gridPoint &gp1 : cellMap1[g])
+					{
+						for(const gridPoint &gp1 : cellMap1.Cell(neighbours[k]))
 						{								
 							float x1 = std::get<0>(gp1);
 							float y1 = std::get<1>(gp1);
@@ -123,8 +106,6 @@ int ErasePoints(BigPatch *bp0, Patch &p1, int which, float radius)
 	    
   gridPoints[0].clear();
   gridPoints[1].clear();
-  cellMap0.clear();
-  cellMap1.clear();
   
   std::set<chunkIndex> chunks;
 	

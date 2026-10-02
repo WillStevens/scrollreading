@@ -23,7 +23,7 @@ void LoadAnnealState(std::set<int> &state)
 	{
 		int i;
 			
-		std::ifstream is(OUTPUT_DIR "/annealState.csv");
+		std::ifstream is(outPath("/annealState.csv"));
 		while(is>>i)
 		{
 			state.insert(i);
@@ -311,9 +311,9 @@ float EvaluateState(AlignmentMap *am, std::map<int,Patch> *patches,
 	
 	//printf("Running patchsprings...\n");
 	{
-		PatchSpringSimulation pss(QUADMESH_SIZE,OUTPUT_DIR,false);
+		PatchSpringSimulation pss(QUADMESH_SIZE,outputDir(),false);
 
-		pss.loadPatchVolCoords(OUTPUT_DIR "/patchVolCoords.csv");
+		pss.loadPatchVolCoords(outPath("/patchVolCoords.csv"));
 
 		//printf("Loading patches for patchsprings...\n");
 		pss.loadPatches(alignmentOrderDash, patches->size());
@@ -405,9 +405,9 @@ float EvaluateStateAll(int numComponents, AlignmentMap *am, std::map<int,Patch> 
 	
 		//printf("Running patchsprings...\n");
 		{
-			PatchSpringSimulation pss(QUADMESH_SIZE,OUTPUT_DIR,componentIndex,false);
+			PatchSpringSimulation pss(QUADMESH_SIZE,outputDir(),componentIndex,false);
 
-			pss.loadPatchVolCoords(OUTPUT_DIR "/patchVolCoords.csv");
+			pss.loadPatchVolCoords(outPath("/patchVolCoords.csv"));
 
 			//printf("Loading patches for patchsprings...\n");
 			pss.loadPatches(alignmentOrderDash, patches->size());
@@ -630,7 +630,7 @@ void Anneal(AlignmentMap *am, std::map<int,Patch> *patches, std::vector<int> pat
 		}
 	}
 	{
-		std::ofstream os(OUTPUT_DIR "/annealStats.csv");
+		std::ofstream os(outPath("/annealStats.csv"));
 		for(int i = 0; i<(int)scoreLog.size(); i++)
 		{
 			os << scoreLog[i] << "," << currentScoreLog[i] << "," << stateLength[i] << std::endl;
@@ -639,7 +639,7 @@ void Anneal(AlignmentMap *am, std::map<int,Patch> *patches, std::vector<int> pat
 
 	printf("Best score = %f\n", bestScore);
 	{
-		std::ofstream os(OUTPUT_DIR "/annealState_out.csv");
+		std::ofstream os(outPath("/annealState_out.csv"));
 		for(auto i : bestState)
 		{
 			os << i << std::endl;
@@ -809,7 +809,7 @@ void AnnealAll(int numComponents,AlignmentMap *am, std::map<int,Patch> *patches,
 		}
 	}
 	{
-		std::ofstream os(OUTPUT_DIR "/annealStats.csv");
+		std::ofstream os(outPath("/annealStats.csv"));
 		for(int i = 0; i<(int)scoreLog.size(); i++)
 		{
 			os << scoreLog[i] << "," << currentScoreLog[i] << "," << stateLength[i] << std::endl;
@@ -818,7 +818,7 @@ void AnnealAll(int numComponents,AlignmentMap *am, std::map<int,Patch> *patches,
 
 	printf("Best score = %f\n", bestScore);
 	{
-		std::ofstream os(OUTPUT_DIR "/annealState_out.csv");
+		std::ofstream os(outPath("/annealState_out.csv"));
 		for(auto i : bestState)
 		{
 			os << i << std::endl;

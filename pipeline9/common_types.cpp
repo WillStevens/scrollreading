@@ -6,7 +6,27 @@
 
 #include "common_types.h"
 
-#include "parameters.h"
+#include <cstdlib>
+#include "parameters.h"   // OUTPUT_DIR, the value outputDir() falls back to
+
+const char *outputDir()
+{
+	static const char *d = NULL;
+	if (!d)
+	{
+		const char *e = getenv("SIMPAPER_OUTPUT_DIR");
+		// the CONSTANT is needed here, not the function: calling itself is infinite recursion,
+		// and without the environment variable the program dies of stack exhaustion
+		d = (e && *e) ? e : OUTPUT_DIR;
+	}
+	return d;
+}
+
+std::string outPath(const char *suffix)
+{
+	return std::string(outputDir()) + suffix;
+}
+
 
 int dirVectorLookup[4][2] = { {1,0},{0,1},{-1,0},{0,-1}};
 

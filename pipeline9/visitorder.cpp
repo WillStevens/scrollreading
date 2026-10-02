@@ -128,7 +128,7 @@ void MakeVisitOrder(AlignmentMap *am, std::map<int,Patch> *patches,std::set<int>
 
 		if (saveOutput)
 		{
-			std::ofstream os(OUTPUT_DIR "/patchorder.csv");
+			std::ofstream os(outPath("/patchorder.csv"));
 			for (auto i : patchOrder)
 			{
 				os << i << std::endl;
@@ -225,7 +225,7 @@ int MakeVisitOrders(int N, AlignmentMap *am, std::map<int,Patch> *patches,std::s
 			
 			if (saveOutput)
 			{
-				std::ofstream os(OUTPUT_DIR "/patchorder.csv");
+				std::ofstream os(outPath("/patchorder.csv"));
 				for (auto i : patchOrder)
 				{
 					os << i << std::endl;
@@ -244,7 +244,7 @@ int MakeVisitOrders(int N, AlignmentMap *am, std::map<int,Patch> *patches,std::s
 
 		if (saveOutput)
 		{
-			std::ofstream os(OUTPUT_DIR "/patchorders.csv");
+			std::ofstream os(outPath("/patchorders.csv"));
 			for (auto &i : patchOrders)
 			{
 				os << "NEW" << endl;

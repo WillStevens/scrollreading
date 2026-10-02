@@ -36,6 +36,7 @@
 // if this is part of a bigger pipeline that already has the points in
 // memory.
 
+#include "parameters.h"
 #include <tiffio.h>
 
 #include <algorithm>
@@ -244,8 +245,13 @@ std::string write_tifxyz(const std::vector<Point> &points,
     // uuid, bbox (3D, of valid points), scale (grid pixels per (ux,uy) unit,
     // i.e. 1/step).
     const std::string uuid = opts.uuid.empty() ? make_uuid_v4() : opts.uuid;
-    const double scale_x = 1.0 / opts.step_x;
-    const double scale_y = 1.0 / opts.step_y;
+    // A7.8: the scale a tifxyz consumer expects is grid pixels per VOXEL, and one unit of
+    // (ux,uy) is QUADMESH_SIZE voxels, not one. Writing 1/step alone gave 1.0 where 0.25 was
+    // meant, and every caller patched meta.json afterwards with sed. A patch on a shell script
+    // that hides a defect in the program is worse than the defect: it travels with the script
+    // and not with the file, so anyone reading the tifxyz without our script reads it wrong.
+    const double scale_x = 1.0 / (opts.step_x * QUADMESH_SIZE);
+    const double scale_y = 1.0 / (opts.step_y * QUADMESH_SIZE);
 
     std::ostringstream json;
     json << "{\n";

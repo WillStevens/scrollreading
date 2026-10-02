@@ -73,9 +73,9 @@ float EvaluateStateOT(AlignmentMap *am, std::map<int,Patch> *patches,
 	
 	//printf("Running patchsprings...\n");
 	{
-		PatchSpringSimulation pss(QUADMESH_SIZE,OUTPUT_DIR,false);
+		PatchSpringSimulation pss(QUADMESH_SIZE,outputDir(),false);
 
-		pss.loadPatchVolCoords(OUTPUT_DIR "/patchVolCoords.csv");
+		pss.loadPatchVolCoords(outPath("/patchVolCoords.csv"));
 
 		//printf("Loading patches for patchsprings...\n");
 		pss.loadPatches(alignmentOrderDash, patches->size());

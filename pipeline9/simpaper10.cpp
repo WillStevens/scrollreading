@@ -25,14 +25,30 @@
 #include "patchcolourkey.h"
 #include "position_patches.h"
 #include "zarr_show2_u8.h"
+extern long zarrMissingChunks_1;
+extern long zarrMissingChunks_1_b700;
+extern long zarrEmptyChunks_1;
+extern long zarrEmptyChunks_1_b700;
+extern long zarrManifestEntries;
+extern long zarrManifestLookups;
 #include "PatchSpringSimulation.hpp"
 #include "anneal.h"
+void PrintTimers(void);
 #include "visitorder.h"
 #include "scoreplacement.h"
 #include "omissiontest.h"
 
 #define PATCH_LIMIT 10000
+static int patchLimit(void) { const char *e = getenv("SIMPAPER_PATCH_LIMIT"); return e ? atoi(e) : PATCH_LIMIT; }
 #define NUM_THREADS 4
+
+// How many patches to grow together, and how many candidates to try when filling a batch.
+// These used to be compile-time constants; they became run-time values because the fixed
+// ceiling of 4 left the machine idle (measured 2026-09-11: 186 % of CPU out of 1600 %
+// available). They are set with SIMPAPER_PATCHES and SIMPAPER_CANDIDATES. The default stays
+// the historical one until a pre-registered experiment says otherwise.
+int patches_in_flight = NUM_THREADS;   // read by the relaxation pool to size itself
+static int candidates_per_slot = 2;
 #define MIN_SEED_DISTANCE 600
 
 void MemInfo(void)
@@ -194,30 +210,120 @@ bool GeneratePatches(std::map<int,Patch> *patches,AlignmentMap *am, int numPatch
 {
 	int acceptedCount=0,unalignedCount=0,acceptedWithSomeBadVariance=0;
 
-	PatchGenerator *pg[NUM_THREADS];
-	
-	for(int i = 0; i<NUM_THREADS; i++)
+	// How many patches at once. By default as many as before; with SIMPAPER_PATCHES=0 it takes
+	// all the hardware available, so the program adapts itself to the machine it runs on,
+	// from a single core upwards.
 	{
-		pg[i] = new PatchGenerator(string(SURFACE_ZARR));
+		const char *e = getenv("SIMPAPER_PATCHES");
+		int t = e ? atoi(e) : NUM_THREADS;
+		if (t == 0) t = omp_get_max_threads();
+		if (t < 1) t = 1;
+		if (t > 256) t = 256;
+		patches_in_flight = t;
+
+		const char *c = getenv("SIMPAPER_CANDIDATES");
+		int k = c ? atoi(c) : 2;
+		if (k < 1) k = 1;
+		if (k > 64) k = 64;
+		candidates_per_slot = k;
+	}
+
+	std::vector<PatchGenerator *> pg(patches_in_flight);
+	
+	// Parallelism has two levels: across patches (here) and within one patch (ForcesAndMove).
+	// OpenMP nesting is off by default, which is the reason the inner parallelisation was
+	// tried and found slower.
+	omp_set_max_active_levels(2);
+	// MEASURED on 2026-09-11, twice, and the answer is NEGATIVE: the default stays 1.
+	//
+	// First attempt, directives inside ForcesAndMove: 4 threads 31 s against 23 for the serial
+	// version, 8 threads 55 s, 16 threads 454 s, with 170 s of spin waiting. Cause diagnosed:
+	// about 25000 parallel regions opened per patch.
+	//
+	// Second attempt, region LIFTED out of the relaxation loop (entered once per growth step
+	// rather than per iteration): the parallel version drops from 31 to 23 s, and raising the
+	// threshold to 8192 active points reaches 19 s. But the serial version is 18 s by then.
+	// So the diagnosis about granularity was right and the cure worked, but once it was applied
+	// it turned out there is no headroom underneath: the loop reads eight neighbours from
+	// 36 bytes scattered over 608 KB, about 5 MB of scattered reads per iteration, and it is
+	// limited by memory bandwidth and not by the CPU. Four cores sharing the same L3 do not
+	// add bandwidth.
+	//
+	// The parallelism that pays is the one ACROSS patches, already present below: it returns
+	// 1.35 times with four, and its limit is not the threads but the seeds, of which there are
+	// 2.42 per batch at 4 slots.
+	//
+	// SIMPAPER_INNER_THREADS and SIMPAPER_PARALLEL_THRESHOLD are there to experiment with.
+	int inner = 1;
+	printf("Hardware: %d threads available -> up to %d patches in parallel x %d inner threads\n",
+	       omp_get_max_threads(), patches_in_flight, inner);
+
+	// The zarr readers stay open for the whole run (one per generator) and each holds up to
+	// 80 decompressed chunks of 6.75 MiB. How many to keep is decided here, so that the cache
+	// does not exceed a quarter of the memory available: on a large machine all 80 are used, on
+	// a small one fewer, and the program works in both cases without anyone having to configure
+	// it. ZARR_BUFFERS overrides the choice.
+	if (!getenv("ZARR_BUFFERS"))
+	{
+		long available_kb = 0;
+		FILE *mi = fopen("/proc/meminfo","r");
+		if (mi)
+		{
+			char line[256];
+			while(fgets(line,sizeof(line),mi))
+				if (sscanf(line,"MemAvailable: %ld kB",&available_kb)==1) break;
+			fclose(mi);
+		}
+		// Measured on 2026-09-11 over 50 patches: with 8 chunks the cache thrashes and the run
+		// goes from 20 to 145 seconds; with 16 it reaches 20 s and 1073 MB; with 32, 19 s and
+		// 1451 MB; with 80, 21 s and 2309 MB. The working set of one patch is about sixteen
+		// chunks, and keeping more buys no time, only memory. So the default is the measured
+		// working set plus a margin, and it is lowered only when the machine is small.
+		int nbuf = 24*(192/ZARR_CS)*(192/ZARR_CS)*(192/ZARR_CS);
+		if (available_kb > 0)
+		{
+			double per_reader_mb = (available_kb/1024.0) * 0.25 / patches_in_flight;
+			int possible = (int)(per_reader_mb / (ZARR_CHUNK_BYTES/1048576.0));
+			if (possible < nbuf) nbuf = possible;
+			if (nbuf < 12*(192/ZARR_CS)*(192/ZARR_CS)*(192/ZARR_CS))
+				nbuf = 12*(192/ZARR_CS)*(192/ZARR_CS)*(192/ZARR_CS);   // below twelve the cache thrashes: measured
+			if (nbuf > ZARR_NBUF_MAX) nbuf = ZARR_NBUF_MAX;
+		}
+		char buf[32]; snprintf(buf,sizeof(buf),"%d",nbuf);
+		setenv("ZARR_BUFFERS",buf,0);
+		printf("Memory: %ld MB available -> %d cached chunks per reader (%d MB in total)\n",
+		       available_kb/1024, nbuf, (int)(nbuf*(ZARR_CHUNK_BYTES/1048576.0)*patches_in_flight));
+	}
+
+	for(int i = 0; i<patches_in_flight; i++)
+	{
+		// The field is a read-only input and the chain never writes it, so which copy of it is
+		// read is a run-time choice, not a compile-time one. SIMPAPER_SURFACE_ZARR points growth
+		// at another copy of the same voxels: a re-encoded one, for instance. The gate is what
+		// says whether two copies really do hold the same voxels.
+		{
+			const char *sz = getenv("SIMPAPER_SURFACE_ZARR");
+			pg[i] = new PatchGenerator(string((sz && *sz) ? sz : SURFACE_ZARR));
+		}
 	}
 	
 	std::vector<std::vector<float> > seeds;
 			
-	float seedInit[] = {
-	  SEED_X,
-	  SEED_Y,
-	  SEED_Z,
-	  SEED_AXIS1_X,
-	  SEED_AXIS1_Y,
-	  SEED_AXIS1_Z,
-	  SEED_AXIS2_X,
-	  SEED_AXIS2_Y,
-	  SEED_AXIS2_Z};
+	extern float sa_seed_runtime[9]; float seedInit[] = {
+	  sa_seed_runtime[0],
+	  sa_seed_runtime[1],
+	  sa_seed_runtime[2],
+	  sa_seed_runtime[3],
+	  sa_seed_runtime[4],
+	  sa_seed_runtime[5],
+	  sa_seed_runtime[6],
+	  sa_seed_runtime[7],
+	  sa_seed_runtime[8]};
 
 	seeds.push_back(std::vector<float>(std::begin(seedInit),std::end(seedInit)));
 	  
-	BigPatch *bp = OpenBigPatch(OUTPUT_DIR "/surface.bp");
-	BigPatch *bpb = OpenBigPatch(OUTPUT_DIR "/boundary.bp");
+	BigPatch *bp = OpenBigPatch(outPath("/surface.bp").c_str());
+	BigPatch *bpb = OpenBigPatch(outPath("/boundary.bp").c_str());
 
 	int startingPatch = -1;
 	
@@ -250,7 +356,7 @@ bool GeneratePatches(std::map<int,Patch> *patches,AlignmentMap *am, int numPatch
 		{
 			seeds.clear();
 			
-			for(int j=0; j<2*NUM_THREADS && seeds.size()<NUM_THREADS; j++)
+			for(int j=0; j<candidates_per_slot*patches_in_flight && (int)seeds.size()<patches_in_flight; j++)
 			{
 				seeds.push_back(std::vector<float>());
 				if (!GetNewSeed(bp,bpb,seeds.back(),j==0))
@@ -288,8 +394,8 @@ bool GeneratePatches(std::map<int,Patch> *patches,AlignmentMap *am, int numPatch
 				printf("Seed: %f,%f,%f,%f,%f,%f,%f,%f,%f,\n",seed[0],seed[1],seed[2],seed[3],seed[4],seed[5],seed[6],seed[7],seed[8]);
 			}
 			
-			Patch boundary[NUM_THREADS];
-			int steps[NUM_THREADS];
+			std::vector<Patch> boundary(patches_in_flight);
+			std::vector<int> steps(patches_in_flight);
 
 			int N = seeds.size();
 
@@ -443,11 +549,11 @@ bool GeneratePatches(std::map<int,Patch> *patches,AlignmentMap *am, int numPatch
 	// Write patches and patch relationships to files
 	for(auto &p : *patches)
 	{
-		p.second.Write(OUTPUT_DIR "/patches",p.first);
+		p.second.Write(outPath("/patches"),p.first);
 	}
 	
 	{
-		std::ofstream os(OUTPUT_DIR "/rel.csv");
+		std::ofstream os(outPath("/rel.csv"));
 		for(auto &a : *am)
 		{
 			for(auto &al : a.second)
@@ -470,8 +576,10 @@ bool GeneratePatches(std::map<int,Patch> *patches,AlignmentMap *am, int numPatch
 		}
 	}
 
+	PrintTimers();
+
 	printf("Deleting pg\n");
-	for(int i = 0; i<NUM_THREADS; i++)
+	for(int i = 0; i<patches_in_flight; i++)
 		delete pg[i];
 	printf("Deleting patches\n");
 	
@@ -484,7 +592,7 @@ void LoadPatchesAndRelationships(std::map<int,Patch> *patches, 	AlignmentMap *am
 	struct dirent *ent;
 
 	// iterate through all patch files
-	if ((dir = opendir (OUTPUT_DIR "/patches")) != NULL)
+	if ((dir = opendir(outPath("/patches").c_str())) != NULL)
 	{
 		int i = 0;
 		while ((ent = readdir (dir)) != NULL)
@@ -507,7 +615,7 @@ void LoadPatchesAndRelationships(std::map<int,Patch> *patches, 	AlignmentMap *am
 					
 					if (i++%100==0)	
 						printf("Loading %d\n",patchNum);
-					(*patches)[patchNum].Read(OUTPUT_DIR "/patches",patchNum);
+					(*patches)[patchNum].Read(outPath("/patches"),patchNum);
 		
 				}
 			}
@@ -517,7 +625,7 @@ void LoadPatchesAndRelationships(std::map<int,Patch> *patches, 	AlignmentMap *am
 	}
 	
 	{
-		std::ifstream is(OUTPUT_DIR "/rel.csv");
+		std::ifstream is(outPath("/rel.csv"));
 		std::string line;
 		
 		while(std::getline(is,line))
@@ -573,7 +681,7 @@ void LoadBadPatches(std::set<int> &badPatches, std::set<std::pair<int,int>> &man
 		{
 			int i;
 			
-			std::ifstream is(OUTPUT_DIR "/badpatches.csv");
+			std::ifstream is(outPath("/badpatches.csv"));
 			while(is>>i)
 			{
 				badPatches.insert(i);
@@ -583,7 +691,7 @@ void LoadBadPatches(std::set<int> &badPatches, std::set<std::pair<int,int>> &man
 		{
 			int i;
 			
-			std::ifstream is(OUTPUT_DIR "/manualBadPatch.csv");
+			std::ifstream is(outPath("/manualBadPatch.csv"));
 			while(is>>i)
 			{
 				badPatches.insert(i);
@@ -594,7 +702,7 @@ void LoadBadPatches(std::set<int> &badPatches, std::set<std::pair<int,int>> &man
 		{
 			int i;
 			
-			std::ifstream is(OUTPUT_DIR "/badbridges.csv");
+			std::ifstream is(outPath("/badbridges.csv"));
 			while(is>>i)
 			{
 				badPatches.insert(i);
@@ -602,7 +710,7 @@ void LoadBadPatches(std::set<int> &badPatches, std::set<std::pair<int,int>> &man
 		}
 		
 		{
-			std::ifstream is(OUTPUT_DIR "/manualBadRel.csv");
+			std::ifstream is(outPath("/manualBadRel.csv"));
 			std::string line;
 			while(std::getline(is,line))
 			{
@@ -639,7 +747,13 @@ int main(int argc, char *argv[])
 	printf("Started\n");
     fflush(stdout);
 
-	srand(RANDOM_SEED);
+	// Seed and patch limit can be overridden from the environment, so that the same collection
+	// of patches can be annealed several times with different random streams, and loaded at
+	// different sizes, without a recompile. Without the variables the behaviour is unchanged.
+	unsigned int randomSeed = RANDOM_SEED;
+	if (const char *e = getenv("SIMPAPER_SEED")) randomSeed = (unsigned int)atoi(e);
+	srand(randomSeed);
+	printf("random seed: %u\n",randomSeed);
 
 	// examine alignment of two patches
 	if (mode=="x")
@@ -658,9 +772,186 @@ int main(int argc, char *argv[])
 		int patchNum1 = atoi(argv[3]);
 
 		printf("Loading %d\n",patchNum0);		
-		p0.Read(OUTPUT_DIR "/patches",patchNum0);
+		p0.Read(outPath("/patches"),patchNum0);
 		printf("Loading %d\n",patchNum1);		
-		p1.Read(OUTPUT_DIR "/patches",patchNum1);
+		p1.Read(outPath("/patches"),patchNum1);
+
+		if (atoi(argv[4])==1)
+			p1.Flip();
+		
+		Aligner *al = new Aligner();
+			
+		std::vector<alignment> alignments;
+			
+		al->AlignPatches(p0,p1,alignments);
+		
+		delete al;
+			
+		for(auto const &a : alignments)
+		{
+			printf("%d (%f,%f,%f,%f,%f,%f) (%f,%f,%f,%f,%f,%f)\n",
+						std::get<0>(a),
+						std::get<1>(a),
+						std::get<2>(a),
+						std::get<3>(a),
+						std::get<4>(a),
+						std::get<5>(a),
+						std::get<6>(a),
+						std::get<7>(a),
+						std::get<8>(a),
+						std::get<9>(a),
+						std::get<10>(a),
+						std::get<11>(a),
+						std::get<12>(a));
+				  
+			if (VarianceTest(std::get<1>(a),std::get<2>(a),std::get<3>(a),std::get<4>(a),std::get<5>(a),std::get<6>(a)))
+			{
+				printf("Success\n");
+			}
+			else
+			{
+				printf("Fail\n");
+			}
+		}			
+	}
+	
+	if (mode=="u")
+	{
+		if (argc < 3)
+		{
+			printf("u <source folder> [<source folder>...]\n");
+			exit(-1);
+		}
+
+		std::map<int,Patch> *patches = new std::map<int,Patch>;
+		int nextSlot = 0;
+
+		for(int s = 2; s < argc; s++)
+		{
+			std::string folder = std::string(argv[s]) + "/patches";
+			DIR *dir = opendir(folder.c_str());
+			if (!dir) { fprintf(stderr,"u: cannot open %s\n",folder.c_str()); exit(-1); }
+			struct dirent *ent;
+			int counted = 0;
+			while ((ent = readdir(dir)) != NULL)
+			{
+				std::string file(ent->d_name);
+				if (file.length()<4 || !ends_with(file,".bin")) continue;
+				int num = 0;
+				for(auto c : file) if (isdigit(c)) num = num*10 + (c-'0');
+
+				// Patch has raw pointers and no copy constructor, so the compiler generated copy
+				// is shallow: reading into a local and then assigning it into the map leaves the
+				// map pointing at memory the local frees on its way out. Build it in place.
+				(*patches)[nextSlot] = Patch();
+				(*patches)[nextSlot].Read(folder,num);
+				if ((*patches)[nextSlot].minx == -1) { patches->erase(nextSlot); continue; }
+
+				// Read does not set it, and AlignPatches takes the numbers it writes into the
+				// alignment from the Patch objects themselves. Without this every alignment comes
+				// out labelled with whatever was left in the field.
+				(*patches)[nextSlot].patchNum = nextSlot;
+				nextSlot++; counted++;
+			}
+			closedir(dir);
+			printf("u: %d patches from %s\n",counted,argv[s]);
+		}
+
+		printf("u: %d patches in total, computing alignments\n",(int)patches->size());
+
+		// Only the pairs whose 3D bounding boxes touch: the others cannot overlap.
+		std::vector<std::pair<int,int>> candidate;
+		for(auto a = patches->begin(); a != patches->end(); ++a)
+		{
+			auto b = a; ++b;
+			for(; b != patches->end(); ++b)
+			{
+				const Patch &p = a->second, &q = b->second;
+				if (p.maxx < q.minx || q.maxx < p.minx) continue;
+				if (p.maxy < q.miny || q.maxy < p.miny) continue;
+				if (p.maxz < q.minz || q.maxz < p.minz) continue;
+				candidate.push_back(std::pair<int,int>(a->first,b->first));
+			}
+		}
+		printf("u: %d overlapping pairs to align\n",(int)candidate.size());
+
+		std::vector<std::vector<alignment>> outcome(candidate.size());
+		#pragma omp parallel for schedule(dynamic,8)
+		for(size_t k = 0; k < candidate.size(); k++)
+		{
+			Aligner al;
+			std::vector<alignment> found;
+			Patch &p0 = (*patches)[candidate[k].first];
+			Patch &p1 = (*patches)[candidate[k].second];
+			al.AlignPatches(p0,p1,found);
+			for(auto const &a : found)
+				if (VarianceTest(std::get<1>(a),std::get<2>(a),std::get<3>(a),std::get<4>(a),std::get<5>(a),std::get<6>(a)))
+					outcome[k].push_back(a);
+		}
+
+		int tenuti = 0;
+		{
+			std::ofstream os(outPath("/rel.csv"));
+			// Same convention as the growth stage writes: the first column is the patch that was
+			// aligned, the second is the one it was aligned against, which AlignPatches reports in
+			// field zero. Here p1 is the one being aligned, so it goes first.
+			for(size_t k = 0; k < candidate.size(); k++)
+				for(auto const &a : outcome[k])
+				{
+					os << candidate[k].second;
+					os << "," << std::get<0>(a);
+					for(int f = 1; f <= 12; f++)
+					{
+						switch(f)
+						{
+						case 1: os << "," << std::get<1>(a); break;
+						case 2: os << "," << std::get<2>(a); break;
+						case 3: os << "," << std::get<3>(a); break;
+						case 4: os << "," << std::get<4>(a); break;
+						case 5: os << "," << std::get<5>(a); break;
+						case 6: os << "," << std::get<6>(a); break;
+						case 7: os << "," << std::get<7>(a); break;
+						case 8: os << "," << std::get<8>(a); break;
+						case 9: os << "," << std::get<9>(a); break;
+						case 10: os << "," << std::get<10>(a); break;
+						case 11: os << "," << std::get<11>(a); break;
+						case 12: os << "," << std::get<12>(a); break;
+						}
+					}
+					os << std::endl;
+					tenuti++;
+				}
+		}
+		printf("u: %d alignments kept\n",tenuti);
+
+		for(auto &p : *patches)
+			p.second.Write(outPath("/patches"),p.first);
+
+		printf("u: written %d patches and rel.csv\n",(int)patches->size());
+		delete patches;
+		return 0;
+	}
+
+	// examine alignment of two patches
+	if (mode=="x")
+	{
+		if (argc!=6)
+		{
+			printf("x <patch0> <patch1> <flip 0 or 1> <seed>\n");
+			exit(-1);
+		}
+		
+		srand(atoi(argv[5]));
+		
+		Patch p0,p1;
+		
+		int patchNum0 = atoi(argv[2]);
+		int patchNum1 = atoi(argv[3]);
+
+		printf("Loading %d\n",patchNum0);		
+		p0.Read(outPath("/patches"),patchNum0);
+		printf("Loading %d\n",patchNum1);		
+		p1.Read(outPath("/patches"),patchNum1);
 
 		if (atoi(argv[4])==1)
 			p1.Flip();
@@ -712,6 +1003,41 @@ int main(int argc, char *argv[])
 
 		GeneratePatches(patches,am,numPatches);
 		printf("Generated patches\n");
+
+		// A chunk that is not on disk is read as the zarr fill value and the growth stops there
+		// without a word. Say it, but do not say whose fault it is: in zarr an absent chunk means
+		// fill_value by definition, so this is an error only when the chunk does exist in the
+		// source the local box was copied from. Which of the two it is comes from the manifest
+		// named by ZARR_CHUNK_MANIFEST; with no manifest every absent chunk counts as an error,
+		// which is the reading this check has always had. Set ZARR_MISSING_LIST and the readers
+		// write the paths there, one per line, for the caller to check upstream.
+		// This runs after GeneratePatches has written everything, so the exit value never costs
+		// the caller work already on disk.
+		long missing = zarrMissingChunks_1 + zarrMissingChunks_1_b700;
+		long empty = zarrEmptyChunks_1 + zarrEmptyChunks_1_b700;
+		printf("Zarr chunks absent from disk during growth: %ld (zarr_1 %ld, zarr_1_b700 %ld)\n",missing,zarrMissingChunks_1,zarrMissingChunks_1_b700);
+		printf("Zarr chunks absent and empty in the source: %ld (zarr_1 %ld, zarr_1_b700 %ld)\n",empty,zarrEmptyChunks_1,zarrEmptyChunks_1_b700);
+		if (zarrManifestEntries>0)
+			printf("Chunk manifest: %ld chunks listed, consulted %ld times\n",zarrManifestEntries,zarrManifestLookups);
+		else
+			printf("Chunk manifest: none given, so every absent chunk counts as missing\n");
+		if (missing>0)
+		{
+			const char *listFile = getenv("ZARR_MISSING_LIST");
+			printf("WARNING: %ld chunk reads fell on files that are not there and returned the fill value,\n",missing);
+			printf("         so the patches stopped at that boundary. If those chunks exist in the source\n");
+			printf("         volume this box was copied from, the box is incomplete and the run should be\n");
+			printf("         repeated after fetching them; if they do not exist there either, the zeros are\n");
+			printf("         the data and nothing is wrong.\n");
+			if (listFile) printf("         The paths are listed in %s\n",listFile);
+			else       printf("         Set ZARR_MISSING_LIST=<file> to get the list of paths.\n");
+			if (zarrManifestEntries==0)
+				printf("         Set ZARR_CHUNK_MANIFEST=<file> if the source is a whole scroll, where\n"
+				       "         most of the grid is empty and absent is not the same as missing.\n");
+			delete patches;
+			delete am;
+			exit(3);
+		}
 		
 		delete patches;
 		delete am;
@@ -745,7 +1071,7 @@ int main(int argc, char *argv[])
 		LoadPatchesAndRelationships(patches,am);
 
 		{
-			ofstream os(OUTPUT_DIR "/patchVolCoords.csv");
+			ofstream os(outPath("/patchVolCoords.csv"));
 		
 			for(auto &p : *patches)
 			{
@@ -808,7 +1134,7 @@ int main(int argc, char *argv[])
 		std::map<int,Patch> *patches = new std::map<int,Patch>;
 
 		printf("Loading patches and relationships...\n");
-		LoadPatchesAndRelationships(patches,am,PATCH_LIMIT);
+		LoadPatchesAndRelationships(patches,am,patchLimit());
 		AugmentAlignmentMap(*am);
 		
 		std::set<int> badPatches;
@@ -870,14 +1196,14 @@ int main(int argc, char *argv[])
 		}
 
 		{
-			std::ofstream os(OUTPUT_DIR "/badpatches.csv");
+			std::ofstream os(outPath("/badpatches.csv"));
 			for(auto i : badPatches)
 			{
 				os << i << std::endl;;
 			}
 		}
 		{
-			std::ofstream os(OUTPUT_DIR "/badpatchscores.csv");
+			std::ofstream os(outPath("/badpatchscores.csv"));
 			for(auto i : badPatchScores)
 			{
 				os << std::get<0>(i) << "," << std::get<1>(i) << "," << std::get<2>(i) << std::endl;;
@@ -885,6 +1211,7 @@ int main(int argc, char *argv[])
 		}
 
 		
+
 		delete bpf;
 		printf("Finished, cleaning up...\n");
 		delete patches;
@@ -897,7 +1224,7 @@ int main(int argc, char *argv[])
 		std::map<int,Patch> *patches = new std::map<int,Patch>;
 
 		printf("Loading patches and relationships...\n");
-		LoadPatchesAndRelationships(patches,am,PATCH_LIMIT);
+		LoadPatchesAndRelationships(patches,am,patchLimit());
 		
 		AugmentAlignmentMap(*am);
 
@@ -918,7 +1245,7 @@ int main(int argc, char *argv[])
 		MakeVisitOrder(am,patches,badPatches,manualBadRel,patchOrder,alignmentOrder,patchPositions,neighbourList,true);
 		
 		{
-			ofstream os(OUTPUT_DIR "/alignmentorder.txt");
+			ofstream os(outPath("/alignmentorder.txt"));
 			
 			for(auto &a : alignmentOrder)
 			{
@@ -936,7 +1263,7 @@ int main(int argc, char *argv[])
 		}
 
 		{
-			ofstream os(OUTPUT_DIR "/neighbours.csv");
+			ofstream os(outPath("/neighbours.csv"));
 			
 			for(auto &a : alignmentOrder)
 			{
@@ -979,7 +1306,7 @@ int main(int argc, char *argv[])
 
 			{
 				// remember to copy this to badbridges.csv
-				std::ofstream os(OUTPUT_DIR "/badbridges_out.csv");
+				std::ofstream os(outPath("/badbridges_out.csv"));
 				for(auto i : badBridges)
 				{
 					os << i << std::endl;;
@@ -1004,7 +1331,7 @@ int main(int argc, char *argv[])
 		std::map<int,Patch> *patches = new std::map<int,Patch>;
 
 		printf("Loading patches and relationships...\n");
-		LoadPatchesAndRelationships(patches,am,PATCH_LIMIT);
+		LoadPatchesAndRelationships(patches,am,patchLimit());
 		
 		AugmentAlignmentMap(*am);
 
@@ -1021,7 +1348,7 @@ int main(int argc, char *argv[])
 		numComponents = MakeVisitOrders(numComponents,am,patches,badPatches,manualBadRel,patchOrders,alignmentOrders,patchPositionss,neighbourList,true);
 		
 		{
-			ofstream os(OUTPUT_DIR "/alignmentorders.txt");
+			ofstream os(outPath("/alignmentorders.txt"));
 			
 			for(auto &i : alignmentOrders)
 			{
@@ -1043,7 +1370,7 @@ int main(int argc, char *argv[])
 		}
 
 		{
-			ofstream os(OUTPUT_DIR "/neighbourss.csv");
+			ofstream os(outPath("/neighbourss.csv"));
 			
 			for(auto &i : alignmentOrders)
 			{
@@ -1059,7 +1386,7 @@ int main(int argc, char *argv[])
 
 		{
 			// remember to copy this to badbridges.csv
-			std::ofstream os(OUTPUT_DIR "/badbridgess_out.csv");
+			std::ofstream os(outPath("/badbridgess_out.csv"));
 
 			for(int i = 0; i<numComponents; i++)
 			{
@@ -1141,12 +1468,12 @@ int main(int argc, char *argv[])
 		std::map<int,Patch> *patches = new std::map<int,Patch>;
 
 		printf("Loading patches and relationships...\n");
-		LoadPatchesAndRelationships(patches,am,PATCH_LIMIT);
+		LoadPatchesAndRelationships(patches,am,patchLimit());
 		
 		std::vector<int> patchOrder;
 		
 		{
-			std::ifstream is(OUTPUT_DIR "/patchorder.csv");
+			std::ifstream is(outPath("/patchorder.csv"));
 			int i;
 			while(is>>i)
 			{
@@ -1157,7 +1484,7 @@ int main(int argc, char *argv[])
 		std::set<std::pair<int,int>> manualGoodRel;
 
 		{
-			std::ifstream is(OUTPUT_DIR "/manualGoodRel.csv");
+			std::ifstream is(outPath("/manualGoodRel.csv"));
 			std::string line;
 			while(std::getline(is,line))
 			{
@@ -1198,7 +1525,7 @@ int main(int argc, char *argv[])
 
 				// This must come from patchsprings.py
 				// TODO - patchsprings will be rewritten in C++ soon
-				ifstream is(OUTPUT_DIR "/patchPositions.txt");
+				ifstream is(outPath("/patchPositions.txt"));
 				
 				while(true)
 				{
@@ -1236,12 +1563,12 @@ int main(int argc, char *argv[])
 		std::map<int,Patch> *patches = new std::map<int,Patch>;
 
 		printf("Loading patches and relationships...\n");
-		LoadPatchesAndRelationships(patches,am,PATCH_LIMIT);
+		LoadPatchesAndRelationships(patches,am,patchLimit());
 
 		std::set<std::pair<int,int>> manualGoodRel;
 
 		{
-			std::ifstream is(OUTPUT_DIR "/manualGoodRel.csv");
+			std::ifstream is(outPath("/manualGoodRel.csv"));
 			std::string line;
 			while(std::getline(is,line))
 			{
@@ -1256,9 +1583,10 @@ int main(int argc, char *argv[])
 		for(int compIndex = 0; compIndex < numComponents; compIndex++)
 		{
 			std::vector<int> patchOrder;
+			bool componentFound = false; // unused in the efficient build: patch 07 is a correction
 			
 			{
-				std::ifstream is(OUTPUT_DIR "/patchorders.csv");
+				std::ifstream is(outPath("/patchorders.csv"));
 				int poCounter = 0;
 				std::string line;
 				while (std::getline(is, line)) {
@@ -1271,6 +1599,7 @@ int main(int argc, char *argv[])
 						{
 							patchOrder.clear();
 							poCounter++;
+							componentFound = (poCounter==compIndex+1); (void)componentFound;
 						}
 					}
 					else
@@ -1280,6 +1609,7 @@ int main(int argc, char *argv[])
 				}
 
 			}
+
 
 			std::set<int> patchesInvolved;
 
@@ -1291,7 +1621,7 @@ int main(int argc, char *argv[])
 					(*patches)[i].UnsetPosition();
 
 				ostringstream oss;
-				oss << OUTPUT_DIR << "/patchPositions_" << compIndex << ".txt";
+				oss << outputDir() << "/patchPositions_" << compIndex << ".txt";
 				ifstream is(oss.str());
 					
 				while(true)
@@ -1331,12 +1661,12 @@ int main(int argc, char *argv[])
 		std::map<int,Patch> *patches = new std::map<int,Patch>;
 
 		printf("Loading patches and relationships...\n");
-		LoadPatchesAndRelationships(patches,am,PATCH_LIMIT);
+		LoadPatchesAndRelationships(patches,am,patchLimit());
 
 		std::vector<int> patchOrder;
 		
 		{
-			std::ifstream is(OUTPUT_DIR "/patchorder.csv");
+			std::ifstream is(outPath("/patchorder.csv"));
 			int i;
 			while(is>>i)
 			{
@@ -1346,7 +1676,7 @@ int main(int argc, char *argv[])
 
 		// This must come from patchsprings.py
 		// TODO - patchsprings will be rewritten in C++ soon
-		ifstream is(OUTPUT_DIR "/patchPositions.txt");
+		ifstream is(outPath("/patchPositions.txt"));
 			
 		while(true)
 		{
@@ -1362,11 +1692,11 @@ int main(int argc, char *argv[])
 
 		
 		// Enough buffers that we can do several layers before reloading buffers,
-		ZARR_1_b700 *surfaceZarr = ZARROpen_1_b700(SURFACE_ZARR);
+		extern const char *sa_surface_zarr; ZARR_1_b700 *surfaceZarr = ZARROpen_1_b700(sa_surface_zarr);
 
 		printf("Rendering...\n");
 
-		SliceAnimRender(surfaceZarr,std::string(OUTPUT_DIR "/sliceanim"),100,50,1,closeUpIter,patches,patchOrder,mode=="A");
+		SliceAnimRender(surfaceZarr,std::string(outPath("/sliceanim")),100,50,1,closeUpIter,patches,patchOrder,mode=="A");
 	
 		ZARRClose_1_b700(surfaceZarr);
 	}
@@ -1385,22 +1715,22 @@ int main(int argc, char *argv[])
 		std::map<int,Patch> *patches = new std::map<int,Patch>;
 
 		printf("Loading patches and relationships...\n");
-		LoadPatchesAndRelationships(patches,am,PATCH_LIMIT,&patchesToShowSet);
+		LoadPatchesAndRelationships(patches,am,patchLimit(),&patchesToShowSet);
 		printf("Finished loading\n");
 		// Enough buffers that we can do several layers before reloading buffers,
-		ZARR_1_b700 *surfaceZarr = ZARROpen_1_b700(SURFACE_ZARR);
+		extern const char *sa_surface_zarr; ZARR_1_b700 *surfaceZarr = ZARROpen_1_b700(sa_surface_zarr);
 
 		printf("Rendering...\n");
 
-		SliceAnimRender(surfaceZarr,std::string(OUTPUT_DIR "/sliceprobe"),patchesToShow.size(),20,1,-1,patches,patchesToShow);
-		writePatchColourKey(patchesToShow,OUTPUT_DIR "/sliceprobe/key.tif");
+		SliceAnimRender(surfaceZarr,std::string(outPath("/sliceprobe")),patchesToShow.size(),20,1,-1,patches,patchesToShow);
+		writePatchColourKey(patchesToShow,outPath("/sliceprobe/key.tif"));
 		
 		ZARRClose_1_b700(surfaceZarr);
 	}
 
 	if (mode=="s")
 	{		
-		int zcoord = SEED_Z;
+		extern float sa_seed_runtime[9]; int zcoord = (int)sa_seed_runtime[2];
 		
 		if (argc>2)
 			zcoord = atoi(argv[2]);
@@ -1419,11 +1749,11 @@ int main(int argc, char *argv[])
 		std::set<Patch *> shown;
 		
 		// Enough buffers that we can do several layers before reloading buffers,
-		ZARR_1_b700 *surfaceZarr = ZARROpen_1_b700(SURFACE_ZARR);
+		extern const char *sa_surface_zarr; ZARR_1_b700 *surfaceZarr = ZARROpen_1_b700(sa_surface_zarr);
 
 		printf("Rendering...\n");
 		
-		ZarrShow2U8(surfaceZarr, 0,0,zcoord,VOL_SIZE_X,VOL_SIZE_Y,std::string(OUTPUT_DIR "/slice.tif"),patchesToShow,shown,0,0,0);
+		ZarrShow2U8(surfaceZarr, 0,0,zcoord,VOL_SIZE_X,VOL_SIZE_Y,std::string(outPath("/slice.tif")),patchesToShow,shown,0,0,0);
 	
 		ZARRClose_1_b700(surfaceZarr);
 	}
@@ -1477,7 +1807,7 @@ int main(int argc, char *argv[])
 		std::map<int,Patch> *patches = new std::map<int,Patch>;
 
 		printf("Loading patches and relationships...\n");
-		LoadPatchesAndRelationships(patches,am,PATCH_LIMIT);
+		LoadPatchesAndRelationships(patches,am,patchLimit());
 
 		AugmentAlignmentMap(*am);
 
@@ -1493,7 +1823,7 @@ int main(int argc, char *argv[])
 		std::set<int> badBridges;
 		{
 			int i;
-			std::ifstream is(OUTPUT_DIR "/badbridges.csv");
+			std::ifstream is(outPath("/badbridges.csv"));
 			while(is>>i)
 			{
 				badBridges.insert(i);
@@ -1526,7 +1856,7 @@ int main(int argc, char *argv[])
 		std::map<int,Patch> *patches = new std::map<int,Patch>;
 
 		printf("Loading patches and relationships...\n");
-		LoadPatchesAndRelationships(patches,am,PATCH_LIMIT);
+		LoadPatchesAndRelationships(patches,am,patchLimit());
 
 		AugmentAlignmentMap(*am);
 
@@ -1542,7 +1872,7 @@ int main(int argc, char *argv[])
 		std::set<int> badBridges;
 		{
 			int i;
-			std::ifstream is(OUTPUT_DIR "/badbridges.csv");
+			std::ifstream is(outPath("/badbridges.csv"));
 			while(is>>i)
 			{
 				badBridges.insert(i);
@@ -1562,7 +1892,7 @@ int main(int argc, char *argv[])
 		std::map<int,Patch> *patches = new std::map<int,Patch>;
 
 		printf("Loading patches and relationships...\n");
-		LoadPatchesAndRelationships(patches,am,PATCH_LIMIT);
+		LoadPatchesAndRelationships(patches,am,patchLimit());
 
 		AugmentAlignmentMap(*am);
 
@@ -1578,7 +1908,7 @@ int main(int argc, char *argv[])
 		std::set<int> badBridges;
 		{
 			int i;
-			std::ifstream is(OUTPUT_DIR "/badbridges.csv");
+			std::ifstream is(outPath("/badbridges.csv"));
 			while(is>>i)
 			{
 				badBridges.insert(i);
@@ -1596,13 +1926,13 @@ int main(int argc, char *argv[])
 	{
 	    printf("Running patchsprings...\n");
 		{
-			PatchSpringSimulation pss(QUADMESH_SIZE,OUTPUT_DIR);
+			PatchSpringSimulation pss(QUADMESH_SIZE,outputDir());
 			
-			pss.loadPatchVolCoords(OUTPUT_DIR "/patchVolCoords.csv");
+			pss.loadPatchVolCoords(outPath("/patchVolCoords.csv"));
 			
 			std::vector<std::vector<std::string>> alignmentOrderDash;
 			{
-				std::ifstream f(OUTPUT_DIR "/alignmentorder.txt");
+				std::ifstream f(outPath("/alignmentorder.txt"));
 				if (!f) {
 					std::cerr << "Could not open alignmentorder.txt\n";
 				}
@@ -1634,15 +1964,15 @@ int main(int argc, char *argv[])
 		{
 			printf("Patchsprings for component %d\n",i);
 			
-			PatchSpringSimulation pss(QUADMESH_SIZE,OUTPUT_DIR,i);
+			PatchSpringSimulation pss(QUADMESH_SIZE,outputDir(),i);
 			
-			pss.loadPatchVolCoords(OUTPUT_DIR "/patchVolCoords.csv");
+			pss.loadPatchVolCoords(outPath("/patchVolCoords.csv"));
 			
 			std::vector<std::vector<std::string>> alignmentOrderDash;
 			{
 				int alCounter = 0;
 				
-				std::ifstream f(OUTPUT_DIR "/alignmentorders.txt");
+				std::ifstream f(outPath("/alignmentorders.txt"));
 				if (!f) {
 					std::cerr << "Could not open alignmentorders.txt\n";
 				}

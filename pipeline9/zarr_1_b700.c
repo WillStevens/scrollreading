@@ -8,6 +8,13 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <blosc2.h>
+long zarrMissingChunks_1_b700 = 0; // chunks absent from disk that the source is known to hold
+long zarrEmptyChunks_1_b700 = 0;   // chunks absent from disk that the source never wrote
+
+/* The manifest of the published array is read and held once, in zarr_1.c, because both readers
+   open the same surface field and one table serves them both. See the comment there. */
+extern void zarrManifestEnsure(void);
+extern int zarrChunkIsInManifest(int z, int y, int x);
 typedef uint8_t ZARRType_1_b700;
 
 typedef struct {
@@ -29,7 +36,9 @@ typedef struct {
 ZARR_1_b700 *ZARROpen_1_b700(const char *location)
 {
 	ZARR_1_b700 *z = (ZARR_1_b700 *)malloc(sizeof(ZARR_1_b700));
-	
+
+	zarrManifestEnsure();
+
 	z->locationRootLength = strlen(location);
 	
 	z->location = (char *)malloc(z->locationRootLength + 1 + 100);
@@ -153,7 +162,20 @@ int ZARRCheckChunk_1_b700(ZARR_1_b700 *z, int c[3])
     //printf("Opening:%s\n",z->location);	
 	if (!f)
 	{
+		// In zarr an absent chunk means fill_value by definition, so a missing file is an error
+		// only when the chunk does exist in the source the box was copied from. The manifest is
+		// what says which of the two this is; with no manifest every absent chunk is an error.
+		if (zarrChunkIsInManifest(z->bufferIndex[z->index][0],z->bufferIndex[z->index][1],z->bufferIndex[z->index][2]))
+		{
 		printf("Did not find file:%s\n",z->location); // Useful to display this message because it often indicates a file naming problem
+		zarrMissingChunks_1_b700++;
+		// The path goes to a list the caller can check upstream.
+		{
+			FILE *ml = fopen(getenv("ZARR_MISSING_LIST") ? getenv("ZARR_MISSING_LIST") : "/dev/null","a");
+			if (ml) { fprintf(ml,"%s\n",z->location); fclose(ml); }
+		}
+		}
+		else zarrEmptyChunks_1_b700++;
 
 		memset(z->buffer,0,sizeof(ZARRType_1_b700)*7077888);
 

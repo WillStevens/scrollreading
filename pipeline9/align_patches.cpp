@@ -81,33 +81,17 @@ bool Aligner::AlignPatches(Patch &p0, Patch &p1, std::vector<alignment> &alignme
 	return AlignMatches(matchList,alignments);
 }		
 
+static void AlignerCell(const gridPoint &gp, int &xc, int &yc, int &zc)
+{
+	xc = ((int)std::get<2>(gp))/CELL_SIZE;
+	yc = ((int)std::get<3>(gp))/CELL_SIZE;
+	zc = ((int)std::get<4>(gp))/CELL_SIZE;
+}
+
 void Aligner::FillCellMap(void)
 {
-	for(auto const &gp : gridPoints[0])
-	{
-		int xc = ((int)std::get<2>(gp))/CELL_SIZE;
-		int yc = ((int)std::get<3>(gp))/CELL_SIZE;
-		int zc = ((int)std::get<4>(gp))/CELL_SIZE;
-
-		gridCell g(xc,yc,zc);
-
-		if (cellMap0.count(g)==0)
-			cellMap0[g] = std::vector<gridPoint>();			  
-		cellMap0[g].push_back(gp);
-	}
-
-	for(auto const &gp : gridPoints[1])
-	{
-		int xc = ((int)std::get<2>(gp))/CELL_SIZE;
-		int yc = ((int)std::get<3>(gp))/CELL_SIZE;
-		int zc = ((int)std::get<4>(gp))/CELL_SIZE;
-
-		gridCell g(xc,yc,zc);
-
-		if (cellMap1.count(g)==0)
-			cellMap1[g] = std::vector<gridPoint>();			  
-		cellMap1[g].push_back(gp);
-	}
+	cellMap0.Build(gridPoints[0],AlignerCell);
+	cellMap1.Build(gridPoints[1],AlignerCell);
 }
 
 void Aligner::FindMatches(std::map<int,std::vector<match>> &matchList)
@@ -117,25 +101,35 @@ void Aligner::FindMatches(std::map<int,std::vector<match>> &matchList)
 #ifdef DEBUG
 	printf("Iterating over points\n");
 #endif
-	for(cellMapIterator i = cellMap0.begin(); i!= cellMap0.end(); i++)
+	// The cells of cellMap0 in the order std::map iterated them (x, then y, then z): the order in which
+	// matches are appended to matchList, and so the order rand() samples them in, is unchanged.
+	std::vector<int> order;
+	cellMap0.SortedCells(order);
+	for(int c0 : order)
 	{
-		int g0x = std::get<0>(i->first);
-		int g0y = std::get<1>(i->first);
-		int g0z = std::get<2>(i->first);
-						
-		bool foundAny = false;
+		int g0x = cellMap0.X(c0);
+		int g0y = cellMap0.Y(c0);
+		int g0z = cellMap0.Z(c0);
+		CellGrid<gridPoint>::Span cell0 = cellMap0.Cell(c0);
+
+		// The occupied neighbour cells of cellMap1, found once, in the nx, ny, nz order of the loops below
+		int neighbours[27];
+		int numNeighbours = 0;
 		for(int nx = g0x-1; nx<=g0x+1; nx++)
 		for(int ny = g0y-1; ny<=g0y+1; ny++)
 		for(int nz = g0z-1; nz<=g0z+1; nz++)
 		{
-			gridCell g(nx,ny,nz);
-			if (cellMap1.count(g) != 0)
-			{
-				// There is an overlapping cell, so add to the list of patches that could be involved
-				foundAny = true;
-				for(const gridPoint &gp : i->second)
-				  patches.insert(std::get<5>(gp));
-			}
+			int c1 = cellMap1.Find(nx,ny,nz);
+			if (c1 >= 0)
+				neighbours[numNeighbours++] = c1;
+		}
+
+		bool foundAny = numNeighbours > 0;
+		if (foundAny)
+		{
+			// There is an overlapping cell, so add to the list of patches that could be involved
+			for(const gridPoint &gp : cell0)
+			  patches.insert(std::get<5>(gp));
 		}
 									
 		if (foundAny)
@@ -145,7 +139,7 @@ void Aligner::FindMatches(std::map<int,std::vector<match>> &matchList)
 			{
 				//fprintf(stderr,"patch %d\n",(int)patch);
 						
-				for(const gridPoint &gp0 : cellMap0[i->first])
+				for(const gridPoint &gp0 : cell0)
 				{
 					if (std::get<5>(gp0) != patch)
 						continue;
@@ -160,14 +154,10 @@ void Aligner::FindMatches(std::map<int,std::vector<match>> &matchList)
 					float minDist = 10000;
 					int minCount = 0;
 							
-					for(int nx = g0x-1; nx<=g0x+1; nx++)
-					for(int ny = g0y-1; ny<=g0y+1; ny++)
-					for(int nz = g0z-1; nz<=g0z+1; nz++)
+					for(int k = 0; k < numNeighbours; k++)
 					{
-						gridCell g(nx,ny,nz);
-						if (cellMap1.count(g) != 0)
-						{		
-							for(const gridPoint &gp1 : cellMap1[g])
+						{
+							for(const gridPoint &gp1 : cellMap1.Cell(neighbours[k]))
 							{								
 								float xp1 = std::get<2>(gp1);
 								float yp1 = std::get<3>(gp1);
