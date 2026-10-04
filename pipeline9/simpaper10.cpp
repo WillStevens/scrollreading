@@ -313,7 +313,7 @@ bool GeneratePatches(std::map<int,Patch> *patches,AlignmentMap *am, int numPatch
 			{
 				if (steps[0] < MIN_PATCH_ITERS)
 				{
-					printf("Not enough growth steps (%d) on first seed\n",steps);
+					printf("Not enough growth steps (%d) on first seed\n",steps[0]);
 					exit(1);
 				}
 				
