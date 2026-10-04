@@ -799,7 +799,7 @@ void Patch::DestroyGrid(void)
 	for(int x = minux; x<=maxux; x++)
 	{
 		for(int y = minuy; y<=maxuy; y++)
-			free(pointGrid[x-minux][y-minuy]);
+			delete pointGrid[x-minux][y-minuy];
 			
 		free(pointGrid[x-minux]);
 	}
