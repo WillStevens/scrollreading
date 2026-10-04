@@ -320,7 +320,8 @@ bool GeneratePatches(std::map<int,Patch> *patches,AlignmentMap *am, int numPatch
 				printf("Adding patch to bigpatch\n");
 				AddToBigPatch(bp,(*patches)[i],i);
 				printf("Adding boundary to bigpatch\n");
-				AddToBigPatch(bpb,boundary[0],i);	
+				if (!boundary[0].Empty())
+					AddToBigPatch(bpb,boundary[0],i);
 
 				printf("Added to bigpatch on first iteration");
 				
