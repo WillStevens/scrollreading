@@ -39,7 +39,8 @@ void AugmentAlignmentMap(AlignmentMap &alignmentMap)
 				std::get<2>(inv),
 				std::get<3>(inv),
 				std::get<4>(inv),
-				std::get<5>(inv)
+				std::get<5>(inv),
+				std::get<13>(al)
 				));
 		}
 	}
@@ -66,7 +67,7 @@ void PositionPatches(std::map<int,Patch> *patches, AlignmentMap &alignmentMap, s
 		if (lastPlaced==-1)
 		{
 			patchPositions[i] = affineTx(1,0,0,0,1,0);
-			alignmentOrder.push_back(std::pair<int,alignment>(i,alignment(-1,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0,0.0,1.0,0.0)));
+			alignmentOrder.push_back(std::pair<int,alignment>(i,alignment(-1,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0,0.0,1.0,0.0,false)));
 		}
 		else
 		{

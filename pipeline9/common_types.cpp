@@ -3,14 +3,13 @@
 #include <string>
 #include <cmath>
 #include <cstring>
+#include <dirent.h>
 
 #include "common_types.h"
 
 #include "parameters.h"
 
 int dirVectorLookup[4][2] = { {1,0},{0,1},{-1,0},{0,-1}};
-
-typedef struct __attribute__((packed)) {float x,y,px,py,pz;} gridPointStruct;
 
 bool ends_with(std::string const &value, std::string const &ending)
 {
@@ -143,6 +142,16 @@ bool Patch::Next(PatchIterator &pi)
 	}
 }
 
+void Patch::BuildFlat()
+{
+    flat.clear();
+    if (pointGrid)
+        for (int x = 0; x <= maxux-minux; x++)
+            for (int y = 0; y <= maxuy-minuy; y++)
+                if (pointGrid[x][y])
+                    flat.push_back(pointGrid[x][y]);
+}
+
 void Patch::Flip(void)
 {
 	if (interpolatedPointGrid)
@@ -170,6 +179,8 @@ void Patch::Flip(void)
 	tmp = minux;
 	minux = -maxux;
 	maxux = -tmp;
+	
+	BuildFlat();
 }
 
 bool Patch::Write(const std::string &path, int i)
@@ -529,18 +540,19 @@ bool Patch::PatchXYToGlobalXY(float x, float y, float &gx, float &gy)
 /* Given global x,y coordinates, find the volume coord of the point in this patch that corresponds to that */
 /* Also find the normal and weight */
 /* 2026-07-09 - no longer used patchs own coord, but use parameter */
-bool Patch::FindGlobalXY(std::tuple<float,float,float> patchPosition, float x, float y, Vec3 &v, Vec3 &normal, float &weight)
+bool Patch::FindGlobalXY(std::tuple<float,float,float,float,float> patchPosition, float x, float y, Vec3 &v, Vec3 &normal, float &weight)
 {
 //	if (positionSet)
 //	{		
         float ppx = std::get<0>(patchPosition);
         float ppy = std::get<1>(patchPosition);
-        float ppa = std::get<2>(patchPosition);
+        float sa = std::get<3>(patchPosition);
+        float ca = std::get<4>(patchPosition);
 		
 		// Inverse transform x,y using xpos,ypos,angle
 
-		float xd = (x-ppx)*cos(ppa)+(y-ppy)*sin(ppa);
-		float yd = -(x-ppx)*sin(ppa)+(y-ppy)*cos(ppa);
+		float xd = (x-ppx)*ca+(y-ppy)*sa;
+		float yd = -(x-ppx)*sa+(y-ppy)*ca;
 		
 		//printf("x,y = %f,%f\n",x,y);
 		//printf("xd,yd = %f,%f\n",xd,yd);
@@ -630,14 +642,15 @@ bool Patch::FindGlobalXY(std::tuple<float,float,float> patchPosition, float x, f
 }
 
 // No longer use the patch x,y,a, but use patchPosition
-void Patch::TransformPoint(std::tuple<float,float,float> patchPosition, float x, float y, float &xo, float &yo)
+void Patch::TransformPoint(std::tuple<float,float,float,float,float> patchPosition, float x, float y, float &xo, float &yo)
 {
 	float ppx = std::get<0>(patchPosition);
 	float ppy = std::get<1>(patchPosition);
-	float ppa = std::get<2>(patchPosition);
+	float sa = std::get<3>(patchPosition);
+	float ca = std::get<4>(patchPosition);
 	
-	xo = x*cos(ppa)-y*sin(ppa)+ppx;
-	yo = y*cos(ppa)+x*sin(ppa)+ppy;
+	xo = x*ca-y*sa+ppx;
+	yo = y*ca+x*sa+ppy;
 }
 
 bool Patch::GetNormal(int x, int y, Vec3 &v)
@@ -789,6 +802,8 @@ void Patch::MakeGrid(std::vector<patchPoint> &points, int patchNum)
 		exit(-1);
 	}
 	*/
+	
+	BuildFlat();
 }
 
 void Patch::DestroyGrid(void)
@@ -806,6 +821,8 @@ void Patch::DestroyGrid(void)
 
 	free(pointGrid);
 	pointGrid=NULL;
+	
+	BuildFlat();
 }
 
 void Patch::MakeColourGrid(std::vector<patchPoint> &points,std::vector<std::tuple<int,int,int>> &colours)

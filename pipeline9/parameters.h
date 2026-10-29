@@ -1,20 +1,20 @@
 /* Parameters shared by several programs */
-#define OUTPUT_DIR "d:/pipelineOutput"
+#define OUTPUT_DIR "c:/vesuvius/output/PHerc1667"
 #define VOL_OFFSET_X 0
 #define VOL_OFFSET_Y 0
 #define VOL_OFFSET_Z 0
-#define VOL_SIZE_X 6621
-#define VOL_SIZE_Y 6621
-#define VOL_SIZE_Z 20974
+#define VOL_SIZE_X 3440
+#define VOL_SIZE_Y 3340
+#define VOL_SIZE_Z 11174
 #define QUADMESH_SIZE 4
-#define VOXEL_SIZE 9
+#define VOXEL_SIZE 7.91
 #define RANDOM_SEED 124
-#define VOLUME_ZARR "d:/zarrs/PHerc0139/volume/2"
-#define SURFACE_ZARR "d:/zarrs/PHerc0139/surface/0"
+#define VOLUME_ZARR "c:/vesuvius/scroll_data/zarrs/PHerc1667/volume/2"
+#define SURFACE_ZARR "c:/vesuvius/scroll_data/zarrs/PHerc1667/surface/0"
 /* The initial seed point */
-#define SEED_X 4052
-#define SEED_Y 2763
-#define SEED_Z 10487
+#define SEED_X 1798
+#define SEED_Y 1161
+#define SEED_Z 5120
 #define SEED_AXIS1_X 1
 #define SEED_AXIS1_Y 0
 #define SEED_AXIS1_Z 0
@@ -54,3 +54,14 @@
 #define MIN_TRANSFORMS 25
 /* Max volume distance allowed for overlapping x,y points */
 #define BP_MAX_XYZ_DISTANCE 10
+/* How many quadmesh steps to take when scoring a surface (e.g. SCOREPLACEMENT_SCALE = 10 and QUADMESH_SIZE = 4 means 40 voxel spaces per step) */
+#define SCOREPLACEMENT_SCALE 5
+/* Weight given to score returned by PatchSpringSimulaiton (total partch movement). If changing SCOREPLACEMENT_SCALE by a factor N, then STRETCH_SCORE_FACTOR should be divided by a factor N^2 to keep it in-sync. Values tried for both have been 5,1 and 10,0.25 */
+#define STRETCH_SCORE_FACTOR 1.0
+/* At the time of writing this (2026-10-28) it is beleived that the current implementation of patch heat doesn't help. Patches that manifest inconsistencies are more likely to be symptoms of a problem than the causes, so giving them extra weight prevents the causes from being visited by MutateState */
+/* exponential decay applied each iteration */
+#define HEAT_DECAY 0.85
+/* added per appearance in patchesInvolved */
+#define HEAT_INCREMENT 1.0
+/* floor weight so cold/unseen patches still get proposed */
+#define EXPLORATION_EPSILON 0.2

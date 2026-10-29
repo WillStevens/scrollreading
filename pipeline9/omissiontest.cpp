@@ -26,6 +26,7 @@
 float EvaluateStateOT(AlignmentMap *am, std::map<int,Patch> *patches,
                      std::set<int> &state, std::set<int> &badPatches,
                      std::set<std::pair<int,int>> &manualBadRel,
+					 AlignmentScoreMap &patchAlignmentScores,
                      std::set<int> &patchesInvolved)
 {
 	std::set<int> effectiveBadPatches;
@@ -41,7 +42,7 @@ float EvaluateStateOT(AlignmentMap *am, std::map<int,Patch> *patches,
 	std::map<int,std::set<int> > neighbourList;
 
 	MakeVisitOrder(am, patches, effectiveBadPatches, manualBadRel,
-	               patchOrder, alignmentOrder, patchPositions, neighbourList,false,false);
+	               patchOrder, alignmentOrder, patchPositions, neighbourList, patchAlignmentScores, false,false);
 
 				   
 	{
@@ -69,7 +70,7 @@ float EvaluateStateOT(AlignmentMap *am, std::map<int,Patch> *patches,
 		}
 	}
 
-	std::unordered_map<int,std::tuple<float,float,float>> patchPositionsXYA;
+	std::unordered_map<int,std::tuple<float,float,float,float,float>> patchPositionsXYA;
 	
 	//printf("Running patchsprings...\n");
 	{
@@ -78,7 +79,10 @@ float EvaluateStateOT(AlignmentMap *am, std::map<int,Patch> *patches,
 		pss.loadPatchVolCoords(OUTPUT_DIR "/patchVolCoords.csv");
 
 		//printf("Loading patches for patchsprings...\n");
-		pss.loadPatches(alignmentOrderDash, patches->size());
+		auto radiusOf = [patches](int id) -> double {
+			return patches->find(id)->second.radius;   // find, not operator[]: safe for concurrent reads
+		};
+		pss.loadPatches(alignmentOrder, patches->size(), radiusOf);
 
 		//printf("Running patchsprings...\n");
 		pss.run(50);
@@ -94,7 +98,7 @@ float EvaluateStateOT(AlignmentMap *am, std::map<int,Patch> *patches,
 			float x,y,angle;
             pss.GetPatchPosition(i,x,y,angle);
 			
-			patchPositionsXYA[i]=std::tuple<float,float,float>(x,y,angle);
+			patchPositionsXYA[i]=std::tuple<float,float,float,float,float>(x,y,angle,sin(angle),cos(angle));
 			
 			//printf("%d %f %f %f\n",i,x,y,angle);
 		}
@@ -113,7 +117,7 @@ float EvaluateStateOT(AlignmentMap *am, std::map<int,Patch> *patches,
 
 void OmissionTest(AlignmentMap *am, std::map<int,Patch> *patches, std::vector<int> patchNums,
             std::set<int> badPatches, std::set<std::pair<int,int>> manualBadRel,
-            std::set<int> badBridges, int N)
+            std::set<int> badBridges, AlignmentScoreMap &patchAlignmentScores, int N)
 {	
     std::vector<std::tuple<float,int>> patchScores;
 
@@ -137,7 +141,7 @@ void OmissionTest(AlignmentMap *am, std::map<int,Patch> *patches, std::vector<in
 			{
 				std::set<int> localPatchesInvolved;
 				patchScore[n] = EvaluateStateOT(am, patches, testState[n], badPatches,
-											 manualBadRel, localPatchesInvolved);
+											 manualBadRel, patchAlignmentScores, localPatchesInvolved);
 			}
 		}
 		else
@@ -147,7 +151,7 @@ void OmissionTest(AlignmentMap *am, std::map<int,Patch> *patches, std::vector<in
 			{
 				std::set<int> localPatchesInvolved;
 				patchScore[n] = EvaluateStateOT(am, patches, testState[n], badPatches,
-											 manualBadRel, localPatchesInvolved);
+											 manualBadRel, patchAlignmentScores, localPatchesInvolved);
 			}
 		}
 
@@ -161,7 +165,7 @@ void OmissionTest(AlignmentMap *am, std::map<int,Patch> *patches, std::vector<in
 	
 	std::sort(patchScores.begin(),patchScores.end());
 	
-	for(int i = 0; i<patchScores.size(); i++)
+	for(int i = 0; i<(int)patchScores.size(); i++)
 	{
 		printf("%d %f\n",std::get<1>(patchScores[i]),std::get<0>(patchScores[i]));
 	}	

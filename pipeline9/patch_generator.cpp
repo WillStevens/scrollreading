@@ -1,6 +1,6 @@
 #include <iostream>
 #include <cmath>
-
+#include <fstream>
 #include <unordered_set>
 #include <unordered_map>
 #include <vector>
@@ -16,7 +16,7 @@
 using namespace std;
 
 #include "parameters.h"
-
+#include "common_types.h"
 #include "patch_generator.h"
 
 #define MARGIN 8 // Don't try to fill near the edges of the volume
@@ -28,7 +28,7 @@ using namespace std;
 
 void PatchGenerator::MakeActive(int x, int y)
 {
-	active[x][y] = true;
+	act(x,y) = true;
 	activeList[activeListSize][0] = x;
 	activeList[activeListSize++][1] = y;
 }
@@ -91,9 +91,9 @@ bool PatchGenerator::HasCloseNeighbour(const point &p)
 
 void PatchGenerator::SetVectorField(int x, int y)
 {
-  uint64_t px = (uint64_t)paperSheet[x][y].pos.x;
-  uint64_t py = (uint64_t)paperSheet[x][y].pos.y;
-  uint64_t pz = (uint64_t)paperSheet[x][y].pos.z;
+  uint64_t px = (uint64_t)sheet(x,y).pos.x;
+  uint64_t py = (uint64_t)sheet(x,y).pos.y;
+  uint64_t pz = (uint64_t)sheet(x,y).pos.z;
   uint64_t p = (px<<32)+(py<<16)+pz;
   
   auto it = vectorFieldLookup.find(p);  
@@ -111,11 +111,11 @@ void PatchGenerator::SetVectorField(int x, int y)
 		v = v*VECTORFIELD_CONSTANT;
 	}
 
-	vectorFieldLookup[p] = paperSheet[x][y].vectorField = v;
+	vectorFieldLookup[p] = sheet(x,y).vectorField = v;
   }
   else
   {
-	paperSheet[x][y].vectorField = it->second;
+	sheet(x,y).vectorField = it->second;
   }
   
   //printf("Vector field for %d,%d was %f,%f,%f,%f\n",x,y,paperVectorField[x][y][0],paperVectorField[x][y][1],paperVectorField[x][y][2],paperVectorField[x][y][3]);
@@ -130,11 +130,17 @@ void PatchGenerator::InitExpectedDistanceLookup(void)
     expectedDistanceLookup[x][y] = QUADMESH_SIZE*sqrt((x-1)*(x-1)+(y-1)*(y-1));
   }
 }
+/*
+		if (actualDistance>10) \
+		{ \
+		  printf("Distance error at: %d,%d %d,%d %f %f %f\n",x,y,xd,yd,sheet(x+xd,y+yd).pos.x,sheet(x+xd,y+yd).pos.y,sheet(x+xd,y+yd).pos.z);\
+		} \
+*/
 
 #define FORCES_INNERLOOP(xd,yd) \
-      if (active[x+xd][y+yd]) \
+      if (act(x+xd,y+yd)) \
 	  { \
-		Vec3 direction = posxy-paperSheet[x+xd][y+yd].pos; \
+		Vec3 direction = posxy-sheet(x+xd,y+yd).pos; \
         float actualDistance = direction.length(); \
         direction /= actualDistance; \
         \
@@ -143,7 +149,7 @@ void PatchGenerator::InitExpectedDistanceLookup(void)
         acc += direction*force; \
 	  }
 
-float PatchGenerator::ForcesAndMove(void)
+float PatchGenerator::ForcesAndMove(float fieldWeight)
 {  
   float largestForce = 0.0;
   
@@ -153,10 +159,10 @@ float PatchGenerator::ForcesAndMove(void)
   {
 	int x = activeList[ai][0], y = activeList[ai][1];
 	
-    Vec3 acc = paperSheet[x][y].vectorField; // This will get multiplie by springForceConstant later
-	                                          // So we have already divided by that in the constant definition for
-											  // VECTORFIELD_CONSTANT
-	Vec3 posxy = paperSheet[x][y].pos;
+    Vec3 acc = sheet(x,y).vectorField * fieldWeight; // This will get multiplie by springForceConstant later
+	                                                       // So we have already divided by that in the constant definition for
+											               // VECTORFIELD_CONSTANT
+	Vec3 posxy = sheet(x,y).pos;
 
 	//printf("Pos: %f %f %f\n",posxy.x,posxy.y,posxy.z);
 	
@@ -176,19 +182,19 @@ float PatchGenerator::ForcesAndMove(void)
 		
     largestForce = std::max(forceMag,largestForce);
   
-    paperSheet[x][y].vel *= FRICTION_CONSTANT;
+    sheet(x,y).vel *= FRICTION_CONSTANT;
 	
-    paperSheet[x][y].vel += acc;
+    sheet(x,y).vel += acc;
   }
 
   for(int ai = 0; ai<activeListSize; ai++)
   {
 	int x = activeList[ai][0], y = activeList[ai][1];
 
-    point oldPos = paperSheet[x][y].pos;
-    paperSheet[x][y].pos += paperSheet[x][y].vel;
+    point oldPos = sheet(x,y).pos;
+    sheet(x,y).pos += sheet(x,y).vel;
 		
-	if (int(oldPos.x) != int(paperSheet[x][y].pos.x) || int(oldPos.y) != int(paperSheet[x][y].pos.y) || int(oldPos.z) != int(paperSheet[x][y].pos.z))
+	if (int(oldPos.x) != int(sheet(x,y).pos.x) || int(oldPos.y) != int(sheet(x,y).pos.y) || int(oldPos.z) != int(sheet(x,y).pos.z))
 	  SetVectorField(x,y);
   }
   
@@ -197,7 +203,7 @@ float PatchGenerator::ForcesAndMove(void)
 
 bool PatchGenerator::TryToFill(int xp, int yp, Vec3 &rp)
 {
-  if (!active[xp][yp])
+  if (!act(xp,yp))
   {
     for(int i = 0; i<4; i++)
 	{
@@ -220,30 +226,30 @@ bool PatchGenerator::TryToFill(int xp, int yp, Vec3 &rp)
       int xa1 = xp-yd;
 	  int ya1 = yp+xd;
 /*
-      if (active[xo1][yo1])
+      if (act(xo1,yo1))
 	  {
 		  printf("%d,%d has active neighbour %d %d\n",xp,yp,xo1,yo1);
-		  printf("%d %d status = %s\n",xo2,yo2,active[xo2][yo2]?"active":"inactive");
-		  printf("%d %d status = %s\n",xc1,yc1,active[xc1][yc1]?"active":"inactive");
-		  printf("%d %d status = %s\n",xd1,yd1,active[xd1][yd1]?"active":"inactive");
-		  printf("%d %d status = %s\n",xa1,ya1,active[xa1][ya1]?"active":"inactive");
+		  printf("%d %d status = %s\n",xo2,yo2,act(xo2,yo2)?"active":"inactive");
+		  printf("%d %d status = %s\n",xc1,yc1,act(xc1,yc1)?"active":"inactive");
+		  printf("%d %d status = %s\n",xd1,yd1,act(xd1,yd1)?"active":"inactive");
+		  printf("%d %d status = %s\n",xa1,ya1,act(xa1,ya1)?"active":"inactive");
 	  }
 */	  
       // If xo2,yo2 is in bound, then no need to check xo1,yo1
-	  if (xo2>=0 && xo2<SHEET_SIZE && yo2>=0 && yo2<SHEET_SIZE && active[xo1][yo1] && active[xo2][yo2] && xc1>=0 && xc1<SHEET_SIZE && yc1>=0 && yc1<SHEET_SIZE && xd1>=0 && xd1<SHEET_SIZE && yd1>=0 && yd1<SHEET_SIZE && active[xc1][yc1] && active[xd1][yd1])
+	  if (xo2>=0 && xo2<SHEET_SIZE && yo2>=0 && yo2<SHEET_SIZE && act(xo1,yo1) && act(xo2,yo2) && xc1>=0 && xc1<SHEET_SIZE && yc1>=0 && yc1<SHEET_SIZE && xd1>=0 && xd1<SHEET_SIZE && yd1>=0 && yd1<SHEET_SIZE && act(xc1,yc1) && act(xd1,yd1))
 	  {
 		// Adjacent point, point beyond that, and points either side of adjacent point are all active
-		rp = 2*paperSheet[xo1][yo1].pos - paperSheet[xo2][yo2].pos;
+		rp = 2*sheet(xo1,yo1).pos - sheet(xo2,yo2).pos;
 		//printf("Straightfill %f %f %f\n",rp.x,rp.y,rp.z);
 		return true;
 	  }
       // If xc1,yc1 in bounds then no need to check xa1,ya1 or xo1,yo1
-      if (xc1>=0 && xc1<SHEET_SIZE && yc1>=0 && yc1<SHEET_SIZE && active[xo1][yo1] && active[xa1][ya1] && active[xc1][yc1])
+      if (xc1>=0 && xc1<SHEET_SIZE && yc1>=0 && yc1<SHEET_SIZE && act(xo1,yo1) && act(xa1,ya1) && act(xc1,yc1))
 	  {
           // Get midpoint of xo1,yo1,xa1,ya1
-		  rp = (paperSheet[xo1][yo1].pos+paperSheet[xa1][ya1].pos)/2;
+		  rp = (sheet(xo1,yo1).pos+sheet(xa1,ya1).pos)/2;
           // Extend from the corner through the midpoint
-          rp = 2*rp - paperSheet[xc1][yc1].pos;
+          rp = 2*rp - sheet(xc1,yc1).pos;
 		  //printf("Cornerfill %f %f %f\n",rp.x,rp.y,rp.z);
 		  return true;
 	  }
@@ -266,17 +272,17 @@ bool PatchGenerator::MarkHighStress(void)
   
   for(int x = 0; x<SHEET_SIZE; x++)
   for(int y = 0; y<SHEET_SIZE; y++)
-	if (active[x][y])
+	if (act(x,y))
 	{
 	  float SETot = 0;
 	  int SENum = 0;
 	  // Don't bother with range check - make sure elsewhere that edges of sheet are not approached
       for(int xo=x-1; xo<x+2; xo++)
       for(int yo=y-1; yo<y+2; yo++)
-        if (active[xo][yo] && ! (xo == x && yo == y)) 
+        if (act(xo,yo) && ! (xo == x && yo == y)) 
 		{
             float expectedDistance = expectedDistanceLookup[x-xo+1][y-yo+1];
-            Vec3 direction = paperSheet[x][y].pos-paperSheet[xo][yo].pos;
+            Vec3 direction = sheet(x,y).pos-sheet(xo,yo).pos;
             float actualDistance = direction.length();
                 
             float force = (expectedDistance - actualDistance);
@@ -287,9 +293,9 @@ bool PatchGenerator::MarkHighStress(void)
 	  if (SETot/SENum > HIGH_STRESS_THRESHHOLD)
 	  {
 	    // paperPos is in x,y,z order
-		int xb = (int)((paperSheet[x][y].pos.x-VOL_OFFSET_X)/STRESS_BLOCK_SIZE);
-		int yb = (int)((paperSheet[x][y].pos.y-VOL_OFFSET_Y)/STRESS_BLOCK_SIZE);
-		int zb = (int)((paperSheet[x][y].pos.z-VOL_OFFSET_Z)/STRESS_BLOCK_SIZE);
+		int xb = (int)((sheet(x,y).pos.x-VOL_OFFSET_X)/STRESS_BLOCK_SIZE);
+		int yb = (int)((sheet(x,y).pos.y-VOL_OFFSET_Y)/STRESS_BLOCK_SIZE);
+		int zb = (int)((sheet(x,y).pos.z-VOL_OFFSET_Z)/STRESS_BLOCK_SIZE);
 		
 		for(int xo = xb-(xb>0); xo <= xb+(xb+1<VOL_SIZE_X/STRESS_BLOCK_SIZE); xo++)
 		for(int yo = yb-(yb>0); yo <= yb+(yb+1<VOL_SIZE_Y/STRESS_BLOCK_SIZE); yo++)
@@ -299,7 +305,7 @@ bool PatchGenerator::MarkHighStress(void)
 			r = true;
 		}
 		
-		if (!silent) printf("\nHigh stress at x,y,z=%f,%f,%f",paperSheet[x][y].pos.x,paperSheet[x][y].pos.y,paperSheet[x][y].pos.z);
+		if (!silent) printf("\nHigh stress at x,y,z=%f,%f,%f",sheet(x,y).pos.x,sheet(x,y).pos.y,sheet(x,y).pos.z);
 	  }
 	}
 	
@@ -312,7 +318,7 @@ bool PatchGenerator::HasHighStress(int x, int y, int z)
 }
 
 // TODO newPtsPaper needs to be vector of int vec2
-int PatchGenerator::MakeNewPoints(pointSet &newPts, pointSet &newPtsPaper)
+int PatchGenerator::MakeNewPoints(pointSet &newPts, pointSet &newPtsPaper, bool ignoreSurfacePred)
 {
     Vec3 np;
 
@@ -320,8 +326,8 @@ int PatchGenerator::MakeNewPoints(pointSet &newPts, pointSet &newPtsPaper)
     for(int x = 0; x<SHEET_SIZE; x++)
     for(int y = 0; y<SHEET_SIZE; y++)
     {
-		if (active[x][y])
-			AddPointToLookup(point(paperSheet[x][y].pos));
+		if (act(x,y))
+			AddPointToLookup(point(sheet(x,y).pos));
 	}
 	std::set<pair<int,int>> inactiveNeighbours;
     for(int ai = 0; ai<activeListSize; ai++)
@@ -333,7 +339,7 @@ int PatchGenerator::MakeNewPoints(pointSet &newPts, pointSet &newPtsPaper)
 		  int x = xa+offsets[oi][0];
 		  int y = ya+offsets[oi][1];
 		  
-		  if (!active[x][y]) inactiveNeighbours.insert(pair<int,int>(x,y));
+		  if (!act(x,y)) inactiveNeighbours.insert(pair<int,int>(x,y));
       }
 	}
 	for(auto &p : inactiveNeighbours)
@@ -353,7 +359,7 @@ int PatchGenerator::MakeNewPoints(pointSet &newPts, pointSet &newPtsPaper)
 				  //printf("1");
 				  okayToFill = false;
 			  }
-			  else if ((dist=GetDistanceAtPoint(px,py,pz))>0)
+			  else if ((dist=GetDistanceAtPoint(px,py,pz))>0 && !ignoreSurfacePred)
 			  {
 				  //printf("2:%f:",dist);
 				  okayToFill = false;
@@ -390,18 +396,25 @@ void PatchGenerator::AddNewPoints(pointSet &newPts, pointSet &newPtsPaper)
 	  point paperPoint = newPtsPaper[i];
 	  int x = paperPoint.x;
 	  int y = paperPoint.y;
-	  paperSheet[x][y].pos = newPts[i];
+	  sheet(x,y).pos = newPts[i];
 
-	  paperSheet[x][y].vel.x = 0.0;
-	  paperSheet[x][y].vel.y = 0.0;
-	  paperSheet[x][y].vel.z = 0.0;
+	  sheet(x,y).vel.x = 0.0;
+	  sheet(x,y).vel.y = 0.0;
+	  sheet(x,y).vel.z = 0.0;
 	  
       MakeActive(x,y);
 	  SetVectorField(x,y);
     }
 }
 
-PatchGenerator::PatchGenerator(const string &surfaceZarrName_) : surfaceZarrName(surfaceZarrName_), vfc(NULL)
+PatchGenerator::PatchGenerator(const string &surfaceZarrName_, size_t sheet_size_)
+    : SHEET_SIZE((int)sheet_size_),
+      surfaceZarrName(surfaceZarrName_),
+      vfc(NULL),
+      paperSheet(sheet_size_ * sheet_size_),
+      activeList(sheet_size_ * sheet_size_),
+      activeListSize(0),
+      active(sheet_size_ * sheet_size_, 0)
 {
 	if (!silent) printf("Init\n");
 
@@ -422,32 +435,32 @@ bool PatchGenerator::SetSeed(const std::vector<float> &seed)
     for(int x=0; x<SHEET_SIZE; x++)
     for(int y=0; y<SHEET_SIZE; y++)
     {
-        active[x][y] = false;
+        act(x,y) = false;
     }
   
-    paperSheet[SHEET_SIZE/2][SHEET_SIZE/2].pos.x = seed[0];
-    paperSheet[SHEET_SIZE/2][SHEET_SIZE/2].pos.y = seed[1];
-    paperSheet[SHEET_SIZE/2][SHEET_SIZE/2].pos.z = seed[2];
+    sheet(SHEET_SIZE/2,SHEET_SIZE/2).pos.x = seed[0];
+    sheet(SHEET_SIZE/2,SHEET_SIZE/2).pos.y = seed[1];
+    sheet(SHEET_SIZE/2,SHEET_SIZE/2).pos.z = seed[2];
     SetVectorField(SHEET_SIZE/2,SHEET_SIZE/2);
   
-    paperSheet[SHEET_SIZE/2][SHEET_SIZE/2+1].pos.x = seed[0]+QUADMESH_SIZE*seed[3];
-    paperSheet[SHEET_SIZE/2][SHEET_SIZE/2+1].pos.y = seed[1]+QUADMESH_SIZE*seed[4];
-    paperSheet[SHEET_SIZE/2][SHEET_SIZE/2+1].pos.z = seed[2]+QUADMESH_SIZE*seed[5];
+    sheet(SHEET_SIZE/2,SHEET_SIZE/2+1).pos.x = seed[0]+QUADMESH_SIZE*seed[3];
+    sheet(SHEET_SIZE/2,SHEET_SIZE/2+1).pos.y = seed[1]+QUADMESH_SIZE*seed[4];
+    sheet(SHEET_SIZE/2,SHEET_SIZE/2+1).pos.z = seed[2]+QUADMESH_SIZE*seed[5];
     SetVectorField(SHEET_SIZE/2,SHEET_SIZE/2+1);
 
-    paperSheet[SHEET_SIZE/2][SHEET_SIZE/2-1].pos.x = seed[0]-QUADMESH_SIZE*seed[3];
-    paperSheet[SHEET_SIZE/2][SHEET_SIZE/2-1].pos.y = seed[1]-QUADMESH_SIZE*seed[4];
-    paperSheet[SHEET_SIZE/2][SHEET_SIZE/2-1].pos.z = seed[2]-QUADMESH_SIZE*seed[5];
+    sheet(SHEET_SIZE/2,SHEET_SIZE/2-1).pos.x = seed[0]-QUADMESH_SIZE*seed[3];
+    sheet(SHEET_SIZE/2,SHEET_SIZE/2-1).pos.y = seed[1]-QUADMESH_SIZE*seed[4];
+    sheet(SHEET_SIZE/2,SHEET_SIZE/2-1).pos.z = seed[2]-QUADMESH_SIZE*seed[5];
     SetVectorField(SHEET_SIZE/2,SHEET_SIZE/2-1);
 
-    paperSheet[SHEET_SIZE/2+1][SHEET_SIZE/2].pos.x = seed[0]+QUADMESH_SIZE*seed[6];
-    paperSheet[SHEET_SIZE/2+1][SHEET_SIZE/2].pos.y = seed[1]+QUADMESH_SIZE*seed[7];
-    paperSheet[SHEET_SIZE/2+1][SHEET_SIZE/2].pos.z = seed[2]+QUADMESH_SIZE*seed[8];
+    sheet(SHEET_SIZE/2+1,SHEET_SIZE/2).pos.x = seed[0]+QUADMESH_SIZE*seed[6];
+    sheet(SHEET_SIZE/2+1,SHEET_SIZE/2).pos.y = seed[1]+QUADMESH_SIZE*seed[7];
+    sheet(SHEET_SIZE/2+1,SHEET_SIZE/2).pos.z = seed[2]+QUADMESH_SIZE*seed[8];
     SetVectorField(SHEET_SIZE/2+1,SHEET_SIZE/2);
 
-    paperSheet[SHEET_SIZE/2-1][SHEET_SIZE/2].pos.x = seed[0]-QUADMESH_SIZE*seed[6];
-    paperSheet[SHEET_SIZE/2-1][SHEET_SIZE/2].pos.y = seed[1]-QUADMESH_SIZE*seed[7];
-    paperSheet[SHEET_SIZE/2-1][SHEET_SIZE/2].pos.z = seed[2]-QUADMESH_SIZE*seed[8];
+    sheet(SHEET_SIZE/2-1,SHEET_SIZE/2).pos.x = seed[0]-QUADMESH_SIZE*seed[6];
+    sheet(SHEET_SIZE/2-1,SHEET_SIZE/2).pos.y = seed[1]-QUADMESH_SIZE*seed[7];
+    sheet(SHEET_SIZE/2-1,SHEET_SIZE/2).pos.z = seed[2]-QUADMESH_SIZE*seed[8];
     SetVectorField(SHEET_SIZE/2-1,SHEET_SIZE/2);
 
     MakeActive(SHEET_SIZE/2,SHEET_SIZE/2);
@@ -483,13 +496,13 @@ void PatchGenerator::OutputPatch(Patch &patch, int iter)
  
   for(int x = 0; x<SHEET_SIZE; x++)
   for(int y = 0; y<SHEET_SIZE; y++)
-	if (active[x][y])
+	if (act(x,y))
     {
 		points.push_back(patchPoint(x-SHEET_SIZE/2,
 		                           y-SHEET_SIZE/2,
-		                           paperSheet[x][y].pos.x,
-		                           paperSheet[x][y].pos.y,
-								   paperSheet[x][y].pos.z));
+		                           sheet(x,y).pos.x,
+		                           sheet(x,y).pos.y,
+								   sheet(x,y).pos.z));
 	}
 	
   if (points.size()==0)
@@ -538,8 +551,7 @@ int PatchGenerator::GeneratePatch(const std::vector<float> &seed,Patch &patch, P
 
   // TODO - in future it would be better to keep the zarrs open, but have more efficient buffer lookup
   if (!silent) printf("Opening zarrs\n");
-  surfaceZarr = ZARROpen_1(surfaceZarrName.c_str());
- 
+  surfaceZarr = ZARROpen_1(surfaceZarrName.c_str()); 
   vfc = new VectorFieldCalculator(surfaceZarr);
   
   if (!SetSeed(seed))
@@ -601,3 +613,174 @@ int PatchGenerator::GeneratePatch(const std::vector<float> &seed,Patch &patch, P
   return i;
 }
 
+void PatchGenerator::Dump(std::ostream &os)
+{
+  os << "FRAME" << std::endl;
+  for(int x = 0; x<SHEET_SIZE; x++)
+  for(int y = 0; y<SHEET_SIZE; y++)
+	if (act(x,y))
+    {
+		os << x-SHEET_SIZE/2 << "," << y-SHEET_SIZE/2 << "," << sheet(x,y).pos.x << "," << sheet(x,y).pos.y << "," << sheet(x,y).pos.z << std::endl;
+	}
+		
+}
+
+// Load a surface, ready to interpolate into any blank regions
+// The surface should have integer surface coords and should ideally be a rectangle with holes in
+// The output uses the same integer coordinate system
+void PatchGenerator::FillHoles(const std::string &fileName, const std::string &outputFileName)
+{
+	silent = false;
+    std::ofstream dumpFile("c:\\vesuvius\\temp\\dump.csv");	
+
+    if (!silent) printf("Opening zarrs\n");
+    surfaceZarr = ZARROpen_1(surfaceZarrName.c_str()); 
+    vfc = new VectorFieldCalculator(surfaceZarr);
+
+    int xmin = 0, xmax = 0, ymin = 0, ymax = 0;
+    int gridXmin = 0, gridXmax = 0, gridYmin = 0, gridYmax = 0;
+
+	bool first = true;
+
+    for(int x=0; x<SHEET_SIZE; x++)
+    for(int y=0; y<SHEET_SIZE; y++)
+    {
+        act(x,y) = false;
+    }
+	
+    for(int pass = 0; pass<2; pass++)
+	{
+        printf("Loading, pass %d\n",pass);
+		
+		FILE *fi = fopen(fileName.c_str(),"r");
+
+		if(fi)
+		{
+			gridPointStruct p;
+			fseek(fi,0,SEEK_END);
+			long fsize = ftell(fi);
+			fseek(fi,0,SEEK_SET);
+  
+			while(ftell(fi)<fsize)
+			{
+				fread(&p,sizeof(p),1,fi);
+	
+	            if (pass==0)
+				{
+					if (first || p.x < xmin)
+						xmin = p.x;
+					if (first || p.x > xmax)
+						xmax = p.x;
+					if (first || p.y < ymin)
+						ymin = p.y;
+					if (first || p.y > ymax)
+						ymax = p.y;
+					
+					first=false;
+				}
+				else
+				{
+					int px = p.x - xmin - (xmax-xmin)/2+SHEET_SIZE/2;
+					int py = p.y - ymin - (ymax-ymin)/2+SHEET_SIZE/2;
+					
+					//printf("%d,%d %f,%f,%f\n",px,py,p.px,p.py,p.pz);
+					
+					sheet(px,py).pos.x = p.px;
+					sheet(px,py).pos.y = p.py;
+					sheet(px,py).pos.z = p.pz;
+
+					sheet(px,py).vel.x = 0.0;
+					sheet(px,py).vel.y = 0.0;
+					sheet(px,py).vel.z = 0.0;
+	  
+					MakeActive(px,py);
+					SetVectorField(px,py);
+				}				
+			}
+		
+			fclose(fi);
+		}
+	}
+
+	gridXmin = xmin - xmin - (xmax-xmin)/2+SHEET_SIZE/2;
+	gridYmin = ymin - ymin - (ymax-ymin)/2+SHEET_SIZE/2;
+	gridXmax = xmax - xmin - (xmax-xmin)/2+SHEET_SIZE/2;
+	gridYmax = ymax - ymin - (ymax-ymin)/2+SHEET_SIZE/2;
+
+	Dump(dumpFile);
+
+	pointSet newPtsPaper;
+	pointSet newPts;
+	
+	printf("About to start main loop\n");
+	
+	for(int i = 0; i<60; i++)
+	{
+		if (!silent) printf("#");
+		fflush(stdout);
+		int j = 0;
+		float f;
+		while (((f=ForcesAndMove(0.1))>RELAX_FORCE_THRESHHOLD && j<MAX_RELAX_ITERATIONS) || j<MIN_RELAX_ITERATIONS)
+		{
+			j++;
+		}
+		
+		newPts.clear();
+		newPtsPaper.clear();
+		// ignoreSurfacePred = true because we want to make points outside of where there are surface predictions
+		int pointsAdded = MakeNewPoints(newPts,newPtsPaper,true);
+		
+		printf("Made %d points\n",pointsAdded);
+		
+		decltype(newPts) keptPts;
+		decltype(newPtsPaper) keptPtsPaper;
+		
+		// Only keep points that are within the original bounding box
+		for(int i = 0; i<newPts.size(); i++)
+		{
+			if (newPtsPaper[i].x>=gridXmin && newPtsPaper[i].x<=gridXmax && newPtsPaper[i].y>=gridYmin && newPtsPaper[i].y<gridYmax)
+			{
+				keptPts.push_back(newPts[i]);
+				keptPtsPaper.push_back(newPtsPaper[i]);
+			}
+		}
+
+		printf("Kept %d points\n",(int)keptPts.size());
+
+		if (keptPts.size()==0)
+		{
+			if (!silent) printf("\nNo more points added");
+		}
+		
+		AddNewPoints(keptPts,keptPtsPaper);
+		
+		Dump(dumpFile);
+	}
+
+    // Save filled surface
+	{
+		FILE *fo = fopen(outputFileName.c_str(),"w");
+
+		if(fo)
+		{
+			gridPointStruct p;
+  
+			for(int x = 0; x<SHEET_SIZE; x++)
+			for(int y = 0; y<SHEET_SIZE; y++)
+				if (act(x,y))
+				{
+					p.x= x - SHEET_SIZE/2 + (xmax-xmin)/2 + xmin;
+					p.y= y - SHEET_SIZE/2 + (ymax-ymin)/2 + ymin;
+					p.px = sheet(x,y).pos.x;
+					p.py = sheet(x,y).pos.y;
+					p.pz = sheet(x,y).pos.z;
+					fwrite(&p,sizeof(p),1,fo);
+				}
+							
+			fclose(fo);
+		}
+	}
+  
+    delete vfc;
+    ZARRClose_1(surfaceZarr);
+}

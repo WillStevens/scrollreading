@@ -1,6 +1,7 @@
 #include <fstream>
 #include <vector>
 #include <map>
+#include <unordered_map>
 #include <set>
 #include <queue>
 #include <algorithm>
@@ -9,7 +10,7 @@
 
 #include "parameters.h"
 #include "position_patches.h"
-
+#include "common_types.h"
 
 // The pairs contain size, minVertex
 std::vector<std::pair<int,int>> getComponents(const std::map<int, std::set<int>>& neighbourList)
@@ -54,7 +55,7 @@ std::vector<std::pair<int,int>> getComponents(const std::map<int, std::set<int>>
     return components;
 }
 
-void MakeVisitOrder(AlignmentMap *am, std::map<int,Patch> *patches,std::set<int> &badPatches,std::set<std::pair<int,int>> &manualBadRel, std::vector<int> &patchOrder, std::vector<std::pair<int,alignment>> &alignmentOrder,std::map<int,affineTx> &patchPositions, std::map<int,std::set<int> > &neighbourList, bool showSize=false, bool saveOutput = true)
+void MakeVisitOrder(AlignmentMap *am, std::map<int,Patch> *patches,std::set<int> &badPatches,std::set<std::pair<int,int>> &manualBadRel, std::vector<int> &patchOrder, std::vector<std::pair<int,alignment>> &alignmentOrder,std::map<int,affineTx> &patchPositions, std::map<int,std::set<int> > &neighbourList, AlignmentScoreMap &patchAlignmentScores, bool showSize=false, bool saveOutput = true)
 {
 		int minPatchInNeighbourList = -1;
 		
@@ -68,10 +69,15 @@ void MakeVisitOrder(AlignmentMap *am, std::map<int,Patch> *patches,std::set<int>
 				// Iterate over alignments
 				for(auto al : a.second)
 				{	
+			        printf("Testing %d,%d\n",patch1,std::get<0>(al));
+					if (std::get<13>(al)) continue;
+					
 					int patch2 = std::get<0>(al);
 
+					printf("Testing for bad patch %d\n",patch2);
 					if (badPatches.count(patch2)==0 && manualBadRel.count(std::pair<int,int>(patch1,patch2))==0 && manualBadRel.count(std::pair<int,int>(patch2,patch1))==0)
 					{
+						printf("Neighbour!\n");
 						if (neighbourList.count(patch1)==0)
 							neighbourList[patch1] = std::set<int>();
 						if (neighbourList.count(patch2)==0)
@@ -79,7 +85,7 @@ void MakeVisitOrder(AlignmentMap *am, std::map<int,Patch> *patches,std::set<int>
 						
 						neighbourList[patch1].insert(patch2);
 						neighbourList[patch2].insert(patch1);
-						
+												
 						if (minPatchInNeighbourList==-1 || patch1<minPatchInNeighbourList)
 							minPatchInNeighbourList = patch1;
 						if (minPatchInNeighbourList==-1 || patch2<minPatchInNeighbourList)
@@ -121,9 +127,28 @@ void MakeVisitOrder(AlignmentMap *am, std::map<int,Patch> *patches,std::set<int>
 			
 			if (toVisitSet.size()==0)
 				break;
+
+
+			float minAlignmentScore = -1;
+			int minNeighbour;
+			bool first = true;
+			for(auto i : toVisitSet)
+			{
+				float alignmentScore = -1;
+				if (patchAlignmentScores.count(i))
+					alignmentScore = patchAlignmentScores[i];
+	
+				if (first || alignmentScore < minAlignmentScore)
+				{
+					minAlignmentScore = alignmentScore;
+					minNeighbour = i;
+				}
 			
-			auto nh = toVisitSet.extract(toVisitSet.begin());
-			currentVisit = nh.value();
+				first = false;
+			}
+				
+			toVisitSet.erase(minNeighbour);
+			currentVisit = minNeighbour;
 		}
 
 		if (saveOutput)
@@ -141,7 +166,8 @@ void MakeVisitOrder(AlignmentMap *am, std::map<int,Patch> *patches,std::set<int>
 }
 
 // version of MakeVisitOrder that will output data for the N largest components...
-int MakeVisitOrders(int N, AlignmentMap *am, std::map<int,Patch> *patches,std::set<int> &badPatches,std::set<std::pair<int,int>> &manualBadRel, std::vector< std::vector<int>> &patchOrders, std::vector<std::vector<std::pair<int,alignment>>> &alignmentOrders,std::vector<std::map<int,affineTx>> &patchPositionss, std::map<int,std::set<int> > &neighbourList, bool showSize=false, bool saveOutput = true)
+// WS 2026-10-26 - it will also output a value that can be used in a cost function: score for any two patches are much farther apart than they should be...
+int MakeVisitOrders(int N, AlignmentMap *am, std::map<int,Patch> *patches,std::set<int> &badPatches,std::set<std::pair<int,int>> &manualBadRel, std::vector< std::vector<int>> &patchOrders, std::vector<std::vector<std::pair<int,alignment>>> &alignmentOrders,std::vector<std::map<int,affineTx>> &patchPositionss, std::map<int,std::set<int> > &neighbourList, AlignmentScoreMap &patchAlignmentScores, bool showSize=false, bool saveOutput = true)
 {
 		int minPatchInNeighbourList = -1;
 		
@@ -154,7 +180,9 @@ int MakeVisitOrders(int N, AlignmentMap *am, std::map<int,Patch> *patches,std::s
 			{
 				// Iterate over alignments
 				for(auto al : a.second)
-				{	
+				{
+					if (std::get<13>(al)) continue;
+					
 					int patch2 = std::get<0>(al);
 
 					if (badPatches.count(patch2)==0 && manualBadRel.count(std::pair<int,int>(patch1,patch2))==0 && manualBadRel.count(std::pair<int,int>(patch2,patch1))==0)
@@ -190,7 +218,7 @@ int MakeVisitOrders(int N, AlignmentMap *am, std::map<int,Patch> *patches,std::s
 			}
 		}
 
-		int noOfCompToOutput = (N>components.size())?components.size():N;
+		int noOfCompToOutput = (N>(int)components.size())?(int)components.size():N;
 		
 		//printf("Calculating patch order...\n");
 
@@ -216,9 +244,27 @@ int MakeVisitOrders(int N, AlignmentMap *am, std::map<int,Patch> *patches,std::s
 			
 				if (toVisitSet.size()==0)
 					break;
+
+				float minAlignmentScore = -1;
+				int minNeighbour;
+				bool first = true;
+				for(auto i : toVisitSet)
+				{
+					float alignmentScore = -1;
+					if (patchAlignmentScores.count(i))
+						alignmentScore = patchAlignmentScores[i];
+	
+					if (first || alignmentScore < minAlignmentScore)
+					{
+						minAlignmentScore = alignmentScore;
+						minNeighbour = i;
+					}
 			
-				auto nh = toVisitSet.extract(toVisitSet.begin());
-				currentVisit = nh.value();
+					first = false;
+				}
+				
+				toVisitSet.erase(minNeighbour);
+				currentVisit = minNeighbour;
 			}
 
 			patchOrders.push_back(patchOrder);

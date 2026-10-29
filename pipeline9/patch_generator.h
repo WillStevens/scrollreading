@@ -1,7 +1,10 @@
 #pragma once
 
+#include <iostream>
 #include <unordered_map>
 #include <string>
+#include <vector>
+#include <array>
 
 using namespace std;
 
@@ -11,12 +14,13 @@ using namespace std;
 #include "common_types.h"
 #include "calcvectorfield.h"
 
-#define SHEET_SIZE (MAX_GROWTH_STEPS+5)
+//#define SHEET_SIZE (MAX_GROWTH_STEPS+5)
+//#define SHEET_SIZE 600
 
 class PatchGenerator
 {
 	public:
-        PatchGenerator(const string &surfaceZarrName_);
+        PatchGenerator(const string &surfaceZarrName_, size_t sheet_size_ = (MAX_GROWTH_STEPS+5));
 		~PatchGenerator(void);
 
         void MakeActive(int x, int y);		
@@ -27,31 +31,41 @@ class PatchGenerator
 		bool HasCloseNeighbour(const point &p);
 		void SetVectorField(int x, int y);
 		void InitExpectedDistanceLookup(void);
-		float ForcesAndMove(void);
+		float ForcesAndMove(float fieldWeight=1.0);
 		bool TryToFill(int xp, int yp, point &rp);
 		void ClearHighStress(void);
 		bool MarkHighStress(void);
 		bool HasHighStress(int x, int y, int z);
-		int MakeNewPoints(pointSet &newPts, pointSet &newPtsPaper);
+		int MakeNewPoints(pointSet &newPts, pointSet &newPtsPaper, bool ignoreSurfacePred=false);
 		void AddNewPoints(pointSet &newPts, pointSet &newPtsPaper);
 
 		void OutputBoundary(Patch &boundary, pointSet &boundaryPoints, pointSet &boundaryPointsPaper);
 		void OutputPatch(Patch &patch, int iter);
 
         int GeneratePatch(const std::vector<float> &seed,Patch &patch, Patch &boundary, int iter, bool _silent=false);
+		
+		void FillHoles(const std::string &fileName,const std::string &outputFileName);
+
+		void Dump(std::ostream &os);
 	private:
+	    int SHEET_SIZE;   // runtime sheet dimension (sheet is SHEET_SIZE x SHEET_SIZE)
 		string surfaceZarrName;
 	    ZARR_1 *surfaceZarr;
 
 		VectorFieldCalculator *vfc;
 		
+        // Flat, row-major storage (index = x*SHEET_SIZE + y). Use sheet(x,y) / act(x,y)
         // Stored as x=0, y=1, z=2
-        paperPoint paperSheet[SHEET_SIZE][SHEET_SIZE];
-				
-        int activeList[SHEET_SIZE*SHEET_SIZE][2];
+        std::vector<paperPoint> paperSheet;
+
+        std::vector< std::array<int,2> > activeList;   // activeList[i][0]=x, [i][1]=y
         int activeListSize;
-        bool active[SHEET_SIZE][SHEET_SIZE];
-		
+        std::vector<unsigned char> active;             // 0/1 flags (not vector<bool>, for speed)
+
+        size_t sheetIndex(int x, int y) const { return (size_t)x * (size_t)SHEET_SIZE + (size_t)y; }
+        paperPoint &sheet(int x, int y)       { return paperSheet[sheetIndex(x,y)]; }
+        unsigned char &act(int x, int y)      { return active[sheetIndex(x,y)]; }
+
 		unordered_map< pointInt, pointSet, pointIntHash > pointLookup;
 		unordered_map< pointInt, float, pointIntHash> distanceLookup;
 

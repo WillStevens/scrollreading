@@ -1,5 +1,8 @@
 #pragma once
 
+#include <unordered_map>
+#include <utility>
+#include <functional>
 #include <vector>
 #include <map>
 
@@ -29,6 +32,7 @@ struct pointIntHash {
 		}
 };
 
+typedef struct __attribute__((packed)) {float x,y,px,py,pz;} gridPointStruct;
 
 typedef vector<point> pointSet;
 
@@ -84,8 +88,8 @@ class Patch
 		void SetPosition(float x, float y, float a) {xpos=x;ypos=y;angle=a;positionSet=true;}
 		void UnsetPosition(void) {positionSet=false;}
 		bool PatchXYToGlobalXY(float x, float y, float &gx, float &gy);
-		bool FindGlobalXY(std::tuple<float,float,float> patchPosition,float x, float y, Vec3 &v, Vec3 &normal, float &weight);
-		void TransformPoint(std::tuple<float,float,float>,float x, float y, float &xo, float &yo);
+		bool FindGlobalXY(std::tuple<float,float,float,float,float> patchPosition,float x, float y, Vec3 &v, Vec3 &normal, float &weight);
+		void TransformPoint(std::tuple<float,float,float,float,float>,float x, float y, float &xo, float &yo);
 		bool GetNormal(int x, int y, Vec3 &v);
 		bool CentreVolCoords(Vec3 &v);
 		void CreateParallelPatch(float distance, Patch &target);
@@ -104,7 +108,13 @@ class Patch
 		~Patch(void) {DestroyInterpolatedGrid();DestroyGrid();DestroyColourGrid();}
 		void Clear(void) {DestroyInterpolatedGrid();DestroyGrid();interpolatedPointGrid = NULL; minux=maxux=minuy=maxuy=minx=maxx=miny=maxy=minz=maxz=-1; positionSet=false; pointGrid=NULL;colourGrid=NULL;}
 
+		// Read-only, safe to call from multiple threads as long as no thread
+		// is concurrently building/flipping/clearing this patch.
+		const std::vector<patchPoint *>& Points() const { return flat; }
 	public:
+		void BuildFlat();
+		std::vector<patchPoint *> flat;
+		
 		//vector<patchPoint> *interpolatedPoints;
 		int minux,maxux,minuy,maxuy;
 		int minx,maxx,miny,maxy,minz,maxz;
@@ -119,10 +129,22 @@ class Patch
 		patchPoint ***interpolatedPointGrid;
 };
 
-typedef std::tuple<int,float,float,float,float,float,float,float,float,float,float,float,float> alignment;
+typedef std::tuple<int,float,float,float,float,float,float,float,float,float,float,float,float,bool> alignment;
 typedef std::map<int,std::vector<alignment> > AlignmentMap;
 
 typedef std::tuple<float,float,float,float,float,float> affineTx;
+
+struct PairHash {
+    std::size_t operator()(const std::pair<int,int>& p) const {
+        std::size_t h1 = std::hash<int>{}(p.first);
+        std::size_t h2 = std::hash<int>{}(p.second);
+        return h1 ^ (h2 + 0x9e3779b9 + (h1 << 6) + (h1 >> 2));
+    }
+};
+
+
+typedef std::unordered_map<std::pair<int,int>, float, PairHash> AlignmentScorePairMap;
+typedef std::unordered_map<int, float> AlignmentScoreMap;
 
 bool ends_with(std::string const &value, std::string const &ending);
 

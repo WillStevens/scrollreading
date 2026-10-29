@@ -107,7 +107,7 @@ bool LoadOrCreateTiffIntoBuffer(ZARR_1_b700 *za, uint32_t *pointBuffer, int xcoo
 		tsize_t scanlineSize = TIFFScanlineSize(tif);
 		unsigned char *buf = (unsigned char *)_TIFFmalloc(scanlineSize);
 
-		for (uint32_t row = 0; row < height; row++)
+		for (uint32_t row = 0; row < (uint32_t)height; row++)
 		{
 			if (TIFFReadScanline(tif, buf, row, 0) < 0) {
 				printf("Error reading scanline %u\n", row);

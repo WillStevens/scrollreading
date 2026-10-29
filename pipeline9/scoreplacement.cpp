@@ -8,18 +8,21 @@
 #include "parameters.h"
 #include "common_types.h"
 
-float GetMaxDistance(std::vector<std::pair<Vec3,Vec3>> &v)
+// TODO move this into parameters.json
+#define OVERLAP_PENALTY 2.0
+
+float GetMaxDistance(std::vector<std::tuple<int,Vec3,Vec3>> &v,int &p0, int &p1)
 {
 	float maxDistance = 0.0f;
 
-	for(int i = 0; i<v.size(); i++)
+	for(int i = 0; i<(int)v.size(); i++)
 	{
-		for(int j = i+1; j<v.size(); j++)
+		for(int j = i+1; j<(int)v.size(); j++)
 		{
-			Vec3 posi = v[i].first;
-			Vec3 normali =v[i].second;
-			Vec3 posj = v[j].first;
-			Vec3 normalj = v[j].second;
+			Vec3 posi = std::get<1>(v[i]);
+			Vec3 normali = std::get<2>(v[i]);
+			Vec3 posj = std::get<1>(v[j]);
+			Vec3 normalj = std::get<2>(v[j]);
 										
 			float distancei = fabs(Vec3::dot(normali,posi - posj));
 			float distancej = fabs(Vec3::dot(normalj,posi - posj));
@@ -27,22 +30,39 @@ float GetMaxDistance(std::vector<std::pair<Vec3,Vec3>> &v)
 			float distance = distancei>distancej ? distancei : distancej;
 			
 			if (distance>maxDistance)
+			{
 				maxDistance=distance;
+				p0 = std::get<0>(v[i]);
+				p1 = std::get<0>(v[j]);
+			}
 		}
 	}
 	
 	return maxDistance;
 }
 
-float ScorePlacementAreaAndIncon(AlignmentMap *am, std::map<int,Patch> *patches, std::unordered_map<int,std::tuple<float,float,float>> &patchPositionsXYA, std::vector<int> &patchOrder, std::set<int> &patchesToColour, std::set<std::pair<int,int>> &manualGoodRel, std::set<int> &patchesInvolved, int maxDistanceThresh, float stepSize=1.0, bool writePatch = true, bool writeColours = true, bool showDD = false)
+float ScorePlacementAreaAndIncon(AlignmentMap *am, std::map<int,Patch> *patches, std::unordered_map<int,std::tuple<float,float,float,float,float>> &patchPositionsXYA, std::vector<int> &patchOrder, std::set<int> &patchesToColour, std::set<std::pair<int,int>> &manualGoodRel, std::set<int> &patchesInvolved, int maxDistanceThresh, float stepSize=1.0, bool writePatch = true, bool writeColours = true, bool showDD = false)
 {
     //printf("Starting ScorePlacement\n");
 			
 	//printf("Loaded patch positions\n");
 				
-				
-    // work out xmin,xmax,ymin,ymax;
 	
+	struct CachedPoint {
+		float x, y;                    // transformed position
+		const patchPoint *pt; // pointer to the source point (for ->v and ->x/->y)
+		Patch *patch;                  // owning patch (for GetNormal)
+		int patchId;
+		int cell;                      // filled in once bounds are known; -1 = not sampled
+	};
+
+	static thread_local std::vector<CachedPoint> cache;   // reused across calls, no steady-state allocation
+	cache.clear();
+
+	int downSize = SCOREPLACEMENT_SCALE;
+	
+    // Pass 1: work out xmin,xmax,ymin,ymax;
+    // Also cache <patch number, x, y> -> x,y	
 	float xmin=0,ymin=0,xmax=0,ymax=0;
 	bool first = true;
 	{
@@ -53,106 +73,109 @@ float ScorePlacementAreaAndIncon(AlignmentMap *am, std::map<int,Patch> *patches,
 				printf("Patch %d not found in 'patches'\n",i);
 				exit(-1);
 			}
-			Patch &p = (*patches)[i];
-			for(PatchIterator pi = p.Begin(); p.Next(pi);)
+			if (patchPositionsXYA.count(i)==0)
 			{
-				float x,y;
-				if (patchPositionsXYA.count(i)==0)
-				{
-					printf("Couldn't find %d in patchPositionsXYA\n",i);
-					exit(-1);
-				}
+				printf("Couldn't find %d in patchPositionsXYA\n",i);
+				exit(-1);
+			}
+			std::tuple<float,float,float,float,float> patchPosition = patchPositionsXYA[i];
+			Patch &p = (*patches)[i];
+
+			for (const patchPoint *pt : p.Points())
+			{
+ 				float x,y;
 	
-				p.TransformPoint(patchPositionsXYA[i],pi.p->x,pi.p->y,x,y);
+				p.TransformPoint(patchPosition,pt->x,pt->y,x,y);
 				
-				if (x<xmin || first) xmin=x;
-				if (y<ymin || first) ymin=y;
-				if (x>xmax || first) xmax=x;
-				if (y>ymax || first) ymax=y;
-				
-				first = false;
+				// decision about which coordinates to keep can be made here before knowing xmin and xmax
+				// this means fewer iterations over cache later, and smaller cache
+				if ( ((int)x)%downSize==0 && ((int)y)%downSize==0)
+				{
+					if (x<xmin || first) xmin=x;
+					if (y<ymin || first) ymin=y;
+					if (x>xmax || first) xmax=x;
+					if (y>ymax || first) ymax=y;
+					
+					first = false;
+
+					cache.push_back({x, y, pt, &p, i, -1});
+				}
 			}
 		}
 	}
 
 	int xsize = (int)xmax-(int)xmin;
 	int ysize = (int)ymax-(int)ymin;
-
-	int downSize = 5;
 	
 	xsize /= downSize; xsize++;
 	ysize /= downSize; ysize++;
-	
-	std::vector<std::vector<std::pair<Vec3,Vec3>>> plotted(xsize*ysize);
 
+    std::vector<int> cellCount(xsize*ysize, 0);
+	
+    // Pass 2 : work out counts
+	for (auto &c : cache)
+	{
+		int xp = (int)c.x - (int)xmin;
+		int yp = (int)c.y - (int)ymin;
+		c.cell = (yp / downSize) * xsize + (xp / downSize);
+		cellCount[c.cell]++;
+	}
+
+
+    // Pass 3 : work out score
 	float score = 0;
-				
+	std::vector<std::vector<std::tuple<int,Vec3,Vec3>>> plotted(xsize*ysize);
+	for (size_t c = 0; c < plotted.size(); c++)
+		if (cellCount[c] > 0)
+			plotted[c].reserve(cellCount[c]);
+		
 	int ptsFound=0,normFound=0;
 	{
-		for (auto i : patchOrder)
-		{			
-			if (patches->count(i)==0)
+		// Pass 3 (fill): just iterate the cache, no TransformPoint, no recomputing the filter
+		for (auto &c : cache)
+		{
+			Vec3 normal;
+			bool gotNormal = c.patch->GetNormal((int)c.pt->x-c.patch->minux, (int)c.pt->y-c.patch->minuy, normal);
+			if (!gotNormal) normal = Vec3(0.0, 0.0, 0.0);
+			
+			if (plotted[c.cell].size()==0)
 			{
-				printf("Patch %d not found in 'patches'\n",i);
-				exit(-1);
+				score+=1.0;
 			}
-			Patch &p = (*patches)[i];
-			for(PatchIterator pi = p.Begin(); p.Next(pi);)
-			{
-				float x,y;
-				if (patchPositionsXYA.count(i)==0)
-				{
-					printf("Couldn't find %d in patchPositionsXYA\n",i);
-					exit(-1);
-				}
-	
-				p.TransformPoint(patchPositionsXYA[i],pi.p->x,pi.p->y,x,y);
-
-				int xp = (int)x-(int)xmin;
-				int yp = (int)y-(int)ymin;
-
-				if (xp%downSize==0 && yp%downSize==0)
-				{
-					if (plotted[(yp/downSize)*xsize+(xp/downSize)].size()==0)
-					{
-						score+=1.0;
-					}
-				
-					Vec3 normal;
+									
+			plotted[c.cell].push_back({c.patchId,c.pt->v,normal});
 					
-					bool gotNormal = p.GetNormal((int)pi.p->x,(int)pi.p->y,normal);
-					
-					if (!gotNormal)
-						normal=Vec3(0.0,0.0,0.0);
-					
-					plotted[(yp/downSize)*xsize+(xp/downSize)].push_back({pi.p->v,normal});
-					
-					ptsFound++;
-					if (gotNormal)
-						normFound++;
-				}
-			}
+			ptsFound++;
+			if (gotNormal)
+				normFound++;
 		}
 	}
 
-	// Now iterate over plotted, looking for max distances
-	// Unlike previous implementation this ignores normals and just looks for max 3D distance
+	// Now iterate over plotted, looking for max (normal) distances
 
 	float scoreDecrease = 0;
 	
 	for(int x = 0; x<xsize; x++)
 	for(int y = 0; y<ysize; y++)
 	{
-		float d = GetMaxDistance(plotted[y*xsize+x]);
+		int i,j;
+		float d = GetMaxDistance(plotted[y*xsize+x],i,j);
 
+/* WS 2026-10-18 removing on suspicion that heat map makes convergence worse
+		if (d>(float)maxDistanceThresh/2.0)
+		{
+			patchesInvolved.insert(i);
+			patchesInvolved.insert(j);
+		}
+*/		
 		scoreDecrease += d/(float)maxDistanceThresh;
 	} 
 				
-	printf("pts:%d norms:%d score:%f scoreDec:%f\n",ptsFound,normFound,score,scoreDecrease);
-	return score-scoreDecrease;
+	//printf("pts:%d norms:%d score:%f scoreDec:%f\n",ptsFound,normFound,score,scoreDecrease);
+	return score-OVERLAP_PENALTY*scoreDecrease;
 }
 
-float ScorePlacementAreaOnly(AlignmentMap *am, std::map<int,Patch> *patches, std::unordered_map<int,std::tuple<float,float,float>> &patchPositionsXYA, std::vector<int> &patchOrder, std::set<int> &patchesToColour, std::set<std::pair<int,int>> &manualGoodRel, std::set<int> &patchesInvolved, int maxDistanceThresh, float stepSize=1.0, bool writePatch = true, bool writeColours = true, bool showDD = false)
+float ScorePlacementAreaOnly(AlignmentMap *am, std::map<int,Patch> *patches, std::unordered_map<int,std::tuple<float,float,float,float,float>> &patchPositionsXYA, std::vector<int> &patchOrder, std::set<int> &patchesToColour, std::set<std::pair<int,int>> &manualGoodRel, std::set<int> &patchesInvolved, int maxDistanceThresh, float stepSize=1.0, bool writePatch = true, bool writeColours = true, bool showDD = false)
 {
     //printf("Starting ScorePlacement\n");
 			
@@ -236,7 +259,7 @@ float ScorePlacementAreaOnly(AlignmentMap *am, std::map<int,Patch> *patches, std
 	return score;
 }
 
-float ScorePlacement(AlignmentMap *am, std::map<int,Patch> *patches, std::unordered_map<int,std::tuple<float,float,float>> &patchPositionsXYA, std::vector<int> &patchOrder, std::set<int> &patchesToColour, std::set<std::pair<int,int>> &manualGoodRel, std::set<int> &patchesInvolved, int maxDistanceThresh, float stepSize=1.0, bool writePatch = true, bool writeColours = true, bool showDD = false, int outputNum = 0)
+float ScorePlacement(AlignmentMap *am, std::map<int,Patch> *patches, std::unordered_map<int,std::tuple<float,float,float,float,float>> &patchPositionsXYA, std::vector<int> &patchOrder, std::set<int> &patchesToColour, std::set<std::pair<int,int>> &manualGoodRel, std::set<int> &patchesInvolved, int maxDistanceThresh, float stepSize=1.0, bool writePatch = true, bool writeColours = true, bool showDD = false, int outputNum = 0)
 {
     //printf("Starting ScorePlacement\n");
 			
@@ -314,10 +337,11 @@ float ScorePlacement(AlignmentMap *am, std::map<int,Patch> *patches, std::unorde
 					{
 						for(float y=-2600+1500*2; y<=-2600+1500*2+800; y+=1)
 						{
-		*/			
-		for(float x=xmin; x<=xmax; x+=stepSize)
+		*/		
+        /* Use integer coords to avoid truncation problems causing missing bands */		
+		for(float x=(int)(xmin-1); x<=(int)(xmax+1); x+=stepSize)
 		{
-			for(float y=ymin; y<=ymax; y+=stepSize)
+			for(float y=(int)(ymin-1); y<=(int)(ymax+1); y+=stepSize)
 			{
 				std::vector<std::tuple<int,Vec3,Vec3>> contributions;
 							

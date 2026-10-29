@@ -8,9 +8,10 @@ void BadPatchFinder::ClearRendered(void)
 	memset(distances,0,D_SIZE_X*D_SIZE_Y*sizeof(float));
 	
 	maxDistance = 0.0;
+	maxAbsDistance = 0.0;
 }
 
-void BadPatchFinder::PlacePatch(Patch &p1, int patchNum,const affineTx &aftx, bool first)
+void BadPatchFinder::PlacePatch(Patch &p1, int patchNum,const affineTx &aftx, bool first,bool debug)
 {	
 	for(PatchIterator pi = p1.Begin(); p1.Next(pi);)
 	{
@@ -35,6 +36,11 @@ void BadPatchFinder::PlacePatch(Patch &p1, int patchNum,const affineTx &aftx, bo
 
 		if (first)
 		{			
+			if (debug)
+			{
+				printf("%d %d\n",xrdi+R_ARRAY_SIZE/2,yrdi+R_ARRAY_SIZE/2);
+			}
+
 			if (rendered_f[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2][0][0] != 0)
 			{
 				printf("Error - encountered more than one point per cell on first pass - expecting that aftx will be identity so that there is exactly one point per cell\n");
@@ -57,6 +63,11 @@ void BadPatchFinder::PlacePatch(Patch &p1, int patchNum,const affineTx &aftx, bo
 		{
 			float cellMaxDistance = 0.0;
 
+			if (debug)
+			{
+				printf("%d %d\n",xrdi+R_ARRAY_SIZE/2,yrdi+R_ARRAY_SIZE/2);
+			}
+			
 			if (rendered_f[xrdi+R_ARRAY_SIZE/2][yrdi+R_ARRAY_SIZE/2][0][0] != 0)
 			{
 			Vec3 pPos(px,py,pz);
@@ -80,6 +91,9 @@ void BadPatchFinder::PlacePatch(Patch &p1, int patchNum,const affineTx &aftx, bo
 			if (distance > maxDistance) maxDistance = distance;					
 			if (distance > cellMaxDistance) cellMaxDistance = distance;					
 
+			float absDistance = (ePos-pPos).length();
+			if (absDistance > maxAbsDistance) maxAbsDistance = absDistance;
+			
 #ifdef COLLECT_DISTANCE_DISTRIB
 			distances[xrdi+D_OFF_X][yrdi+D_OFF_Y] = cellMaxDistance+1;
 #endif		
@@ -149,7 +163,7 @@ void BadPatchFinder::CollectDistanceStats(void)
 
 // Given an alignment map and the patches, iterate through all neighbouring patches
 // and find patches with mismatch between 2D x,y and 3D x,y,z
-void BadPatchFinder::FindBadPatches(const AlignmentMap &am, std::map<int,Patch> *patches, std::set<int> &badPatches, std::vector<std::tuple<int,int,float>> &badPatchScores)
+void BadPatchFinder::FindBadPatches(const AlignmentMap &am, std::map<int,Patch> *patches, std::set<int> &badPatches, std::vector<std::tuple<int,int,float>> &badPatchScores, AlignmentScorePairMap &patchPairAlignmentScores)
 {
 	std::list<std::pair<int,int>> badPatchPairs;
 		
@@ -161,17 +175,20 @@ void BadPatchFinder::FindBadPatches(const AlignmentMap &am, std::map<int,Patch> 
 		// Iterate over alignments
 		for(auto al : a.second)
 		{
+			if (std::get<13>(al)) continue;
+			
 			ClearRendered();
 	
 			int patch2 = std::get<0>(al);
 			
 			affineTx aftx(std::get<7>(al),std::get<8>(al),std::get<9>(al),std::get<10>(al),std::get<11>(al),std::get<12>(al));
 			
-			PlacePatch((*patches)[patch2],patch2,affineTx(1,0,0,0,1,0),true);
-			PlacePatch((*patches)[patch1],patch1,aftx,false);
+			PlacePatch((*patches)[patch2],patch2,affineTx(1,0,0,0,1,0),true,false);
+			PlacePatch((*patches)[patch1],patch1,aftx,false,false);
 			
 			printf("%d,%d : %f\n",patch2,patch1,maxDistance);
 			badPatchScores.push_back(std::tuple<int,int,float>(patch2,patch1,maxDistance));
+			patchPairAlignmentScores[{patch1,patch2}] = maxAbsDistance;
 			
 			if (maxDistance > BP_MAX_XYZ_DISTANCE)
 			{
@@ -245,7 +262,8 @@ void BadPatchFinder::FindBadPatchesGeneral(AlignmentMap &am, std::map<int,Patch>
 		indices.push_back(0);
 
 	indices[0] = indexedPatches.size()-1;
-	
+
+    // It doesn't matter if we index bad patches or flipped patches because these will be filtered out later	
 	printf("Initializing indices\n");
 	int currentPatch = indexedPatches[indices[0]];
 	printf("%d\n",currentPatch);
@@ -267,7 +285,7 @@ void BadPatchFinder::FindBadPatchesGeneral(AlignmentMap &am, std::map<int,Patch>
 	{
 		std::vector<int> currentSequence;
 		std::set<int> currentSequencePatches;
-		bool hasBadPatch = false, hasRepeat = false;
+		bool hasBadPatch = false, hasRepeat = false, hasFlipped = false;
 				
 		// output a patch sequence only if it contains no bad patches
 		int currentPatch = indexedPatches[indices[0]];
@@ -278,6 +296,11 @@ void BadPatchFinder::FindBadPatchesGeneral(AlignmentMap &am, std::map<int,Patch>
 		{
 			if (indices[i]<(int)am[currentPatch].size())
 			{
+				if (std::get<13>(am[currentPatch][indices[i]]))
+				{
+					hasFlipped=true;
+					break;
+				}
 				currentPatch = std::get<0>(am[currentPatch][indices[i]]);
 				if (currentSequencePatches.count(currentPatch)!=0)
 				{
@@ -299,7 +322,7 @@ void BadPatchFinder::FindBadPatchesGeneral(AlignmentMap &am, std::map<int,Patch>
 			}
 		}
 		
-		if (!hasBadPatch && !hasRepeat)
+		if (!hasBadPatch && !hasRepeat && !hasFlipped)
 		{
 			// To avoid duplicating sequences, only save those where the first patch is < the last patch
 			if (currentSequence.front() < currentSequence.back())
@@ -353,6 +376,7 @@ void BadPatchFinder::FindBadPatchesGeneral(AlignmentMap &am, std::map<int,Patch>
 */
     printf("Iterating over patch sequences\n");
 	
+	int seqNo = 0;
 	for(auto &i : patchSequences)
 	{
 		for(auto &p : i)
@@ -367,24 +391,37 @@ void BadPatchFinder::FindBadPatchesGeneral(AlignmentMap &am, std::map<int,Patch>
 		affineTx aftx = affineTx(1,0,0,0,1,0);
 		for(auto &p : i)
 		{			
+			printf("%d ",p);
+	        
 			if (count==0)
 			{
-				PlacePatch((*patches)[p],p,aftx,true);
+				PlacePatch((*patches)[p],p,aftx,true,false);
 			}
 			else
 			{
 				for(auto &al : am[p])
+				{					
 					if (std::get<0>(al)==lastPatch)
 					{
-						affineTx nextAftx(std::get<7>(al),std::get<8>(al),std::get<9>(al),std::get<10>(al),std::get<11>(al),std::get<12>(al));
+						if (std::get<13>(al))
+						{
+							fprintf(stderr,"Warning - encountered flipped alignment in sequence, should have been filtered out (maybe a doubly aligned patch\n");
+						}
+						else
+						{
+							affineTx nextAftx(std::get<7>(al),std::get<8>(al),std::get<9>(al),std::get<10>(al),std::get<11>(al),std::get<12>(al));
 						
-						//aftx = AffineTxMultiply(aftx,AffineTxInverse(nextAftx));
-						aftx = AffineTxMultiply(aftx,nextAftx);
+							//aftx = AffineTxMultiply(aftx,AffineTxInverse(nextAftx));
+							aftx = AffineTxMultiply(aftx,nextAftx);
+						}
 					}
-					
+				}
+				
 				if (count == (int)i.size()-1)
 				{
-					PlacePatch((*patches)[p],p,aftx,false);
+					printf(" : placing (seqNo=%d)\n",seqNo);
+					
+					PlacePatch((*patches)[p],p,aftx,false,seqNo==50531);
 					
 					badPatchScores.push_back(std::tuple<int,int,float>(i[0],p,maxDistance));
 					printf("%d,%d,%f\n",i[0],p,maxDistance);
@@ -399,6 +436,8 @@ void BadPatchFinder::FindBadPatchesGeneral(AlignmentMap &am, std::map<int,Patch>
 			count++;
 			lastPatch = p;
 		}
+		
+		seqNo++;
 	}
 	
 	

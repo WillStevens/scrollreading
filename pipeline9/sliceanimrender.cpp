@@ -8,15 +8,15 @@
 void SliceAnimRender(ZARR_1_b700 *za,const std::string &path, int patchesper, int zstep, int zscale, int closeUpIter, std::map<int,Patch> *patches, std::vector<int> &patchOrder, bool showGlobalCoord)
 {
 	std::vector<Patch *> pNorm;
-	int ymin,ymax;
-	int xmin,xmax;
+	int ymin=0,ymax=0;
+	int xmin=0,xmax=0;
 
 	bool forward = true, doneCloseUp = false;
 	int iter = 0, closeUpStart = 0;
 	for(int i = 0; i<(int)patchOrder.size(); i+=patchesper)
 	{
 		printf("At patch %d\n",patchOrder[i]);
-		int zmin,zmax;
+		int zmin=0,zmax=0;
 				
 		// Find min and max z for these slices
 		for(int j=i; j<i+patchesper && j<(int)patchOrder.size(); j++)

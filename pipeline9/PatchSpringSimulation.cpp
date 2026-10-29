@@ -90,7 +90,8 @@ double PatchSpringSimulation::addAngle(double a, double b) {
 // ------------------------------------------------------------------------
 
 void PatchSpringSimulation::loadPatches(
-    const std::vector<std::vector<std::string>>& alignmentOrder, int patchLimit) {
+    const std::vector<std::pair<int, alignment>>& alignmentOrder, int patchLimit,
+    const std::function<double(int)>& radiusOf) {
     std::unordered_set<int> patchNums;
     patches_.clear();
     patchVel_.clear();
@@ -102,20 +103,19 @@ void PatchSpringSimulation::loadPatches(
 
     bool badPatch = false;
     [[maybe_unused]] bool newPatch = true;
-    int patchNum = -1; // set by the first (other == -1) line, as in the original script
+    int patchNum = -1; // set by the first (other == -1) entry, as in the original script
 
-    for (const auto& l : alignmentOrder) {
-		if (l.size()<=0)
-			continue;
-	    // printf("size %d\n",(int)l.size());
-        double radius = std::stod(l[1]);
-        int other = std::stoi(l[2]);
-        std::array<double, 6> tx{};
-        for (int i = 0; i < 6; ++i) tx[i] = std::stod(l[3 + i]);
-        double ta = tx[0], tb = tx[1], tc = tx[2], td = tx[3], te = tx[4], tf = tx[5];
+    for (const auto& entry : alignmentOrder) {
+        const int linePatchNum = entry.first;
+        const alignment& al = entry.second;
+
+        double radius = radiusOf(linePatchNum);
+        int other = std::get<0>(al);
+        double ta = std::get<7>(al),  tb = std::get<8>(al),  tc = std::get<9>(al);
+        double td = std::get<10>(al), te = std::get<11>(al), tf = std::get<12>(al);
 
         if (other == -1) {
-            patchNum = std::stoi(l[0]);
+            patchNum = linePatchNum;
             double x, y, a;
             affineTxToXYA({ta, tb, tc, td, te, tf}, x, y, a);
             patches_.push_back({x, y, a, radius, 0.0, x, y, a});
@@ -125,9 +125,7 @@ void PatchSpringSimulation::loadPatches(
             patchIndexLookup_[patchNum] = static_cast<int>(patches_.size()) - 1;
             patchInsertionOrder_.push_back(patchNum);
             patchNums.insert(patchNum);
-			//printf("Added patch %d\n",patchNum);
         } else {
-            int linePatchNum = std::stoi(l[0]);
             if (linePatchNum != patchNum) {
                 badPatch = false;
                 newPatch = true;
@@ -168,29 +166,9 @@ void PatchSpringSimulation::loadPatches(
                     patchVel_.push_back({0, 0, 0});
                     patchAcc_.push_back({0, 0, 0});
                     patchInsertionOrder_.push_back(patchNum);
-					//printf("Added patch %d\n",patchNum);
-                } else {
-                    double newDistance = distance(patches_.back().x, patches_.back().y,
-                                                   transform[2], transform[5]);
-                    //std::cout << "Patchnum " << patchNum << ", other " << other
-                    //          << ", distance " << newDistance << "\n";
-                    /*if (newDistance > MAX_CORRECTABLE_DISTANCE) {
-                        //std::cout << "Patch " << patchNum << " is a bad patch\n\n";
-                        badPatch = true;
-                        int lastPatchIndex = static_cast<int>(patches_.size()) - 1;
-                        while (!connections_.empty() && connections_.back().p1 == lastPatchIndex) {
-                            connections_.pop_back();
-                        }
-                        patches_.pop_back();
-                        patchVel_.pop_back();
-                        patchAcc_.pop_back();
-                        patchIndexLookup_.erase(patchNum);
-                        if (!patchInsertionOrder_.empty() &&
-                            patchInsertionOrder_.back() == patchNum) {
-                            patchInsertionOrder_.pop_back();
-                        }
-                    }*/
                 }
+                // (the old commented-out bad-patch distance check is omitted here)
+
                 if (!badPatch) {
                     connections_.push_back({static_cast<int>(patches_.size()) - 1, otherIndex,
                                              dist, addAngle(PI, locationAngle), locationAngle});
@@ -201,12 +179,6 @@ void PatchSpringSimulation::loadPatches(
             }
         }
     }
-/*
-    if (!patchNums.empty()) {
-        int maxPatch = *std::max_element(patchNums.begin(), patchNums.end());
-        std::cout << "Max patch number:" << maxPatch << "\n";
-    }
-*/
 }
 
 void PatchSpringSimulation::loadPatchVolCoords(const std::string& filename) {
@@ -555,14 +527,15 @@ void PatchSpringSimulation::show(bool links) const {
 // Main loop
 // ------------------------------------------------------------------------
 
-void PatchSpringSimulation::runIteration() {
+float PatchSpringSimulation::runIteration(bool last) {
     connectionForces();
     // exclusionForcesGrid(); // left disabled, matching the original script
     move();
 
     ++iterationCount_;
 
-    if (iterationCount_ == 50) {
+    if (last) {
+		float totalMove = 0.0;
 		if (writePatchPositions)
 			savePatches();
         std::vector<std::pair<int, double>> movements;
@@ -570,7 +543,9 @@ void PatchSpringSimulation::runIteration() {
             auto it = patchIndexLookup_.find(patchNum);
             if (it == patchIndexLookup_.end()) continue;
             const Patch& p = patches_[it->second];
-            movements.emplace_back(patchNum, distance(p.origX, p.origY, p.x, p.y));
+			float dist = distance(p.origX, p.origY, p.x, p.y);
+			totalMove += dist;
+            movements.emplace_back(patchNum, dist);
         }
         std::sort(movements.begin(), movements.end(),
                   [](const auto& a, const auto& b) { return a.second < b.second; });
@@ -581,13 +556,20 @@ void PatchSpringSimulation::runIteration() {
                       << "\n";
         }
 */
+		return totalMove;
     }
+	else
+	{
+		return 0.0;
+	}
 
     //show();
 }
 
-void PatchSpringSimulation::run(int maxIterations) {
-    for (int i = 0; i < maxIterations; ++i) {
-        runIteration();
+float PatchSpringSimulation::run(int maxIterations) {
+    float r=0.0;
+	for (int i = 0; i < maxIterations; ++i) {
+        r=runIteration(i==maxIterations-1);
     }
+	return r;
 }

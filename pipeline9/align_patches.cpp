@@ -294,7 +294,7 @@ bool Aligner::AlignMatches(std::map<int, std::vector<match>> &matchListMap, std:
 				
 		int l = matchList.size();
 				
-		for(int i = 0; i<NUM_POINT_SAMPLES; i++)
+		for(int i = 0; i<NUM_POINT_SAMPLES*10; i++)
 		{
 			int pa = rand()%l;
 			int pb = rand()%l;
@@ -433,7 +433,8 @@ bool Aligner::AlignMatches(std::map<int, std::vector<match>> &matchListMap, std:
 					  std::get<2>(tsIter.second[mini]),
 					  std::get<3>(tsIter.second[mini]),
 					  std::get<4>(tsIter.second[mini]),
-					  std::get<5>(tsIter.second[mini])
+					  std::get<5>(tsIter.second[mini]),
+					  false
 					  ));
 			}
 		}

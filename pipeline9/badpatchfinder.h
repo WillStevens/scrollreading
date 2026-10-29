@@ -34,10 +34,11 @@ class BadPatchFinder
 		{
 			ClearRendered();
 			maxDistance = 0.0;
+			maxAbsDistance = 0.0;
 		}
 
 		void ClearRendered(void);
-		void PlacePatch(Patch &p1, int patchNum, const affineTx &aftx, bool first);
+		void PlacePatch(Patch &p1, int patchNum, const affineTx &aftx, bool first, bool debug);
 
 #ifdef OUTPUT_DISTANCE_TIF
 		void RenderDistances(void);
@@ -45,7 +46,7 @@ class BadPatchFinder
 
 		void CollectDistanceStats(void);
 
-		void FindBadPatches(const AlignmentMap &am, std::map<int,Patch> *patches, std::set<int> &badPatches, std::vector<std::tuple<int,int,float>> &badPatchScores);
+		void FindBadPatches(const AlignmentMap &am, std::map<int,Patch> *patches, std::set<int> &badPatches, std::vector<std::tuple<int,int,float>> &badPatchScores, AlignmentScorePairMap &patchPairAlignmentScores);
 	
 		void FindBadPatchesGeneral(AlignmentMap &am, std::map<int,Patch> *patches, int length, std::set<int> &badPatches, std::vector<std::tuple<int,int,float>> &badPatchScores);
 
@@ -54,8 +55,10 @@ class BadPatchFinder
 	private:
 		float rendered_f[R_ARRAY_SIZE][R_ARRAY_SIZE][2][3];
 
+		// This is the normal distance
 		float maxDistance;
-		
+		// This is the absolute distance
+		float maxAbsDistance;
 #ifdef COLLECT_DISTANCE_DISTRIB
 
 #define D_SIZE_X 2000

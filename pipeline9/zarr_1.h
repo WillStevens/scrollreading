@@ -6,12 +6,12 @@ typedef struct {
     int locationRootLength;
     char *location;
   
-    unsigned char compressedData[sizeof(ZARRType_1)*7077888+BLOSC2_MAX_OVERHEAD];
-    ZARRType_1 buffers[80][192][192][192];
+    unsigned char compressedData[sizeof(ZARRType_1)*2097152+BLOSC2_MAX_OVERHEAD];
+    ZARRType_1 buffers[80][128][128][128];
     int bufferIndex[80][3];
     unsigned char written[80];
     uint64_t bufferUsed[80];
-    ZARRType_1 (*buffer)[192][192][192];
+    ZARRType_1 (*buffer)[128][128][128];
 
     int index;
   

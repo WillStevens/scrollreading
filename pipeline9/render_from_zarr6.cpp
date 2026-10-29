@@ -223,6 +223,7 @@ void render(char *zname,char *fname, char *colourFile, int maskOnly)
 								rb = maskOnly?255:b*value/255;
 							}
 							
+							/*
 							if (z%200<8)
 							{
 								rr += 64; 
@@ -236,7 +237,7 @@ void render(char *zname,char *fname, char *colourFile, int maskOnly)
 								rg -= 64;
 								rb -= 64;
 							}
-							
+							*/
 							/*rr += (x%200)/2-50;
 							rg += (x%200)/2-50;
 							rb += (x%200)/2-50;*/
@@ -280,10 +281,15 @@ void render(char *zname,char *fname, char *colourFile, int maskOnly)
 			rendered = (unsigned char **)malloc(sizeof(unsigned char *)*SHEET_SIZE_Y);
 			mask = (unsigned char **)malloc(sizeof(unsigned char *)*SHEET_SIZE_Y);
 			
+			if (!rendered || !mask) printf("Memory allocation error\n");
+			
 			for(int y=0; y<SHEET_SIZE_Y; y++)
 			{
 				rendered[y] = (unsigned char *)malloc(sizeof(unsigned char)*SHEET_SIZE_X*3);
 				mask[y] = (unsigned char *)malloc(sizeof(unsigned char)*SHEET_SIZE_X);
+
+				if (!rendered[y] || !mask[y]) printf("Memory allocation error\n");
+
 				for(int x=0; x<SHEET_SIZE_X; x++)
 				{
 					mask[y][x] = 0;

@@ -31,11 +31,6 @@ void LoadAnnealState(std::set<int> &state)
 	}
 }
 
-// Tunable parameters
-const double HEAT_DECAY = 0.85;          // exponential decay applied each iteration
-const double HEAT_INCREMENT = 1.0;       // added per appearance in patchesInvolved
-const double EXPLORATION_EPSILON = 0.20; // floor weight so cold/unseen patches still get proposed
-
 // Decays existing heat first (so old evidence fades)
 void DecayPatchHeat(std::map<int,double> &patchHeat,
                       double decay = HEAT_DECAY, double increment = HEAT_INCREMENT)
@@ -137,8 +132,10 @@ void MutateStateOld(std::set<int> &newState, std::vector<int> &patchNums, std::s
 // Additions are biased toward high-heat patches (likely causing mismatches).
 // Removals are biased toward low-heat patches already in newState (exclusions
 // that aren't currently "earning their keep" get tested for removal first).
+
+// WS 2026-10-14 : addition and removal are now asymmetric, addition adds patch and all of its neighbours, removal only removes single patches. It is hoped that this will increase the rate of state space exploration
 void MutateState(std::set<int> &newState, std::vector<int> &patchNums, std::set<int> &badPatches,
-                  std::map<int,double> &patchHeat, int size, std::mt19937 &rng)
+                  std::map<int,double> &patchHeat, std::map<int,std::set<int> > &neighbourList, int size, std::mt19937 &rng)
 {
 	std::uniform_int_distribution<int> coin(0,1);
 	int addRemove = coin(rng);
@@ -156,17 +153,34 @@ void MutateState(std::set<int> &newState, std::vector<int> &patchNums, std::set<
 
 		for(int j=0; j<numAddRemove; j++)
 		{
+			bool addedAny = false;
 			for(int i=0; i<10; i++)
 			{
-				int rp = dist(rng);
+				// Pick a patch
+				int ch = dist(rng);
 
-				if (badPatches.count(patchNums[rp])==0 && newState.count(patchNums[rp])==0)
+				if (badPatches.count(patchNums[ch])==0 && newState.count(patchNums[ch])==0)
 				{
-					newState.insert(patchNums[rp]);
-					double h = patchHeat.count(patchNums[rp]) ? patchHeat[patchNums[rp]] : 0.0;
-					message << patchNums[rp] << "(" << h << ") ";
-					break;
+					newState.insert(patchNums[ch]);
+					double h = patchHeat.count(patchNums[ch]) ? patchHeat[patchNums[ch]] : 0.0;
+					message << patchNums[ch] << "(" << h << ") ";
+					addedAny = true;
 				}
+
+				// Add all of its neighbours to the state
+				if (0)
+				for(auto rp : neighbourList[ch])
+				{
+					if (badPatches.count(patchNums[rp])==0 && newState.count(patchNums[rp])==0)
+					{
+						newState.insert(patchNums[rp]);
+						double h = patchHeat.count(patchNums[rp]) ? patchHeat[patchNums[rp]] : 0.0;
+						message << patchNums[rp] << "(" << h << ") ";
+						addedAny = true;
+					}
+				}
+				
+				if (addedAny) break;
 			}
 		}
 	}
@@ -264,7 +278,9 @@ bool Accept(float scoreDiff, float T, std::mt19937 &rng)
 float EvaluateState(AlignmentMap *am, std::map<int,Patch> *patches,
                      std::set<int> &state, std::set<int> &badPatches,
                      std::set<std::pair<int,int>> &manualBadRel,
-                     std::set<int> &patchesInvolved)
+					 AlignmentScoreMap &patchAlignmentScores,
+                     std::set<int> &patchesInvolved,
+					 std::map<int,std::set<int> > &neighbourList)
 {
 	std::set<int> effectiveBadPatches;
 
@@ -274,40 +290,14 @@ float EvaluateState(AlignmentMap *am, std::map<int,Patch> *patches,
 
 	std::vector<int> patchOrder;
 	std::vector<std::pair<int,alignment>> alignmentOrder;
-	std::vector<std::vector<std::string>> alignmentOrderDash;
 	std::map<int,affineTx> patchPositions;
-	std::map<int,std::set<int> > neighbourList;
-
+	
+	neighbourList.clear();
 	MakeVisitOrder(am, patches, effectiveBadPatches, manualBadRel,
-	               patchOrder, alignmentOrder, patchPositions, neighbourList,false,false);
+	               patchOrder, alignmentOrder, patchPositions, neighbourList,patchAlignmentScores,false,false);
 
 				   
-	{
-		for(auto &a : alignmentOrder)
-		{
-			std::vector<std::string> row;
-			auto toStr = [](auto val)
-			{
-				std::ostringstream oss;
-				oss << val;
-				return oss.str();
-			};
-
-			row.push_back(toStr(a.first));
-			row.push_back(toStr((*patches)[a.first].radius));
-			row.push_back(toStr(std::get<0>(a.second)));
-			row.push_back(toStr(std::get<7>(a.second)));
-			row.push_back(toStr(std::get<8>(a.second)));
-			row.push_back(toStr(std::get<9>(a.second)));
-			row.push_back(toStr(std::get<10>(a.second)));
-			row.push_back(toStr(std::get<11>(a.second)));
-			row.push_back(toStr(std::get<12>(a.second)));
-
-			alignmentOrderDash.push_back(std::move(row));
-		}
-	}
-
-	std::unordered_map<int,std::tuple<float,float,float>> patchPositionsXYA;
+	std::unordered_map<int,std::tuple<float,float,float,float,float>> patchPositionsXYA;
 	
 	//printf("Running patchsprings...\n");
 	{
@@ -316,8 +306,10 @@ float EvaluateState(AlignmentMap *am, std::map<int,Patch> *patches,
 		pss.loadPatchVolCoords(OUTPUT_DIR "/patchVolCoords.csv");
 
 		//printf("Loading patches for patchsprings...\n");
-		pss.loadPatches(alignmentOrderDash, patches->size());
-
+		auto radiusOf = [patches](int id) -> double {
+			return patches->find(id)->second.radius;   // find, not operator[]: safe for concurrent reads
+		};
+		pss.loadPatches(alignmentOrder, patches->size(), radiusOf);
 		//printf("Running patchsprings...\n");
 		pss.run(50);
 		//printf("Finished patchsprings...\n");
@@ -332,7 +324,7 @@ float EvaluateState(AlignmentMap *am, std::map<int,Patch> *patches,
 			float x,y,angle;
             pss.GetPatchPosition(i,x,y,angle);
 			
-			patchPositionsXYA[i]=std::tuple<float,float,float>(x,y,angle);
+			patchPositionsXYA[i]=std::tuple<float,float,float,float,float>(x,y,angle,sin(angle),cos(angle));
 			
 			//printf("%d %f %f %f\n",i,x,y,angle);
 		}
@@ -355,7 +347,9 @@ float EvaluateState(AlignmentMap *am, std::map<int,Patch> *patches,
 float EvaluateStateAll(int numComponents, AlignmentMap *am, std::map<int,Patch> *patches,
                      std::set<int> &state, std::set<int> &badPatches,
                      std::set<std::pair<int,int>> &manualBadRel,
-                     std::set<int> &patchesInvolved)
+					 AlignmentScoreMap &patchAlignmentScores,
+                     std::set<int> &patchesInvolved,
+					 std::map<int,std::set<int> > &neighbourList)
 {
 	std::set<int> effectiveBadPatches;
 
@@ -366,54 +360,36 @@ float EvaluateStateAll(int numComponents, AlignmentMap *am, std::map<int,Patch> 
 	std::vector<std::vector<int>> patchOrders;
 	std::vector<std::vector<std::pair<int,alignment>>> alignmentOrders;
 	std::vector<std::map<int,affineTx>> patchPositionss;
-	std::map<int,std::set<int> > neighbourList;
+	neighbourList.clear();
 
 	MakeVisitOrders(numComponents,am, patches, effectiveBadPatches, manualBadRel,
-	               patchOrders, alignmentOrders, patchPositionss, neighbourList,false,false);
+	               patchOrders, alignmentOrders, patchPositionss, neighbourList, patchAlignmentScores, false,false);
 
 	float score = 0.0;
 	int componentIndex = -1;
 	for(auto &alignmentOrder : alignmentOrders)			   
 	{
 		componentIndex++;
-		std::vector<std::vector<std::string>> alignmentOrderDash;
-
-		for(auto &a : alignmentOrder)
-		{
-			std::vector<std::string> row;
-			auto toStr = [](auto val)
-			{
-				std::ostringstream oss;
-				oss << val;
-				return oss.str();
-			};
-
-			row.push_back(toStr(a.first));
-			row.push_back(toStr((*patches)[a.first].radius));
-			row.push_back(toStr(std::get<0>(a.second)));
-			row.push_back(toStr(std::get<7>(a.second)));
-			row.push_back(toStr(std::get<8>(a.second)));
-			row.push_back(toStr(std::get<9>(a.second)));
-			row.push_back(toStr(std::get<10>(a.second)));
-			row.push_back(toStr(std::get<11>(a.second)));
-			row.push_back(toStr(std::get<12>(a.second)));
-
-			alignmentOrderDash.push_back(std::move(row));
-		}
 	
-		std::unordered_map<int,std::tuple<float,float,float>> patchPositionsXYA;
+		std::unordered_map<int,std::tuple<float,float,float,float,float>> patchPositionsXYA;
 	
 		//printf("Running patchsprings...\n");
 		{
 			PatchSpringSimulation pss(QUADMESH_SIZE,OUTPUT_DIR,componentIndex,false);
 
-			pss.loadPatchVolCoords(OUTPUT_DIR "/patchVolCoords.csv");
+			//pss.loadPatchVolCoords(OUTPUT_DIR "/patchVolCoords.csv");
 
 			//printf("Loading patches for patchsprings...\n");
-			pss.loadPatches(alignmentOrderDash, patches->size());
-
+			auto radiusOf = [patches](int id) -> double {
+				return patches->find(id)->second.radius;   // find, not operator[]: safe for concurrent reads
+			};
+			pss.loadPatches(alignmentOrder, patches->size(), radiusOf);
+			
 			//printf("Running patchsprings...\n");
-			pss.run(50);
+			float pssScore = pss.run(50);
+			printf("Patchsprings score:%f\n",pssScore);
+			score -= pssScore*STRETCH_SCORE_FACTOR;
+			
 			//printf("Finished patchsprings...\n");
 	
 	        //printf("Finished running patchsprings\n");
@@ -426,7 +402,7 @@ float EvaluateStateAll(int numComponents, AlignmentMap *am, std::map<int,Patch> 
 				float x,y,angle;
 				pss.GetPatchPosition(i,x,y,angle);
 			
-				patchPositionsXYA[i]=std::tuple<float,float,float>(x,y,angle);
+				patchPositionsXYA[i]=std::tuple<float,float,float,float,float>(x,y,angle,sin(angle),cos(angle));
 			
 			//printf("%d %f %f %f\n",i,x,y,angle);
 			}
@@ -483,17 +459,20 @@ struct CandidateResult
 	std::set<int> state;
 	float score = -std::numeric_limits<float>::infinity();
 	std::set<int> patchesInvolved;
+	std::map<int,std::set<int> > neighbourList;
 };
 
 void Anneal(AlignmentMap *am, std::map<int,Patch> *patches, std::vector<int> patchNums,
             std::set<int> badPatches, std::set<std::pair<int,int>> manualBadRel,
-            std::set<int> badBridges, int iterations, int N, float initT0=-1.0)
+            std::set<int> badBridges, AlignmentScoreMap &patchAlignmentScores, int iterations, int N, float initT0=-1.0)
 {
 	std::set<int> currentState;
 	std::set<int> newState;
 	LoadAnnealState(currentState);
 	std::map<int,double> patchHeat;
 	std::mt19937 rng(std::random_device{}());
+	std::map<int,std::set<int> > neighbourList;
+	
 	for(auto i : badBridges)
 	{
 		patchHeat[i]=10.0;
@@ -508,7 +487,7 @@ void Anneal(AlignmentMap *am, std::map<int,Patch> *patches, std::vector<int> pat
     float T0;
 
 	float baselineScore = EvaluateState(am, patches, currentState, badPatches,
-											 manualBadRel, patchesInvolved);
+											 manualBadRel, patchAlignmentScores, patchesInvolved, neighbourList);
 	
 	if (initT0==-1)
 	{
@@ -520,9 +499,11 @@ void Anneal(AlignmentMap *am, std::map<int,Patch> *patches, std::vector<int> pat
 			patchesInvolved.clear();
 			
 			std::set<int> trialState = currentState;
-			MutateState(trialState, patchNums, badPatches, patchHeat, 20, rng);
+			std::map<int,std::set<int> > trialNeighbourList = std::move(neighbourList);
+			
+			MutateState(trialState, patchNums, badPatches, patchHeat, trialNeighbourList, 20, rng);
 			float trialScore = EvaluateState(am, patches, trialState, badPatches,
-											  manualBadRel, patchesInvolved);
+											  manualBadRel, patchAlignmentScores, patchesInvolved, trialNeighbourList);
 			float delta = trialScore - baselineScore;
 			printf("Calibration sample %d: delta=%f\n", i, delta);
 			if (delta < 0.0f)
@@ -571,12 +552,16 @@ void Anneal(AlignmentMap *am, std::map<int,Patch> *patches, std::vector<int> pat
 		{
 			std::mt19937 localRng(seeds[n]);
 			std::set<int> localState = currentState;
+			std::map<int,std::set<int> > localNeighbourList = neighbourList;
+
 			if (iters != 0)
 			{
 				#pragma omp critical(mutate_state)
 				{
+					printf("MutateState\n");
 					//MutateState(localState, patchNums, badPatches, patchHeat, 15*(T/T0)*0+1, localRng);
-					MutateState(localState, patchNums, badPatches, patchHeat, 15*(T/T0)+1, localRng);
+					MutateState(localState, patchNums, badPatches, patchHeat, localNeighbourList,15*(T/T0)+1, localRng);
+					printf("Done MutateState\n");
 				}
 			}
 
@@ -586,11 +571,12 @@ void Anneal(AlignmentMap *am, std::map<int,Patch> *patches, std::vector<int> pat
 			// concurrently (concurrent reads of patchHeat are fine, concurrent
 			// writes are not).
 			float localScore = EvaluateState(am, patches, localState, badPatches,
-			                                  manualBadRel, localPatchesInvolved);
+			                                  manualBadRel, patchAlignmentScores, localPatchesInvolved, localNeighbourList);
 
 			candidates[n].state = std::move(localState);
 			candidates[n].score = localScore;
 			candidates[n].patchesInvolved = std::move(localPatchesInvolved);
+			candidates[n].neighbourList = std::move(localNeighbourList);
 		}
 
 		// We don't want to just pick the best of the N candidates or this would reduce
@@ -607,6 +593,7 @@ void Anneal(AlignmentMap *am, std::map<int,Patch> *patches, std::vector<int> pat
 			    printf("Accepted %d (T=%f)\n",n,T);
 			    currentScore = candidates[n].score;
 			    currentState = candidates[n].state;
+				neighbourList = std::move(candidates[n].neighbourList);
 				
 				acceptedCount++;
 		    }
@@ -660,19 +647,21 @@ void Anneal(AlignmentMap *am, std::map<int,Patch> *patches, std::vector<int> pat
 		std::map<int,std::set<int> > neighbourList;
 
 		MakeVisitOrder(am, patches, effectiveBadPatches, manualBadRel,
-	               patchOrder, alignmentOrder, patchPositions, neighbourList,true);
+	               patchOrder, alignmentOrder, patchPositions, neighbourList, patchAlignmentScores,true);
 	}
 }
 
 void AnnealAll(int numComponents,AlignmentMap *am, std::map<int,Patch> *patches, std::vector<int> patchNums,
             std::set<int> badPatches, std::set<std::pair<int,int>> manualBadRel,
-            std::set<int> badBridges, int iterations, int N, float initT0=-1.0)
+            std::set<int> badBridges, AlignmentScoreMap &patchAlignmentScores, int iterations, int N, float initT0=-1.0)
 {
 	std::set<int> currentState;
 	std::set<int> newState;
 	LoadAnnealState(currentState);
 	std::map<int,double> patchHeat;
 	std::mt19937 rng(std::random_device{}());
+	std::map<int,std::set<int> > neighbourList;
+
 	for(auto i : badBridges)
 	{
 		patchHeat[i]=10.0;
@@ -687,7 +676,7 @@ void AnnealAll(int numComponents,AlignmentMap *am, std::map<int,Patch> *patches,
     float T0;
 
 	float baselineScore = EvaluateStateAll(numComponents,am, patches, currentState, badPatches,
-											 manualBadRel, patchesInvolved);
+											 manualBadRel, patchAlignmentScores, patchesInvolved,neighbourList);
 	
 	if (initT0==-1)
 	{
@@ -697,11 +686,13 @@ void AnnealAll(int numComponents,AlignmentMap *am, std::map<int,Patch> *patches,
 		for (int i = 0; i < numCalibrationSamples; i++)
 		{
 			patchesInvolved.clear();
+			std::map<int,std::set<int> > trialNeighbourList = neighbourList;
+
 			
 			std::set<int> trialState = currentState;
-			MutateState(trialState, patchNums, badPatches, patchHeat, 20, rng);
+			MutateState(trialState, patchNums, badPatches, patchHeat, trialNeighbourList, 20, rng);
 			float trialScore = EvaluateStateAll(numComponents,am, patches, trialState, badPatches,
-											  manualBadRel, patchesInvolved);
+											  manualBadRel, patchAlignmentScores, patchesInvolved,trialNeighbourList);
 			float delta = trialScore - baselineScore;
 			printf("Calibration sample %d: delta=%f\n", i, delta);
 			if (delta < 0.0f)
@@ -750,12 +741,14 @@ void AnnealAll(int numComponents,AlignmentMap *am, std::map<int,Patch> *patches,
 		{
 			std::mt19937 localRng(seeds[n]);
 			std::set<int> localState = currentState;
+			std::map<int,std::set<int> > localNeighbourList = neighbourList;
+
 			if (iters != 0)
 			{
 				#pragma omp critical(mutate_state)
 				{
 					//MutateState(localState, patchNums, badPatches, patchHeat, 15*(T/T0)*0+1, localRng);
-					MutateState(localState, patchNums, badPatches, patchHeat, 15*(T/T0)+1, localRng);
+					MutateState(localState, patchNums, badPatches, patchHeat, localNeighbourList, 15*(T/T0)+1, localRng);
 				}
 			}
 
@@ -765,11 +758,12 @@ void AnnealAll(int numComponents,AlignmentMap *am, std::map<int,Patch> *patches,
 			// concurrently (concurrent reads of patchHeat are fine, concurrent
 			// writes are not).
 			float localScore = EvaluateStateAll(numComponents,am, patches, localState, badPatches,
-			                                  manualBadRel, localPatchesInvolved);
+			                                  manualBadRel, patchAlignmentScores, localPatchesInvolved,localNeighbourList);
 
 			candidates[n].state = std::move(localState);
 			candidates[n].score = localScore;
 			candidates[n].patchesInvolved = std::move(localPatchesInvolved);
+			candidates[n].neighbourList = std::move(localNeighbourList);
 		}
 
 		// We don't want to just pick the best of the N candidates or this would reduce
@@ -786,7 +780,7 @@ void AnnealAll(int numComponents,AlignmentMap *am, std::map<int,Patch> *patches,
 			    printf("Accepted %d (T=%f)\n",n,T);
 			    currentScore = candidates[n].score;
 			    currentState = candidates[n].state;
-				
+				neighbourList = std::move(candidates[n].neighbourList);
 				acceptedCount++;
 		    }
 			else
@@ -807,6 +801,18 @@ void AnnealAll(int numComponents,AlignmentMap *am, std::map<int,Patch> *patches,
 		       (int)candidates[n].state.size(), candidates[n].score);
 
 		}
+		
+		if (iters%50==0)
+		{
+			char buf[256];
+			sprintf(buf,"%s/annealState_out_%06d.csv",OUTPUT_DIR,(int)iters);
+			std::ofstream os(buf);
+			for(auto i : bestState)
+			{
+				os << i << std::endl;
+			}
+		}
+
 	}
 	{
 		std::ofstream os(OUTPUT_DIR "/annealStats.csv");
@@ -839,6 +845,6 @@ void AnnealAll(int numComponents,AlignmentMap *am, std::map<int,Patch> *patches,
 		std::map<int,std::set<int> > neighbourList;
 
 		MakeVisitOrder(am, patches, effectiveBadPatches, manualBadRel,
-	               patchOrder, alignmentOrder, patchPositions, neighbourList,true);
+	               patchOrder, alignmentOrder, patchPositions, neighbourList, patchAlignmentScores,true);
 	}
 }

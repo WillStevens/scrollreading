@@ -6,6 +6,8 @@
 #include <unordered_set>
 #include <vector>
 
+#include "common_types.h"
+
 std::vector<std::string> splitOnSpaceDropLast(const std::string& line);
 
 // PatchSpringSimulation
@@ -42,9 +44,10 @@ public:
     // empty token from a trailing space has already been dropped).
     // patchLimit: stop loading once this many distinct patches have been
     // encountered (mirrors the global `patchLimit` used in Python).
-    void loadPatches(const std::vector<std::vector<std::string>>& alignmentOrder,
-                      int patchLimit);
-
+	void loadPatches(
+    const std::vector<std::pair<int, alignment>>& alignmentOrder, int patchLimit,
+    const std::function<double(int)>& radiusOf);
+	
     // Loads a CSV file of "patchNum,x,y,z" lines into patchVolCoords.
     void loadPatchVolCoords(const std::string& filename);
 
@@ -66,11 +69,11 @@ public:
     // Runs one simulation step: connection forces, integrate motion,
     // bookkeeping (matches the body of Python's RunIteration, minus the
     // Tkinter `window.after` rescheduling).
-    void runIteration();
+    float runIteration(bool last);
 
     // Convenience driver: repeatedly calls runIteration() (and show())
     // until `maxIterations` steps have been taken.
-    void run(int maxIterations);
+    float run(int maxIterations);
 
     // Renders the current state. Default implementation writes a PPM
     // image to "<outputDir>/frame_<iteration>.ppm". Override to hook up

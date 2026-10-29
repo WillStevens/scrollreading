@@ -1,8 +1,9 @@
 CC=g++
-CFLAGS=-O3 -Wall -fopenmp
-LFLAGS=-lblosc2 -ltiff -L/usr/local/lib -I/usr/local/include
+CFLAGS=-O3 -Wall -fopenmp 
+#CFLAGS=-pg -O2 -g -Wall -fopenmp 
+LFLAGS=-lblosc -lblosc2 -ltiff -L/usr/lib -I/usr/include
 
-simpaper10: common_types.o patch_generator.o simpaper10.o zarr_1.o zarr_1_b700.o bigpatch.o align_patches.o erasepoints.o badpatchfinder.o zarr_show2_u8.o sliceanimrender.o position_patches.o calcvectorfield.o patchcolourkey.o PatchSpringSimulation.o anneal.o visitorder.o scoreplacement.o omissiontest.o
+simpaper10_tmp: common_types.o patch_generator.o simpaper10.o zarr_1.o zarr_1_b700.o bigpatch.o align_patches.o erasepoints.o badpatchfinder.o zarr_show2_u8.o sliceanimrender.o position_patches.o calcvectorfield.o patchcolourkey.o PatchSpringSimulation.o anneal.o visitorder.o scoreplacement.o omissiontest.o
 	$(CC) -o $@ $^ $(CFLAGS) $(LFLAGS)
 
 PatchSpringSimulation.o: PatchSpringSimulation.cpp PatchSpringSimulation.hpp
@@ -77,6 +78,18 @@ render_from_zarr6_uint16: render_from_zarr6_uint16.o bigpatch.o common_types.o
 	
 render_from_zarr6_uint16.o: render_from_zarr6_uint16.cpp bigpatch.h zarr_4.c
 	$(CC) -c $< $(CFLAGS)
+
+make_surface_vol.o: make_surface_vol.cpp zarr_svol.c zarr_4_b.c
+	$(CC) -c $< $(CFLAGS)
+
+make_surface_vol: make_surface_vol.o
+	$(CC) -o $@ $^ $(CFLAGS) $(LFLAGS)
+
+zarrconv.o: zarrconv.c
+	$(CC) -c $< $(CFLAGS)
+
+zarrconv: zarrconv.o
+	$(CC) -o $@ $^ $(CFLAGS) $(LFLAGS)
 	
 vectorfieldtest: vectorfieldtest.o calcvectorfield.o zarr_1.o
 	$(CC) -o $@ $^ $(CFLAGS) $(LFLAGS)
