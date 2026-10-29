@@ -14,12 +14,12 @@ typedef struct {
     int locationRootLength;
     char *location;
   
-    unsigned char compressedData[sizeof(ZARRType_1)*7077888+BLOSC2_MAX_OVERHEAD];
-    ZARRType_1 buffers[80][192][192][192];
+    unsigned char compressedData[sizeof(ZARRType_1)*2097152+BLOSC2_MAX_OVERHEAD];
+    ZARRType_1 buffers[80][128][128][128];
     int bufferIndex[80][3];
     unsigned char written[80];
     uint64_t bufferUsed[80];
-    ZARRType_1 (*buffer)[192][192][192];
+    ZARRType_1 (*buffer)[128][128][128];
 
     int index;
   
@@ -61,7 +61,7 @@ int ZARRFlushOne_1(ZARR_1 *z, int i)
       sprintf(z->location+z->locationRootLength,"/%d/%d/%d",z->bufferIndex[i][0],z->bufferIndex[i][1],z->bufferIndex[i][2]);
 
       blosc1_set_compressor("zstd");
-	  int compressed_len = blosc2_compress(1,1,sizeof(ZARRType_1),z->buffers[i],sizeof(ZARRType_1)*7077888,z->compressedData,sizeof(ZARRType_1)*7077888+BLOSC2_MAX_OVERHEAD);
+	  int compressed_len = blosc2_compress(3,1,sizeof(ZARRType_1),z->buffers[i],sizeof(ZARRType_1)*2097152,z->compressedData,sizeof(ZARRType_1)*2097152+BLOSC2_MAX_OVERHEAD);
 
       if (compressed_len <= 0) {
         return -1;
@@ -124,7 +124,7 @@ int ZARRCheckChunk_1(ZARR_1 *z, int c[3])
 	if (z->index == 80)
 	{
 		/* Find the buffer that was least recently used and free it up */
-		printf("Ran out of buffers - flushing oldest\n");
+		//printf("Ran out of buffers - flushing oldest\n");
 		int oldestIndex = 0;
 		uint64_t oldestAge = z->bufferUsed[0];
 		for(int i = 1; i<80; i++)
@@ -153,9 +153,9 @@ int ZARRCheckChunk_1(ZARR_1 *z, int c[3])
     //printf("Opening:%s\n",z->location);	
 	if (!f)
 	{
-		printf("Did not find file:%s\n",z->location); // Useful to display this message because it often indicates a file naming problem
+		//printf("Did not find file:%s\n",z->location); // Useful to display this message because it often indicates a file naming problem
 
-		memset(z->buffer,0,sizeof(ZARRType_1)*7077888);
+		memset(z->buffer,0,sizeof(ZARRType_1)*2097152);
 
 		//No need to count it as written to yet - if it remains empty then just leave the file as non-existent
 	    //z->written[z->index] = 1;
@@ -173,7 +173,7 @@ int ZARRCheckChunk_1(ZARR_1 *z, int c[3])
 		
 
         blosc1_set_compressor("zstd");
-        int decompressed_size = blosc2_decompress(z->compressedData, fsize, z->buffer, sizeof(ZARRType_1)*7077888);
+        int decompressed_size = blosc2_decompress(z->compressedData, fsize, z->buffer, sizeof(ZARRType_1)*2097152);
         if (decompressed_size < 0) {
             return 0;
         }
@@ -185,12 +185,12 @@ int ZARRCheckChunk_1(ZARR_1 *z, int c[3])
 ZARRType_1 ZARRRead_1(ZARR_1 *za,int x0,int x1,int x2)
 {
 	int c[3],m[3];
-    c[0] = x0/192;
-    m[0] = x0%192;
-    c[1] = x1/192;
-    m[1] = x1%192;
-    c[2] = x2/192;
-    m[2] = x2%192;
+    c[0] = x0/128;
+    m[0] = x0%128;
+    c[1] = x1/128;
+    m[1] = x1%128;
+    c[2] = x2/128;
+    m[2] = x2%128;
 	
 	ZARRCheckChunk_1(za,c);
 	
@@ -202,12 +202,12 @@ ZARRType_1 ZARRRead_1(ZARR_1 *za,int x0,int x1,int x2)
 void ZARRReadN_1(ZARR_1 *za,int x0,int x1,int x2,int n,ZARRType_1 *v)
 {
 	int c[3],m[3];
-    c[0] = x0/192;
-    m[0] = x0%192;
-    c[1] = x1/192;
-    m[1] = x1%192;
-    c[2] = x2/192;
-    m[2] = x2%192;
+    c[0] = x0/128;
+    m[0] = x0%128;
+    c[1] = x1/128;
+    m[1] = x1%128;
+    c[2] = x2/128;
+    m[2] = x2%128;
 	
 	ZARRCheckChunk_1(za,c);
 			  
@@ -217,12 +217,12 @@ void ZARRReadN_1(ZARR_1 *za,int x0,int x1,int x2,int n,ZARRType_1 *v)
 int ZARRWrite_1(ZARR_1 *za,int x0,int x1,int x2,ZARRType_1 value)
 {
 	int c[3],m[3];
-    c[0] = x0/192;
-    m[0] = x0%192;
-    c[1] = x1/192;
-    m[1] = x1%192;
-    c[2] = x2/192;
-    m[2] = x2%192;
+    c[0] = x0/128;
+    m[0] = x0%128;
+    c[1] = x1/128;
+    m[1] = x1%128;
+    c[2] = x2/128;
+    m[2] = x2%128;
 	
 	ZARRCheckChunk_1(za,c);
 			  
@@ -237,12 +237,12 @@ int ZARRWrite_1(ZARR_1 *za,int x0,int x1,int x2,ZARRType_1 value)
 void ZARRWriteN_1(ZARR_1 *za,int x0,int x1,int x2,int n, ZARRType_1 *v)
 {
 	int c[3],m[3];
-    c[0] = x0/192;
-    m[0] = x0%192;
-    c[1] = x1/192;
-    m[1] = x1%192;
-    c[2] = x2/192;
-    m[2] = x2%192;
+    c[0] = x0/128;
+    m[0] = x0%128;
+    c[1] = x1/128;
+    m[1] = x1%128;
+    c[2] = x2/128;
+    m[2] = x2%128;
 	
 	ZARRCheckChunk_1(za,c);
 			  
@@ -255,9 +255,9 @@ void ZARRWriteN_1(ZARR_1 *za,int x0,int x1,int x2,int n, ZARRType_1 *v)
 void ZARRNoCheckWriteN_1(ZARR_1 *za,int x0,int x1,int x2,int n, ZARRType_1 *v)
 {
 	int m[3];
-    m[0] = x0%192;
-    m[1] = x1%192;
-    m[2] = x2%192;
+    m[0] = x0%128;
+    m[1] = x1%128;
+    m[2] = x2%128;
 	
 	memcpy(&(*za->buffer)[m[0]][m[1]][m[2]],v,n*sizeof(ZARRType_1));
 
