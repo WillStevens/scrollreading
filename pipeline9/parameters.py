@@ -1,20 +1,20 @@
 # Parameters shared by several programs
-OUTPUT_DIR="d:/pipelineOutput"
+OUTPUT_DIR="c:/vesuvius/output/PHerc1667"
 VOL_OFFSET_X=0
 VOL_OFFSET_Y=0
 VOL_OFFSET_Z=0
-VOL_SIZE_X=6621
-VOL_SIZE_Y=6621
-VOL_SIZE_Z=20974
+VOL_SIZE_X=3440
+VOL_SIZE_Y=3340
+VOL_SIZE_Z=11174
 QUADMESH_SIZE=4
-VOXEL_SIZE=9
+VOXEL_SIZE=7.91
 RANDOM_SEED=124
-VOLUME_ZARR="d:/zarrs/PHerc0139/volume/2"
-SURFACE_ZARR="d:/zarrs/PHerc0139/surface/0"
+VOLUME_ZARR="c:/vesuvius/scroll_data/zarrs/PHerc1667/volume/2"
+SURFACE_ZARR="c:/vesuvius/scroll_data/zarrs/PHerc1667/surface/0"
 # The initial seed point
-SEED_X=4052
-SEED_Y=2763
-SEED_Z=10487
+SEED_X=1798
+SEED_Y=1161
+SEED_Z=5120
 SEED_AXIS1_X=1
 SEED_AXIS1_Y=0
 SEED_AXIS1_Z=0
@@ -54,3 +54,14 @@ MAX_LINE_DIFF=0.01
 MIN_TRANSFORMS=25
 # Max volume distance allowed for overlapping x,y points
 BP_MAX_XYZ_DISTANCE=10
+# How many quadmesh steps to take when scoring a surface (e.g. SCOREPLACEMENT_SCALE = 10 and QUADMESH_SIZE = 4 means 40 voxel spaces per step)
+SCOREPLACEMENT_SCALE=5
+# Weight given to score returned by PatchSpringSimulaiton (total partch movement). If changing SCOREPLACEMENT_SCALE by a factor N, then STRETCH_SCORE_FACTOR should be divided by a factor N^2 to keep it in-sync. Values tried for both have been 5,1 and 10,0.25
+STRETCH_SCORE_FACTOR=1.0
+# At the time of writing this (2026-10-28) it is beleived that the current implementation of patch heat doesn't help. Patches that manifest inconsistencies are more likely to be symptoms of a problem than the causes, so giving them extra weight prevents the causes from being visited by MutateState
+# exponential decay applied each iteration
+HEAT_DECAY=0.85
+# added per appearance in patchesInvolved
+HEAT_INCREMENT=1.0
+# floor weight so cold/unseen patches still get proposed
+EXPLORATION_EPSILON=0.2

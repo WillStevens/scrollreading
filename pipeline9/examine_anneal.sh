@@ -1,18 +1,18 @@
 #!/bin/sh
 
-for N in {2..2}; do
+OUTPUT_DIR=c:/vesuvius/output/PHerc1667
+ZARR_DIR=c:/vesuvius/scroll_data/zarrs/PHerc1667/volume/2
 
-  cp d:/annealRuns/PHerc0139_sip_20k/annealState_out_$N.csv d:/pipelineOutput/manualBadPatch.csv
-  ./simpaper10 v
-  ./simpaper10 h
-  ./simpaper10 f 30 <<HEREDOC
-g
-q
-HEREDOC
-  
-  ./render_from_zarr6 d:/zarrs/PHerc0139/volume/2 d:/pipelineOutput/patch_0.bin - -c d:/pipelineOutput/patch_0_colours.csv
+cp $OUTPUT_DIR/annealState_out.csv $OUTPUT_DIR/manualBadPatch.csv
+./simpaper10 vm 50
+./simpaper10 hm 50
+./simpaper10 fm 30 50
+rm $OUTPUT_DIR/manualBadPatch.csv
 
-  cp d:/pipelineOutput/patch_0.tif d:/annealRuns/PHerc0139_sip_20k/patch_0_$N.tif
-
-
+for N in {0..49}; do  
+./render_from_zarr6_uint16 $ZARR_DIR $OUTPUT_DIR/patch_$N.bin - -c $OUTPUT_DIR/patch_${N}_colours.csv
 done
+
+
+
+

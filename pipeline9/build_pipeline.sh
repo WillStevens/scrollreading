@@ -17,8 +17,8 @@
 
 # Make the various ZARR reader/writers that we need
 # 80 buffers for zarr_1 because this is used for rendering, and we want to fit a whole row/column of a scroll in memory
-python zarrgen.py zarr_meta_1.json 80 _1 > zarr_1.c 
-python zarrgen.py zarr_meta_1.json 200 _1_b700 > zarr_1_b700.c 
+#python zarrgen.py zarr_meta_1.json 80 _1 > zarr_1.c 
+#python zarrgen.py zarr_meta_1.json 200 _1_b700 > zarr_1_b700.c 
 #python zarrgen.py zarr_meta_c128i1.json 8 _c128i1b8 > zarr_c128i1b8.c
 #python zarrgen.py zarr_meta_c128i1.json 16 _c128i1b16 > zarr_c128i1b16.c
 #python zarrgen.py zarr_meta_c128i1.json 128 _c128i1b128 > zarr_c128i1b128.c
@@ -26,7 +26,8 @@ python zarrgen.py zarr_meta_1.json 200 _1_b700 > zarr_1_b700.c
 #python zarrgen.py zarr_meta_c64i1.json 64 _c64i1b64 > zarr_c64i1b64.c
 #python zarrgen.py zarr_meta_c64i1.json 256 _c64i1b256 > zarr_c64i1b256.c
 #python zarrgen.py zarr_meta_c128.json 80 _c128 > zarr_c128.c 
-python zarrgen.py zarr_meta_4.json 160 _4 > zarr_4.c 
+python zarrgen.py zarr_meta_4.json 1500 _4 > zarr_4_b.c 
+python zarrgen.py zarr_meta_svol.json 400 _svol > zarr_svol.c 
 
 
 # Generate parameters.h and parameters.py from parameters.json

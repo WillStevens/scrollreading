@@ -2,7 +2,7 @@
 
 set -x
 
-TARGET_DIR=d:/pipelineOutputS4/all_s4_05
+TARGET_DIR=d:/pipelineOutputS4/all_s4_06
 
 for N in {0..9}; do
 
