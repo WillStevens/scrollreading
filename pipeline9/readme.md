@@ -92,4 +92,4 @@ examine_anneal.sh is used to render results of annealing. You will need to edit 
 
 There are numerous small standalone Claude-written (or human-written) utility programs in the folder that aren't built by make and have to be manually built when you need them. Claude usually puts the compilation instructions in a comment at the top of the source file.
 
-nm
+n
