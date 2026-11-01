@@ -714,7 +714,7 @@ void PatchGenerator::FillHoles(const std::string &fileName, const std::string &o
 	
 	printf("About to start main loop\n");
 	
-	for(int i = 0; i<60; i++)
+	for(int i = 0; i<100; i++)
 	{
 		if (!silent) printf("#");
 		fflush(stdout);
@@ -749,12 +749,18 @@ void PatchGenerator::FillHoles(const std::string &fileName, const std::string &o
 
 		if (keptPts.size()==0)
 		{
-			if (!silent) printf("\nNo more points added");
+			if (!silent)
+			{
+				printf("\nNo more points added");
+			}
 		}
 		
 		AddNewPoints(keptPts,keptPtsPaper);
 		
 		Dump(dumpFile);
+		
+		if (keptPts.size()==0)
+			break;
 	}
 
     // Save filled surface

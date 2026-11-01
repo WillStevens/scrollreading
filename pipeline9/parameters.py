@@ -56,8 +56,10 @@ MIN_TRANSFORMS=25
 BP_MAX_XYZ_DISTANCE=10
 # How many quadmesh steps to take when scoring a surface (e.g. SCOREPLACEMENT_SCALE = 10 and QUADMESH_SIZE = 4 means 40 voxel spaces per step)
 SCOREPLACEMENT_SCALE=5
-# Weight given to score returned by PatchSpringSimulaiton (total partch movement). If changing SCOREPLACEMENT_SCALE by a factor N, then STRETCH_SCORE_FACTOR should be divided by a factor N^2 to keep it in-sync. Values tried for both have been 5,1 and 10,0.25
-STRETCH_SCORE_FACTOR=1.0
+# Weight given to score returned by PatchSpringSimulaiton (total partch movement). If changing SCOREPLACEMENT_SCALE by a factor N, then STRETCH_SCORE_FACTOR should be divided by a factor N^2 to keep it in-sync
+STRETCH_SCORE_FACTOR=0.5
+# Don't penalise patch movement below this threshhold - patches need to be able to even out small discrepancies in position. What we want to avoid is cross-winding stretching.
+ALLOWED_STRETCH=50
 # At the time of writing this (2026-10-28) it is beleived that the current implementation of patch heat doesn't help. Patches that manifest inconsistencies are more likely to be symptoms of a problem than the causes, so giving them extra weight prevents the causes from being visited by MutateState
 # exponential decay applied each iteration
 HEAT_DECAY=0.85

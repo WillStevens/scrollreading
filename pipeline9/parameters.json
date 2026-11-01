@@ -95,18 +95,21 @@
     "__comment__" : "How many quadmesh steps to take when scoring a surface (e.g. SCOREPLACEMENT_SCALE = 10 and QUADMESH_SIZE = 4 means 40 voxel spaces per step)",
 	"SCOREPLACEMENT_SCALE" : 5,
 	
-    "__comment__1" : "Weight given to score returned by PatchSpringSimulaiton (total partch movement). If changing SCOREPLACEMENT_SCALE by a factor N, then STRETCH_SCORE_FACTOR should be divided by a factor N^2 to keep it in-sync. Values tried for both have been 5,1 and 10,0.25",
-	"STRETCH_SCORE_FACTOR" : 1.0, 
+    "__comment__1" : "Weight given to score returned by PatchSpringSimulaiton (total partch movement). If changing SCOREPLACEMENT_SCALE by a factor N, then STRETCH_SCORE_FACTOR should be divided by a factor N^2 to keep it in-sync",
+	"STRETCH_SCORE_FACTOR" : 0.5, 
+
+    "__comment__2" : "Don't penalise patch movement below this threshhold - patches need to be able to even out small discrepancies in position. What we want to avoid is cross-winding stretching.",
+	"ALLOWED_STRETCH" : 50, 
 
     "__comment__heat" : "At the time of writing this (2026-10-28) it is beleived that the current implementation of patch heat doesn't help. Patches that manifest inconsistencies are more likely to be symptoms of a problem than the causes, so giving them extra weight prevents the causes from being visited by MutateState",
  	
-    "__comment__2" : "exponential decay applied each iteration",
+    "__comment__3" : "exponential decay applied each iteration",
 	"HEAT_DECAY" : 0.85, 
 
-    "__comment__3" : "added per appearance in patchesInvolved",
+    "__comment__4" : "added per appearance in patchesInvolved",
 	"HEAT_INCREMENT" : 1.0,
 
-    "__comment__4" : "floor weight so cold/unseen patches still get proposed",
+    "__comment__5" : "floor weight so cold/unseen patches still get proposed",
 	"EXPLORATION_EPSILON" : 0.20 
   }
 

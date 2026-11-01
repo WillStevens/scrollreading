@@ -8,6 +8,8 @@
 #include <map>
 #include <sstream>
 
+#include "parameters.h"
+
 namespace {
 constexpr double PI = 3.14159265358979323846;
 }
@@ -544,7 +546,8 @@ float PatchSpringSimulation::runIteration(bool last) {
             if (it == patchIndexLookup_.end()) continue;
             const Patch& p = patches_[it->second];
 			float dist = distance(p.origX, p.origY, p.x, p.y);
-			totalMove += dist;
+			if (dist>ALLOWED_STRETCH)
+				totalMove += dist;
             movements.emplace_back(patchNum, dist);
         }
         std::sort(movements.begin(), movements.end(),

@@ -608,28 +608,47 @@ void LoadPatchAlignmentScores(AlignmentScoreMap &patchAlignmentScores)
 	
 	{
 		std::ifstream is(OUTPUT_DIR "/patchalignmentscores.csv");
-			
-		while(is)
+		if (!is)
 		{
-			int p1,p2;
+			std::cerr << "Could not open patchalignmentscores.csv\n";
+		}
+
+		std::string line;
+
+		while (std::getline(is, line))
+		{
+			if (line.empty())
+				continue;
+
+			std::stringstream ss(line);
+			std::string field;
+			int p1, p2;
 			float score;
-			is >> p1 >> p2 >> score;
-	
-			if (numNeighbours.count(p1)==0)
-				numNeighbours[p1]=0;
-			if (numNeighbours.count(p2)==0)
-				numNeighbours[p2]=0;
-			if (scores.count(p1)==0)
-				scores[p1]=0.0;
-			if (scores.count(p2)==0)
-				scores[p2]=0.0;
-			
+
+			try
+			{
+				if (!std::getline(ss, field, ',')) continue;
+				p1 = std::stoi(field);
+
+				if (!std::getline(ss, field, ',')) continue;
+				p2 = std::stoi(field);
+
+				if (!std::getline(ss, field, ',')) continue;
+				score = std::stof(field);
+			}
+			catch (const std::exception&)
+			{
+				// Skips header rows or malformed lines
+				continue;
+			}
+
+			// operator[] value-initialises to 0, so the count()==0 checks are unnecessary
 			numNeighbours[p1]++;
 			numNeighbours[p2]++;
-			scores[p1]+=score;
-			scores[p2]+=score;
-			
-			patchPairAlignmentScores[{p1,p2}] = score;
+			scores[p1] += score;
+			scores[p2] += score;
+
+			patchPairAlignmentScores[{p1, p2}] = score;
 		}
 	}
 	
@@ -637,6 +656,8 @@ void LoadPatchAlignmentScores(AlignmentScoreMap &patchAlignmentScores)
 	{
 		patchAlignmentScores[p.first] = scores[p.first]/p.second;
 	}
+	
+	printf("Calculated %d patch alignment scores\n",(int)patchAlignmentScores.size());
 }
 
 void LoadBadPatches(std::set<int> &badPatches, std::set<std::pair<int,int>> &manualBadRel, bool includeBadBridges = false)
@@ -1934,7 +1955,7 @@ int main(int argc, char *argv[])
 		}
 		
 		printf("Creating PatchGenerator\n");
-		PatchGenerator *pg = new PatchGenerator(std::string(SURFACE_ZARR),900);
+		PatchGenerator *pg = new PatchGenerator(std::string(SURFACE_ZARR),1000);
 		
 		printf("Filling holes\n");
 		pg->FillHoles(std::string(argv[2]),std::string(argv[3]));

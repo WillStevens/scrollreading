@@ -250,9 +250,12 @@ int MakeVisitOrders(int N, AlignmentMap *am, std::map<int,Patch> *patches,std::s
 				bool first = true;
 				for(auto i : toVisitSet)
 				{
+//					float alignmentScore = i;
 					float alignmentScore = -1;
 					if (patchAlignmentScores.count(i))
 						alignmentScore = patchAlignmentScores[i];
+					else
+						printf("Didn't find alignment score for %d\n",i);
 	
 					if (first || alignmentScore < minAlignmentScore)
 					{
@@ -262,7 +265,6 @@ int MakeVisitOrders(int N, AlignmentMap *am, std::map<int,Patch> *patches,std::s
 			
 					first = false;
 				}
-				
 				toVisitSet.erase(minNeighbour);
 				currentVisit = minNeighbour;
 			}
